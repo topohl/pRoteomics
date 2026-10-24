@@ -3673,7 +3673,8 @@ supermodule_band_colors <- function(ids) {
     "SM06" = "#65939B",
     "SM07" = "#A9788D",
     "SM08" = "#8B9568",
-    "SM09" = "#8C8177"
+    "SM09" = "#8C8177",
+    "SM10" = "#5F7A5A"
   )
   missing <- setdiff(ids, names(curated))
   if (length(missing)) {
@@ -4484,7 +4485,7 @@ segments <- segments |>
     present_in_selected_table = .data$selected_for_descriptive_atlas
   )
 if (any(segments$dataset == "microglia" & segments$selected_for_manuscript_claim %in% TRUE &
-        (segments$claim_entity_role == "compatibility_alias" | segments$supermodule_id %in% c("SM01", "SM03")))) {
+        (segments$claim_entity_role == "compatibility_alias" | !(segments$separate_manuscript_claim_allowed %in% TRUE)))) {
   stop("Microglia circular manuscript selection contains an alias or non-independent higher-order block.", call. = FALSE)
 }
 if (any(segments$dataset == "microglia" & segments$group_effect_status == "not_FDR_supported" &
@@ -4516,8 +4517,9 @@ stage13_selection_audit <- segments |>
     primary_architecture_status, group_effect_status, manuscript_placement,
     readiness_contract_version
   )
-if (nrow(stage13_selection_audit) != 9L || any(stage13_selection_audit$stable_id_join_status != "matched")) {
-  stop("Circular atlas Stage 13 stable-ID audit must contain nine matched microglia supermodules.", call. = FALSE)
+n_stage13_supermodules <- sum(load_microglia_wgcna_claim_readiness()$all$level == "supermodule")
+if (nrow(stage13_selection_audit) != n_stage13_supermodules || any(stage13_selection_audit$stable_id_join_status != "matched")) {
+  stop("Circular atlas Stage 13 stable-ID audit must contain all ", n_stage13_supermodules, " matched microglia supermodules.", call. = FALSE)
 }
 logic_audit <- logic_audit |>
   dplyr::mutate(present_in_selected_table = paste(.data$dataset, .data$supermodule_id, sep = "||") %in% selected_keys)

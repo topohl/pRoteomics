@@ -1,0 +1,63 @@
+# Analysis versions that differ only in the per-sample centring (config/normalisation.yml). A version counts as
+# preserved when a complete, hash-verified copy of exports/, data/processed/ and results/ exists outside the working
+# tree (manifest in root) and its imputed workbooks are listed here by sha256: regenerating a directory under another
+# setting is refused unless the workbooks stamped there are one of these sets. Preserved copies are read-only
+# references, never inputs of the active pipeline.
+#
+# Regenerating a version: a separate working tree at the same code, the setting below, then
+# archive/01_preprocessing/01_impute.r, 02_excel_convert.r, analysis/preprocessing/build_animal_level_protigy_input.R
+# and the pipeline (scripted limma replaces ProTigy; identical to 1e-13). Environment the label consumers need:
+# PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT=0.40 for microglia (neuropil 0.55 and soma 0.35 are defaults), and either
+# reviewed labels (config/wgcna_labels/<dataset>.csv) or, for an unreviewed network, PROTEOMICS_WGCNA_LABEL_MODE=provisional
+# with PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY and PROTEOMICS_GSEA_WGCNA_THEME_MAPPING.
+
+versions:
+  - sample_centring: all_observed_median
+    status: preserved
+    root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pre_renormalisation_2026-10-19
+    manifest: SHA256_MANIFEST.csv
+    files: 455556
+    preserved_on: 2026-10-19
+    code: pRoteomics b478a13; differential model fitted in ProTigy (GUI)
+    labels: reviewed registries in config/wgcna_labels/reference_pre_renormalisation_2026-10-19; to regenerate this
+      version copy them to config/wgcna_labels/<dataset>.csv in the regeneration tree and run labels in reviewed mode
+    imputed_workbook_sha256:
+      # 20260601 (read by the original pipeline) and 20260526 (value-identical copy)
+      - db1de90ba7ce8c4ed539b16b62a5bb6c9cfb69713b490b29dcfefb44adb34091
+      - 565eda6fbd4456a0401ed777a1768a6b3ab72bc4a3f219f4ebfd6c34507865ab
+      - fa766a6a3d457b16348c0bd554f7be12f78e673756f07bd35e5b2096b44eb214
+      - 8868403d4d4a059bc7fa58adfa5de4d3d9c66d2112b297ef0085f5cddd492ee0
+      - a4e2dba467ae21c4760c7ca02473e11f4f202c1779ecdde2796c37ef045fd1a3
+      - 801006902159074ef27d7144ac4e8e2636540b45bf08733c6664a87393e75d98
+    export_bundle: exports/, results/manuscript and pride_submission in the working tree also still hold this version
+    deposit_copy:
+      # pride_submission/ is not part of the archive above; copied and hash-verified separately before any export rework
+      root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pride_submission_2026-10-21
+      manifest: SHA256_MANIFEST.csv
+      files: 1309 (1309 match)
+      preserved_on: 2026-10-21
+  - sample_centring: complete_case_median
+    status: preserved
+    root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_complete_case_2026-10-21
+    manifest: SHA256_MANIFEST.csv
+    files: 465826 (465824 match; 2 Excel lock files copied but not verifiable); the review folder results/reviewer_audit/normalisation_choice_2026-10-21 is not part of it
+    preserved_on: 2026-10-21
+    code: branch renormalisation-2026-10-19 (uncommitted); patch against b478a13 and the untracked code files in root/code
+    labels: provisional (PROTEOMICS_WGCNA_LABEL_MODE=provisional) until reviewed labels are promoted
+    imputed_workbook_sha256:
+      - 8150a79f44a5e3c3e7ac4a587c95d83f09ac13ed1be98b66db343c176c24fde3
+      - bb7339cee080bdadd3e08021aaf6da7a7a2d2d5b85a44d3f880cc7c7a841b70d
+      - 5a4ae6b4de01e688597ceede64679170b6d2b1d69ac51b6cb0d5d0d7a0d7ee34
+
+# Version-specific review outputs that live outside the analysis trees above: rule-based labels and leave-one-animal-out
+# rebuilds of both networks, CA2-SLM, GSEA and centring sensitivity tables, version comparisons, the original-centring
+# discovery audits (Proteome_state/stats, Behavior_coupling), the current-code reproduction of the original imputed
+# workbooks, and the code state. A read-only reference, never an input of the pipeline.
+review_copy:
+  root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_review_2026-10-22
+  manifest: SHA256_MANIFEST.csv
+  files: 479 (479 match)
+  preserved_on: 2026-10-22
+  contents: results/reviewer_audit/normalisation_choice_2026-10-21, Proteome_state/stats, Behavior_coupling/{stats,figures},
+    external/reproduction (C:/Users/topohl/Documents/proteomics_renorm_refreeze_2026-10-19/reproduction)
+  code: branch renormalisation-2026-10-19 (uncommitted); patch against b478a13 and 30 untracked code files in root/code

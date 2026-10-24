@@ -125,7 +125,7 @@ if (run$dry_run) {
   dry_run_line("Supermodule annotation", FILES$supermodule_annotation, if (file.exists(FILES$supermodule_annotation)) "PASS" else "WARN")
   dry_run_line("Supermodule summary", FILES$supermodule_summary, if (file.exists(FILES$supermodule_summary)) "PASS" else "WARN")
   if (DATASET == "microglia" || force_microglia) dry_run_line("Neuropil reference annotation", FILES$neuropil_annotation, if (file.exists(FILES$neuropil_annotation)) "PASS" else "WARN")
-  if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
+  if (DATASET == "microglia" || force_microglia) dry_run_line("Targeted microglia signature enrichment", path_results("differential_abundance", "test_microglia_targeted_signatures", "microglia", "tables", "microglia_signature_enrichment_with_contrast_class.csv"), if (file.exists(path_results("differential_abundance", "test_microglia_targeted_signatures", "microglia", "tables", "microglia_signature_enrichment_with_contrast_class.csv"))) "PASS" else "WARN")
   dry_run_line("Marker registry", Sys.getenv("PROTEOMICS_WGCNA_MARKER_REGISTRY_FILE", unset = repo_path("config", "marker_panels", "wgcna_reference_marker_sets.csv")), "INFO")
   dry_run_line("Empirical ROI marker sets", Sys.getenv("PROTEOMICS_WGCNA_EMPIRICAL_MARKER_FILE", unset = qc_find("empirical_roi_marker_sets.csv", owner = "discover_empirical_roi_markers", legacy_substep = "05_empirical_roi_marker_discovery")), "INFO")
   dry_run_line("Supplemental microenvironment marker panels", supplemental_marker_panel_file, if (file.exists(supplemental_marker_panel_file)) "PASS" else "FAIL")
@@ -171,7 +171,7 @@ go <- safe_read_csv(FILES$go)
 super_ann <- safe_read_csv(FILES$supermodule_annotation)
 super_summary <- safe_read_csv(FILES$supermodule_summary)
 neuropil_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(FILES$neuropil_annotation) else NULL
-targeted_signature_file <- path_results("tables", "04_differential_expression_enrichment", "microglia_targeted_signature_enrichment", "microglia", "microglia_signature_enrichment_with_contrast_class.csv")
+targeted_signature_file <- path_results("differential_abundance", "test_microglia_targeted_signatures", "microglia", "tables", "microglia_signature_enrichment_with_contrast_class.csv")
 targeted_signature_ref <- if (DATASET == "microglia" || force_microglia) safe_read_csv(targeted_signature_file) else NULL
 
 if (is.null(super_ann) || !nrow(super_ann)) {

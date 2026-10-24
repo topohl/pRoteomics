@@ -67,9 +67,7 @@ strict_matching_file <- file.path(strict_dir, "program_module_matching_audit.csv
 gsea_terms_file <- file.path(
   strict_dir, "ontology_aware_gsea_theme_assignments_all_contrasts.csv"
 )
-theme_mapping_file <- repo_path(
-  "config", "gsea_wgcna_theme_module_mapping.csv"
-)
+theme_mapping_file <- gww_theme_mapping_path()
 theme_registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
 
 dataset_inputs <- lapply(datasets, function(dataset) {

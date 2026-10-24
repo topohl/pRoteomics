@@ -12,6 +12,7 @@ library(writexl)
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "normalisation_contract.R"))
 
 # Paths/config
 MODULE_ID <- "01_preprocessing"
@@ -22,6 +23,21 @@ metadata_path <- path_or_env("PROTEOMICS_IMPUTE_METADATA", path_metadata("TPE9_s
 input_path <- path_or_env("PROTEOMICS_IMPUTE_INPUT", path_raw("pg_matrix", "quicksearch.pg_matrix.tsv"), must_exist = TRUE)
 output_dir <- path_or_env("PROTEOMICS_IMPUTE_OUTPUT_DIR", CANONICAL_PATHS$processed, kind = "dir")
 ensure_dir(output_dir)
+# config/normalisation.yml selects the centring. Writing into the working tree under a setting other than the one it
+# holds is refused unless that version is preserved; an override directory keeps its own manifest and stamp.
+NORMALISATION <- normalisation_setting()
+same_dir <- function(a, b) identical(tolower(sub("/+$", "", normalizePath(a, winslash = "/", mustWork = FALSE))),
+                                     tolower(sub("/+$", "", normalizePath(b, winslash = "/", mustWork = FALSE))))
+writes_working_tree <- same_dir(output_dir, CANONICAL_PATHS$processed)
+# Any directory that already holds a stamped version (however its path is spelled) is protected the same way.
+if (writes_working_tree && !identical(NORMALISATION$source, "config/normalisation.yml")) {
+    stop("PROTEOMICS_SAMPLE_CENTRING may only redirect a run into a separate output directory (PROTEOMICS_IMPUTE_OUTPUT_DIR); ",
+         "the working tree follows config/normalisation.yml.", call. = FALSE)
+}
+if (writes_working_tree || dir_holds_version(output_dir)) assert_working_version_preserved(NORMALISATION$sample_centring, output_dir)
+manifest_dir <- if (writes_working_tree) CANONICAL_PATHS$logs else file.path(output_dir, "run_manifest")
+if (!writes_working_tree) Sys.setenv(PROTEOMICS_NORMALISATION_STAMP_DIR = output_dir)
+message("Sample centring: ", NORMALISATION$sample_centring, " (", NORMALISATION$source, ")")
 
 # Read metadata
 metadata <- read_excel(metadata_path)
@@ -108,9 +124,18 @@ make_filename <- function(celltype_layer, n_samples, n_proteins, method = "norma
 }
 
 qc_rows <- list()
+# Consumers read the newest matching workbook; never leave a second version beside a new one. Checked for every
+# celltype_layer before anything is written, so a refusal cannot leave a half-regenerated directory.
+today_names <- character()
 metadata <- metadata %>%
     mutate(celltype_layer_for_impute = ifelse(is.na(celltype_layer) | !nzchar(as.character(celltype_layer)), "missing_celltype_layer", as.character(celltype_layer)))
 celltype_layers <- sort(unique(as.character(metadata$celltype_layer_for_impute)))
+existing <- list.files(output_dir, pattern = "^[0-9]{8}_pgmatrix_imputed_.+_[0-9]+samples_missing70pct[.]xlsx$")
+stale <- existing[!startsWith(existing, paste0(get_date_str(), "_"))]
+if (length(stale)) {
+    stop("Imputed workbook(s) from another run in ", output_dir, ": ", paste(stale, collapse = ", "),
+         ". Move them to a superseded folder (keeping a hash record) before regenerating.", call. = FALSE)
+}
 
 # Split by celltype_layer and process each subset
 for (idx in seq_along(celltype_layers)) {
@@ -137,9 +162,14 @@ for (idx in seq_along(celltype_layers)) {
     # Log2 transform numeric columns
     df_subset[, numeric_cols] <- log2(df_subset[, numeric_cols])
 
-    # Median center each sample column
-    for (col in numeric_cols) {
-        df_subset[[col]] <- df_subset[[col]] - median(df_subset[[col]], na.rm = TRUE)
+    # Median centre each sample column (config/normalisation.yml): on the proteins quantified in every
+    # sample of this celltype_layer (complete_case_median, 2026-10-19) or on all observed values of the
+    # sample (all_observed_median, the original analysis). The observed-value median moves with
+    # detection depth: a sample that missed more low-abundance proteins has a higher observed median,
+    # so every protein in it is shifted down.
+    offsets <- sample_centring_offsets(as.data.frame(df_subset[, numeric_cols]), NORMALISATION$sample_centring)
+    for (j in seq_along(numeric_cols)) {
+        df_subset[[numeric_cols[j]]] <- df_subset[[numeric_cols[j]]] - offsets[[j]]
     }
 
     # Filter out proteins (rows) with >70% missingness in numeric columns
@@ -172,6 +202,9 @@ for (idx in seq_along(celltype_layers)) {
         subset_seed = subset_seed,
         celltype_layer = celltype_layer,
         n_samples = n_samples,
+        sample_centring = NORMALISATION$sample_centring,
+        centring = if (identical(NORMALISATION$sample_centring, "complete_case_median")) "median of proteins quantified in all samples of the celltype_layer" else "median of all observed values of the sample",
+        n_centring_reference_proteins = attr(offsets, "n_reference_proteins"),
         n_proteins_before_filter = n_proteins_before_filter,
         n_proteins_after_filter = n_proteins,
         n_proteins_filtered_out = n_proteins_before_filter - n_proteins,
@@ -194,11 +227,14 @@ if (length(qc_rows) > 0) {
         "",
         capture.output(sessionInfo())
     ), file.path(output_dir, "sessionInfo.txt"))
+    write_normalisation_stamp(output_dir, NORMALISATION, imputation_qc$output_path)
     write_run_manifest(
-        file.path(CANONICAL_PATHS$logs, "run_manifest.yml"),
+        file.path(manifest_dir, "run_manifest.yml"),
         inputs = list(metadata = metadata_path, matrix = input_path),
-        outputs = list(imputed_outputs = imputation_qc$output_path, qc = file.path(output_dir, "imputation_qc.csv")),
-        parameters = list(imputation_seed = IMPUTATION_SEED, missing_threshold = 0.7, width = 0.3, downshift = 1.8),
+        outputs = list(imputed_outputs = imputation_qc$output_path, qc = file.path(output_dir, "imputation_qc.csv"),
+                       normalisation_stamp = normalisation_stamp_path(output_dir)),
+        parameters = list(imputation_seed = IMPUTATION_SEED, missing_threshold = 0.7, width = 0.3, downshift = 1.8,
+                          sample_centring = NORMALISATION$sample_centring, sample_centring_source = NORMALISATION$source),
         notes = "Deterministic per-celltype_layer seeds are assigned after sorting celltype_layer labels."
     )
 }

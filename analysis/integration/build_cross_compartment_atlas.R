@@ -32,8 +32,8 @@ paths <- integration_dirs(ANALYSIS_ID, "global", create = TRUE)
 
 dataset_inputs <- function(ds) {
   inputs <- list(
-    enrichment_program = path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", ds, "program_summary.csv"),
-    external_signature = path_results("tables", "04_differential_expression_enrichment", "external_stress_disease_signature_overlap", "global", "external_stress_disease_signature_overlap.csv"),
+    enrichment_program = path_results("differential_abundance", "summarize_biological_programs", ds, "tables", "program_summary.csv"),
+    external_signature = path_results("differential_abundance", "compare_external_stress_signatures", "global", "tables", "external_stress_disease_signature_overlap.csv"),
     wgcna_inferential = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", ds),
     wgcna_label_lookup = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", ds),
     microenvironment = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds),
@@ -47,7 +47,7 @@ dataset_inputs <- function(ds) {
                         owner = "summarize_qc_confounding",
                         legacy_substep = "07_qc_biology_confounding_report",
                         scope = ds, kind = "reports"),
-    spatial_program = path_results("tables", "04_differential_expression_enrichment", "compareGO_spatial_atlas", "spatial_program_summary.csv")
+    spatial_program = path_results("differential_abundance", "build_go_program_atlas", "global", "tables", "spatial_program_summary.csv")
   )
   if (identical(ds, "microglia")) inputs$wgcna_claim_readiness <- microglia_wgcna_claim_readiness_path()
   inputs
@@ -245,7 +245,7 @@ microglia_wgcna_readiness_evidence <- function(file, label_lookup_file) {
     readiness_contract_version = contract$readiness_contract_version,
     stringsAsFactors = FALSE
   )
-  list(evidence = evidence, status = rbind(
+  list(evidence = evidence, status = dplyr::bind_rows(
     data.frame(
       dataset = "microglia", evidence_domain = "wgcna_claim_readiness", input_type = "stage13_claim_readiness",
       path = contract$source_path, required = TRUE, status = "present", message = "validated authoritative Stage 13 claim-readiness contract",
@@ -349,7 +349,8 @@ for (ds in integration_datasets(run$dataset)) {
     qc_report_evidence(ds, inputs$qc_report)
   )
   all_ev <- c(all_ev, lapply(pieces, `[[`, "evidence"))
-  all_status <- rbind(all_status, do.call(rbind, lapply(pieces, `[[`, "status")))
+  # bind_rows: statuses from read_csv_optional() carry an extra 'addressability' column.
+  all_status <- dplyr::bind_rows(all_status, dplyr::bind_rows(lapply(pieces, `[[`, "status")))
 }
 
 atlas_long <- assign_downstream_evidence_roles(standardize_evidence(do.call(rbind, all_ev)))

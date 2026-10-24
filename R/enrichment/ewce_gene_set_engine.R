@@ -249,10 +249,12 @@ run_ewce_gene_set_annotation <- function(gene_sets,
 # symbols UPPERCASED, which are not valid org.Mm.eg.db keys - passing them
 # through yields zero reference matches and EWCE fails with "Only 0 provided".
 #
-# This resolves the canonical mouse symbol case-insensitively against
-# org.Mm.eg.db, preferring an exact SYMBOL and falling back to ALIAS. It adds no
-# new identifier authority: it recovers the casing the annotation database
-# already defines.
+# This resolves the official mouse SYMBOL against org.Mm.eg.db with the symbol
+# policy of the Stage 02 resolver (resolve_mouse_gene_annotation in
+# R/data_contracts/protein_mapping_utils.R): an exact SYMBOL, then a unique
+# case-insensitive SYMBOL, then a unique ALIAS. An alias returns the official
+# SYMBOL it belongs to (e.g. "CA2" -> "Car2"), never the alias text, and a key
+# naming more than one gene stays NA. It adds no new identifier authority.
 ewce_to_mouse_symbols <- function(x, keep_unmapped = FALSE) {
   x <- trimws(as.character(x))
   x[!nzchar(x)] <- NA_character_
@@ -263,13 +265,28 @@ ewce_to_mouse_symbols <- function(x, keep_unmapped = FALSE) {
   }
   db <- getExportedValue("org.Mm.eg.db", "org.Mm.eg.db")
   sym <- AnnotationDbi::keys(db, keytype = "SYMBOL")
-  ali <- AnnotationDbi::keys(db, keytype = "ALIAS")
-  lut_sym <- stats::setNames(sym, toupper(sym))
-  lut_ali <- stats::setNames(ali, toupper(ali))
+  ali <- suppressMessages(AnnotationDbi::select(
+    db, keys = AnnotationDbi::keys(db, keytype = "ALIAS"),
+    keytype = "ALIAS", columns = "SYMBOL"))
+  ali <- ali[!is.na(ali$SYMBOL) & nzchar(ali$SYMBOL), , drop = FALSE]
+  # Uppercased key -> official SYMBOL; NA where the key names several genes.
+  unique_lut <- function(key, symbol) {
+    p <- unique(data.frame(key = toupper(key), symbol = symbol,
+                           stringsAsFactors = FALSE))
+    p$symbol[p$key %in% p$key[duplicated(p$key)]] <- NA_character_
+    p <- p[!duplicated(p$key), , drop = FALSE]
+    stats::setNames(p$symbol, p$key)
+  }
+  lut_sym <- unique_lut(sym, sym)
+  lut_ali <- unique_lut(ali$ALIAS, ali$SYMBOL)
   up <- toupper(x)
-  out <- unname(lut_sym[up])
-  miss <- is.na(out)
-  if (any(miss)) out[miss] <- unname(lut_ali[up[miss]])
+  out <- x
+  out[!x %in% sym] <- NA_character_
+  ci <- is.na(out) & up %in% names(lut_sym)
+  out[ci] <- unname(lut_sym[up[ci]])
+  # An ambiguous case-insensitive symbol does not fall through to ALIAS.
+  al <- is.na(out) & !ci & up %in% names(lut_ali)
+  out[al] <- unname(lut_ali[up[al]])
   if (keep_unmapped) out[is.na(out)] <- x[is.na(out)]
   out
 }

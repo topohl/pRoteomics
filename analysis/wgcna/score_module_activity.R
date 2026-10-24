@@ -660,7 +660,10 @@ modules_raw <- if (grepl("\\.csv$", module_definitions_file, ignore.case = TRUE)
   as_tibble()
 modules_standard <- standardize_module_definitions(modules_raw, module_definition_source)
 if (identical(module_definition_source, "wgcna")) {
-  validate_wgcna_module_definitions(modules_standard, "standardized WGCNA module definitions")
+  # standardize_module_definitions() keeps only the scoring columns, so the
+  # producer-contract columns (WGCNAInternalColor, ProteinGroupID, ...) are
+  # validated on the table as read from the producer artifact.
+  validate_wgcna_module_definitions(modules_raw, "WGCNA module definitions for downstream scoring")
 } else if (identical(module_definition_source, "overlap")) {
   validate_curated_overlap_programs(modules_standard, "standardized curated overlap programs")
 }
@@ -1063,13 +1066,19 @@ eigengene_sign_alignment_qc <- tibble()
 wgcna_state <- NULL
 if (identical(module_definition_source, "wgcna") && !is.na(wgcna_state_file) && file.exists(wgcna_state_file)) {
   wgcna_state <- readRDS(wgcna_state_file)
+  # ModuleID (WGCNA_m01) is decoupled from the internal colour that names the
+  # merged-ME columns (ME#2F6F73), so resolve the colour from the definitions.
+  wgcna_internal_color_by_module <- modules_raw %>%
+    dplyr::distinct(.data$ModuleID, .data$WGCNAInternalColor) %>%
+    dplyr::transmute(ModuleID = as.character(.data$ModuleID), color = as.character(.data$WGCNAInternalColor)) %>%
+    tibble::deframe()
   state_mEs <- wgcna_state$mergedMEs
   if (!is.null(state_mEs) && nrow(state_mEs) > 0) {
     if (is.null(rownames(state_mEs)) && !is.null(wgcna_state$sample_info)) {
       rownames(state_mEs) <- rownames(wgcna_state$sample_info)
     }
     eigengene_raw <- purrr::imap_dfr(modules, function(genes, module_name) {
-      module_color <- sub("^WGCNA_", "", module_name)
+      module_color <- unname(wgcna_internal_color_by_module[module_name])
       me_col <- paste0("ME", module_color)
       if (!me_col %in% colnames(state_mEs)) return(NULL)
       tibble(

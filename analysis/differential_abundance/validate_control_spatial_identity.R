@@ -388,6 +388,13 @@ gsea_cfg <- validate_clusterprofiler_gsea_config(yaml::read_yaml(
 ))
 gsea_seed_base <- gsea_cfg$analysis$gsea_seed_base
 n_perm_simple <- gsea_cfg$analysis$n_perm_simple
+# GO-BP term-size limits shared with the main clusterProfiler GSEA/ORA
+go_min_gs_size <- clusterprofiler_integer_scalar(
+  gsea_cfg$analysis$min_gs_size, "config/clusterProfiler_config.yml analysis.min_gs_size"
+)
+go_max_gs_size <- clusterprofiler_integer_scalar(
+  gsea_cfg$analysis$max_gs_size, "config/clusterProfiler_config.yml analysis.max_gs_size"
+)
 validation_output_root <- Sys.getenv(
   "PROTEOMICS_CONTROL_SPATIAL_OUTPUT_ROOT", unset = ""
 )
@@ -590,7 +597,8 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
       gsea_seed = go_repro$gsea_seed,
       n_perm_simple = go_repro$n_perm_simple,
       geneList = ranked, OrgDb = org.Mm.eg.db, keyType = "SYMBOL",
-      ont = "BP", pvalueCutoff = 1, verbose = FALSE
+      ont = "BP", minGSSize = go_min_gs_size, maxGSSize = go_max_gs_size,
+      pvalueCutoff = 1, verbose = FALSE
     ))
     if(nrow(go)) {
       go$dataset<-dataset;go$contrast<-ct$name;go$status<-"completed"
@@ -605,7 +613,7 @@ for (dataset in c("neuron_soma", "neuron_neuropil")) {
 }
 largest_mapped_signature_size <- max(vapply(kaulich_jobs, function(z) length(z$mapped), integer(1)))
 min_gs_size <- 5L
-max_gs_size <- control_spatial_signature_max_gs_size(largest_mapped_signature_size)
+max_gs_size <- control_spatial_signature_max_gs_size(largest_mapped_signature_size, go_max_gs_size)
 message("Running Kaulich signature GSEA")
 for (job in kaulich_jobs) {
   job_repro <- control_spatial_gsea_reproducibility(
@@ -678,6 +686,8 @@ write_run_manifest(
     minGSSize = min_gs_size,
     maxGSSize = max_gs_size,
     largest_mapped_prespecified_signature_size = largest_mapped_signature_size,
+    go_bp_minGSSize = go_min_gs_size,
+    go_bp_maxGSSize = go_max_gs_size,
     gsea_seed_base = gsea_seed_base,
     n_perm_simple = n_perm_simple,
     gsea_rng_kind = "L'Ecuyer-CMRG/Inversion/Rejection",

@@ -750,6 +750,24 @@ gww_build_entity_program_matches <- function(handoff, registry) {
   out
 }
 
+# The curated theme-to-WGCNA mapping in config/ is keyed to the module IDs of one network. After a
+# rebuild (PROTEOMICS_WGCNA_LABEL_MODE = "provisional") it is not read: the lineage-checked
+# proposal named by PROTEOMICS_GSEA_WGCNA_THEME_MAPPING is used, whose supported rows carry
+# mapping_status = provisional_supported. Those rows are tested but are never manuscript-eligible.
+gww_provisional_mode <- function() {
+  identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed")), "provisional")
+}
+
+gww_theme_mapping_path <- function(default = repo_path("config", "gsea_wgcna_theme_module_mapping.csv")) {
+  override <- Sys.getenv("PROTEOMICS_GSEA_WGCNA_THEME_MAPPING", unset = "")
+  if (gww_provisional_mode() && !nzchar(override)) {
+    stop("PROTEOMICS_WGCNA_LABEL_MODE = provisional needs PROTEOMICS_GSEA_WGCNA_THEME_MAPPING ",
+         "(the lineage-checked theme mapping); the config mapping describes the previous network.",
+         call. = FALSE)
+  }
+  if (nzchar(override)) override else default
+}
+
 gww_read_theme_entity_mapping <- function(path) {
   x <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
   required <- c(
@@ -784,7 +802,8 @@ gww_read_theme_entity_mapping <- function(path) {
          call. = FALSE)
   }
   allowed_status <- c(
-    "approved", "manual_review_candidate", "qc_context_only"
+    "approved", "manual_review_candidate", "qc_context_only",
+    "provisional_supported", "provisional_unsupported"
   )
   if (any(!x$mapping_role %in% c("primary", "secondary_multifunctional"))) {
     stop(
@@ -874,8 +893,9 @@ gww_build_entity_theme_matches <- function(handoff, mapping, theme_registry) {
   )
   out <- validated |>
     dplyr::filter(
-      .data$mapping_status == "approved",
-      .data$approved_for_manuscript_interpretation %in% TRUE,
+      (.data$mapping_status == "approved" &
+         .data$approved_for_manuscript_interpretation %in% TRUE) |
+        (.data$mapping_status == "provisional_supported" & gww_provisional_mode()),
       .data$theme_role %in% c("primary", "supporting")
     ) |>
     dplyr::mutate(

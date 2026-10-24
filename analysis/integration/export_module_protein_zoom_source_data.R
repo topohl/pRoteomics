@@ -26,6 +26,12 @@ suppressPackageStartupMessages({ library(readr); library(dplyr); library(ggplot2
 
 dataset <- "neuron_neuropil"
 selected_modules <- c("WGCNA_m01", "WGCNA_m02", "WGCNA_m12")
+# This selection names modules of the network built before 2026-10-19. In the rebuilt network the
+# same IDs are other modules (lineage: old m01 -> new m04, old m02 split m02/m06, old m12 -> new m03),
+# so it must be re-chosen after the WGCNA review rather than run on provisional labels.
+if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed")), "provisional")) {
+  stop("Protein-zoom module selection is keyed to the previous network; re-select after the WGCNA review.", call. = FALSE)
+}
 contrast_levels <- c("RES - CON", "SUS - CON", "SUS - RES")
 manuscript_text <- nature_manuscript_text_sizes_pt()
 if ("--dry-run" %in% commandArgs(trailingOnly = TRUE)) {

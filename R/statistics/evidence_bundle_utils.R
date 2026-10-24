@@ -605,16 +605,19 @@ write_bundle_csvs <- function(sheets, bundle_dir) {
 }
 
 write_final_evidence_bundle <- function(reason = "integration") {
-  bundle_dir <- path_results("tables", "10_biological_integration", "final_evidence_bundle", "global")
-  source_bundle_dir <- path_results("source_data", "10_biological_integration", "final_evidence_bundle", "global")
-  report_dir <- path_results("reports", "10_biological_integration", "final_evidence_bundle", "global")
-  log_dir <- path_results("logs", "10_biological_integration", "final_evidence_bundle", "global")
+  # The owner's normalized directories (pipeline.yml: build_evidence_priority_matrix); the historical
+  # results/{tables,source_data,reports,logs}/10_biological_integration trees are older runs.
+  owner <- function(child, ...) canonical_result_path("integration", "build_evidence_priority_matrix", "global", child, ...)
+  bundle_dir <- owner("tables", "final_evidence_bundle")
+  source_bundle_dir <- owner("tables", "source_data", "final_evidence_bundle")
+  report_dir <- owner("reports", "final_evidence_bundle")
+  log_dir <- owner("manifests", "final_evidence_bundle")
   dir_create(bundle_dir); dir_create(source_bundle_dir); dir_create(report_dir); dir_create(log_dir)
 
   inputs <- list(
-    manuscript_program_summary = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"),
-    evidence_priority_matrix = path_results("tables", "10_biological_integration", "evidence_priority_matrix", "global", "evidence_priority_matrix.csv"),
-    cross_compartment_program_atlas = path_results("tables", "10_biological_integration", "cross_compartment_program_atlas", "global", "cross_compartment_program_atlas_long.csv"),
+    manuscript_program_summary = path_results("integration", "summarize_programs_for_manuscript", "global", "tables", "manuscript_program_summary.csv"),
+    evidence_priority_matrix = path_results("integration", "build_evidence_priority_matrix", "global", "tables", "evidence_priority_matrix.csv"),
+    cross_compartment_program_atlas = path_results("integration", "build_cross_compartment_atlas", "global", "tables", "cross_compartment_program_atlas_long.csv"),
     biological_claims = psd_claims_table("biological_claims_table.csv"),
     microglia_module_annotation = wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia"),
     microglia_targeted_signature_details = wgcna_annotation_artifact("WGCNA_module_targeted_signature_overlap_details.csv", "microglia"),
@@ -656,7 +659,7 @@ write_final_evidence_bundle <- function(reason = "integration") {
 
   write_bundle_csvs(sheets, bundle_dir)
   write_bundle_csvs(sheets, source_bundle_dir)
-  xlsx_out <- file.path(bundle_dir, "final_biological_evidence_bundle.xlsx")
+  xlsx_out <- owner("tables", "final_biological_evidence_bundle.xlsx")
   if (requireNamespace("writexl", quietly = TRUE)) {
     tryCatch(
       writexl::write_xlsx(sheets, xlsx_out),

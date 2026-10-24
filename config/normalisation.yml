@@ -1,0 +1,32 @@
+# Per-sample centring applied by archive/01_preprocessing/01_impute.r after log2 and before the 70% missingness
+# filter and the down-shift imputation. This is the only setting that separates the two analysis versions: every
+# downstream matrix, model, enrichment, network and figure inherits it through the imputed workbooks. (The joint
+# compartment QC keeps its own fixed shared-core median and is not affected.)
+#
+#   complete_case_median   median of the proteins quantified in every sample of the compartment (re-normalisation
+#                          of 2026-10-19; analysis outputs currently in this working tree)
+#   all_observed_median    median of all observed values of the sample (analysis before 2026-10-19; preserved,
+#                          hash-verified, in Analysis/_archive_proteomics_pre_renormalisation_2026-10-19)
+#
+# The impute step stamps the version it wrote (data/processed/01_preprocessing/impute/normalisation_stamp.yml). The
+# pipeline launcher refuses to run when this setting and the stamp disagree, when the newest metadata-joined workbook
+# does not carry the name of a stamped workbook (a name check), or when the animal-level input or the limma fit trace
+# to another imputed workbook (recorded hashes); every run manifest records the setting and the stamp. The legacy
+# original-centring trees and the export bundle are outside these checks. Regenerating a directory that holds another version is refused
+# until that version is preserved and listed in config/normalisation_versions.yml. PROTEOMICS_SAMPLE_CENTRING
+# overrides this file for an ad-hoc run into a separate output directory; it never satisfies an approval.
+#
+# Not yet regenerated: the frozen export bundle (exports/, results/manuscript, pride_submission) still holds the
+# original-centring version and is rebuilt only by the export stage, which is blocked while the decision is pending.
+#
+# decision: pending | approved. Approval names one centring in approved_sample_centring; freeze, export and deposit
+# (this repository) run only when decision is approved and approved_sample_centring equals sample_centring set in this
+# file. The Exp9_manuscript import tools are not guarded yet.
+
+# Tobias's choice, 2026-10-22: the original centring (all_observed_median) is the primary analysis for now and the
+# complete-case centring its sensitivity analysis. Not yet approved here: this working tree still holds the
+# complete-case outputs, and the original must first be regenerated with the corrected pipeline in a separate
+# worktree (config/normalisation_versions.yml, 'Regenerating a version').
+sample_centring: complete_case_median
+decision: pending
+approved_sample_centring: ""

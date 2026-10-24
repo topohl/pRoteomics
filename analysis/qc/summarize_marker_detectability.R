@@ -397,6 +397,7 @@ marker_detectability_by_protein <- marker_match_rows |>
     n_samples = dplyr::first(n_samples[!is.na(n_samples)]) %||% ncol(mat),
     n_nonmissing = ifelse(all(is.na(n_nonmissing)), 0L, sum(n_nonmissing, na.rm = TRUE)),
     fraction_nonmissing = ifelse(n_matched_protein_ids > 0, max(fraction_nonmissing, na.rm = TRUE), 0),
+    observed_detection_rate_raw = if (any(is.finite(observed_detection_rate_raw))) max(observed_detection_rate_raw, na.rm = TRUE) else NA_real_,
     mean_log2_abundance = ifelse(n_matched_protein_ids > 0, mean(mean_log2_abundance, na.rm = TRUE), NA_real_),
     median_log2_abundance = ifelse(n_matched_protein_ids > 0, median(median_log2_abundance, na.rm = TRUE), NA_real_),
     sd_log2_abundance = ifelse(n_matched_protein_ids > 0, mean(sd_log2_abundance, na.rm = TRUE), NA_real_),

@@ -126,6 +126,12 @@ wal_assert_one_label_per_entity(resolved)
 
 curated_mod <- wal_curated_adjudications()
 curated_sup <- wal_curated_supermodule_adjudications()
+# The curated adjudications are keyed to the module IDs of the network built before 2026-10-19. On a
+# rebuilt network (provisional label mode) they would name different modules, so they are not applied.
+if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed")), "provisional")) {
+  curated_mod <- curated_mod[0, , drop = FALSE]
+  curated_sup <- curated_sup[0, , drop = FALSE]
+}
 
 hub_compact <- hubs %>%
   filter(.data$rank <= 8L) %>%

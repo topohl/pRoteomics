@@ -39,8 +39,10 @@ FIGURE_DIR <- CANONICAL_PATHS$plots
 REPORT_DIR <- CANONICAL_PATHS$reports
 LOG_DIR <- CANONICAL_PATHS$manifests
 REGISTRY_PATH <- repo_path("config", "manuscript_go_theme_registry.tsv")
-GO_SOURCE <- path_results("source_data", MODULE_ID, "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv")
-SUS_RES_REFERENCE_WORKBOOK <- path_results("reports", MODULE_ID, "sus_res_spatial_dap_atlas", "global", "sus_res_biological_audit.xlsx")
+# Read from the current producers' outputs; the historical results/source_data and results/reports
+# copies are older runs and are never read.
+GO_SOURCE <- path_results("differential_abundance", "build_go_program_atlas", "global", "tables", "source_data", "spatial_atlas_enrichment_long.csv")
+SUS_RES_REFERENCE_WORKBOOK <- path_results("differential_abundance", "build_sus_res_dap_atlas", "global", "reports", "sus_res_biological_audit.xlsx")
 
 required_packages <- c("readr", "tidyselect", "ggplot2", "svglite", "GO.db", "AnnotationDbi")
 missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -164,8 +166,10 @@ mapping <- map_go_terms_to_manuscript_themes(go_terms, registry)
 theme <- stress_response_build_theme_detail(go_long, mapping, joint_go$joint)
 trajectory <- stress_response_build_theme_trajectory(theme$detail)
 overview <- stress_response_theme_overview(theme$detail, trajectory)
-if (nrow(theme$detail) != 8L * 18L * 3L) stop("Theme detail must contain 432 theme x context x contrast rows.", call. = FALSE)
-if (nrow(trajectory) != 6L * 18L) stop("Primary trajectory must contain 108 theme x context rows.", call. = FALSE)
+n_registry_themes <- length(unique(registry$theme_id))
+n_registry_primary_themes <- length(unique(registry$theme_id[registry$theme_role == "primary"]))
+if (nrow(theme$detail) != n_registry_themes * 18L * 3L) stop("Theme detail must contain ", n_registry_themes * 18L * 3L, " theme x context x contrast rows (", n_registry_themes, " registry themes x 18 contexts x 3 contrasts); found ", nrow(theme$detail), ".", call. = FALSE)
+if (nrow(trajectory) != n_registry_primary_themes * 18L) stop("Primary trajectory must contain ", n_registry_primary_themes * 18L, " theme x context rows (", n_registry_primary_themes, " primary themes x 18 contexts); found ", nrow(trajectory), ".", call. = FALSE)
 
 joint_go_key <- paste(joint_go$joint$dataset, joint_go$joint$spatial_unit, joint_go$joint$phenotype_contrast, joint_go$joint$ID, sep = "|")
 go_key <- paste(go_long$dataset, go_long$spatial_unit, go_long$phenotype_contrast, go_long$ID, sep = "|")

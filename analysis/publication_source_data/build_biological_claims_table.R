@@ -1267,7 +1267,7 @@ write_wgcna_stage13_cardinality_audit <- function(claims) {
   if (any(rows$wgcna_claim_entity_role == "compatibility_alias")) {
     stop("Compatibility aliases must not create biological claim rows.", call. = FALSE)
   }
-  readr::write_csv(rows, psd_claims_audit("wgcna_stage13_claim_cardinality_audit.csv"), na = "")
+  readr::write_csv(rows, claims_audit_out("wgcna_stage13_claim_cardinality_audit.csv"), na = "")
   invisible(rows)
 }
 
@@ -1423,6 +1423,10 @@ schema_validation_status <- function(path, schema_name) {
   isTRUE(tryCatch({ validate_table_schema(dat, schema_name, strict = TRUE); TRUE }, error = function(e) FALSE))
 }
 
+# Destination of this script's audit tables: always its own normalized tables/ directory.
+# psd_claims_audit() is a reader (normalized first, historical second) and must not pick a write target.
+claims_audit_out <- function(filename) file.path(psd_dirs("build_biological_claims_table", create = TRUE)$tables, filename)
+
 write_final_reviewer_audit_manifest <- function() {
   specs <- final_reviewer_audit_specs()
   manifest_name <- "final_reviewer_audit_manifest.csv"
@@ -1438,8 +1442,7 @@ write_final_reviewer_audit_manifest <- function() {
     dplyr::ungroup() |>
     dplyr::select("audit_file", "exists", "n_rows", "schema_validated", "produced_by_script", "reviewer_use", "manuscript_use_allowed", "notes")
   validate_table_schema(manifest, "final_reviewer_audit_manifest", strict = TRUE)
-  out <- psd_claims_audit(manifest_name)
-  dir_create(dirname(out))
+  out <- claims_audit_out(manifest_name)
   readr::write_csv(manifest, out, na = "")
   invisible(manifest)
 }
@@ -1488,7 +1491,7 @@ write_final_evidence_bundle_validation <- function(claims, manifest = NULL) {
     )
   )
   validate_table_schema(validation, "final_evidence_bundle_validation", strict = TRUE)
-  readr::write_csv(validation, psd_claims_audit("final_evidence_bundle_validation.csv"), na = "")
+  readr::write_csv(validation, claims_audit_out("final_evidence_bundle_validation.csv"), na = "")
   invisible(validation)
 }
 
@@ -1539,7 +1542,7 @@ latest_csv <- function(root, pattern) latest_file(root, pattern)
 collect_program_claims <- function(dataset) {
   f <- resolve_input_path(
     input_name = "biological_program_summary",
-    expected_path = path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", dataset, "program_summary.csv"),
+    expected_path = path_results("differential_abundance", "summarize_biological_programs", dataset, "tables", "program_summary.csv"),
     required = TRUE,
     script = SCRIPT_ID,
     dataset = dataset,
@@ -1688,9 +1691,8 @@ collect_wgcna_claims <- function(dataset) {
 collect_microglia_stage13_supermodule_architecture_claims <- function() {
   df <- STAGE13_CONTRACT$higher_order_blocks |>
     dplyr::filter(.data$separate_manuscript_claim_allowed %in% TRUE)
-  if (nrow(df) != 1L || !identical(as.character(df$entity_id), "SM09")) {
-    stop("Stage 13 must yield exactly one independently eligible higher-order architecture candidate: SM09.", call. = FALSE)
-  }
+  # The eligible blocks are the Stage 13 result (SM09 alone before 2026-10-19), not a fixed contract.
+  if (!nrow(df)) return(NULL)
   df |>
     dplyr::transmute(
       dataset = as.character(.data$dataset),
@@ -1772,7 +1774,7 @@ collect_overlap_claims <- function(dataset) {
     dir_create(psd_dirs("build_biological_claims_table", create = TRUE)$tables)
     readr::write_csv(
       identity_audit,
-      psd_claims_audit("microglia_wgcna_overlap_stage13_identity_audit.csv"),
+      claims_audit_out("microglia_wgcna_overlap_stage13_identity_audit.csv"),
       na = ""
     )
     df <- df |>
@@ -1851,7 +1853,7 @@ collect_overlap_claims <- function(dataset) {
 collect_behavior_claims <- function() {
   f <- resolve_input_path(
     input_name = "network_behavior_coupling_claims",
-    expected_path = path_results("tables", "08_behavior_physio_coupling", "network_behavior_coupling", "edge_behavior_figure_ready_table.csv"),
+    expected_path = path_results("integration", "test_network_behaviour_coupling", "global", "tables", "edge_behavior_figure_ready_table.csv"),
     required = FALSE,
     script = SCRIPT_ID,
     dataset = "global",
@@ -1883,12 +1885,11 @@ collect_behavior_claims <- function() {
 collect_microglia_signature_claims <- function(dataset) {
   f <- resolve_input_path(
     input_name = "microglia_signature_claims_ready",
+    # The current producer's output (test_microglia_targeted_signatures); the historical
+    # results/tables/04_* copy is an older run.
     expected_path = path_results(
-      "tables",
-      "04_differential_expression_enrichment",
-      "microglia_targeted_signature_enrichment",
-      dataset,
-      "microglia_signature_claims_ready.csv"
+      "differential_abundance", "test_microglia_targeted_signatures", dataset,
+      "tables", "microglia_signature_claims_ready.csv"
     ),
     required = identical(dataset, "microglia"),
     script = SCRIPT_ID,
@@ -2070,7 +2071,7 @@ collect_wgcna_group_effect_claims <- function(dataset, level = c("module", "supe
 collect_integration_claims <- function() {
   f <- resolve_input_path(
     input_name = "manuscript_program_summary",
-    expected_path = path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv"),
+    expected_path = path_results("integration", "summarize_programs_for_manuscript", "global", "tables", "manuscript_program_summary.csv"),
     required = FALSE,
     script = SCRIPT_ID,
     dataset = "global",
@@ -2114,7 +2115,7 @@ collect_integration_claims <- function() {
 }
 
 if (is_dry_run()) {
-  manuscript_summary_path <- path_results("tables", "10_biological_integration", "manuscript_program_summary", "global", "manuscript_program_summary.csv")
+  manuscript_summary_path <- path_results("integration", "summarize_programs_for_manuscript", "global", "tables", "manuscript_program_summary.csv")
   dry_run_line("Script", "analysis/publication_source_data/build_biological_claims_table.R")
   dry_run_line("Datasets", paste(valid_datasets(), collapse = ", "))
   dry_run_line("Integration manuscript summary", manuscript_summary_path, if (file.exists(manuscript_summary_path)) "PASS" else "FAIL")

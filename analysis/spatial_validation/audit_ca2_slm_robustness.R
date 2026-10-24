@@ -88,8 +88,8 @@ GCT <- path_processed("01_preprocessing", "protigy_input_animal_level", DS,
                       "neuron_neuropil_animal_level.gct")
 QC <- qc_find("dataset_qc_outlier_flags.csv", owner = "assess_dataset_quality",
               legacy_substep = "00_dataset_qc_report", scope = DS)
-IMPUTED <- path_processed("01_preprocessing", "impute",
-  "20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+source(repo_path("R", "dataset_inputs.R"))
+IMPUTED <- resolve_dataset_inputs("neuron_neuropil", purpose = "wgcna", record_resolution = FALSE)$expression_file
 OUT <- function(...) {
   d <- CANONICAL_PATHS$tables
   dir_create(d); file.path(d, ...)

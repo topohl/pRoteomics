@@ -14,6 +14,8 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("analysis/publication_source_data/build_pride_manifest.R")  # waits for the normalisation decision (config/normalisation.yml); changes files before its own dry-run guard, so it stops in dry mode too
 source(repo_path("R", "export_helpers.R"))
 
 ensure_pride_dirs()

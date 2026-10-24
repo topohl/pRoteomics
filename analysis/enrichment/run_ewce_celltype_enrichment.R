@@ -13,6 +13,8 @@
 # Consumes:
 #   - processed proteomics matrix from data/processed/01_preprocessing/ or local config override
 #   - sample metadata from data/metadata/ or local config override
+#   - official mouse gene identity from the canonical protein-group mapping
+#     (data/external/MOUSE_10090_idmapping.dat, org.Mm.eg.db, data/metadata/manual_* files)
 # Produces:
 #   - tables, plots, plot source data, model objects, manifests and reports under
 #     results/enrichment/run_ewce_celltype_enrichment/<dataset>/
@@ -47,6 +49,7 @@ source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "protigy_input_utils.R"))
 source(repo_path("R", "ewce_contract_utils.R"))
 source(repo_path("R", "ewce_gene_set_engine.R"))
+source(repo_path("R", "qc_exploration_utils.R"))  # qc_load_canonical_expression(): official gene identity
 # Phase 6G: this analysis writes the normalized namespace declared in
 # config/output_layout.yml, addressed by its own analysis identity rather than
 # by a historical stage number.
@@ -268,6 +271,8 @@ if (is_dry_run()) {
   )
   dry_run_line("Proteomics matrix", data_path, if (file.exists(data_path)) "PASS" else "FAIL")
   dry_run_line("Sample metadata", sample_metadata_path, if (file.exists(sample_metadata_path)) "PASS" else "FAIL")
+  idmap_path <- path_external("MOUSE_10090_idmapping.dat")
+  dry_run_line("Mouse UniProt idmapping (gene identity)", idmap_path, if (file.exists(idmap_path)) "PASS" else "FAIL")
   dry_run_line("Cheap sample matching", sample_match, sample_match_status)
   dry_run_line("Analysis unit", EWCE_ANALYSIS_UNIT)
   dry_run_line("Signature-only mode", if (EWCE_SIGNATURE_ONLY) "TRUE" else "FALSE")
@@ -361,13 +366,22 @@ lapply(dirs, dir.create, recursive = TRUE, showWarnings = FALSE)
 write_session_info(file.path(dirs$qc, "sessionInfo.txt"))
 
 message("Step 1: Loading CTD and proteomics matrix...")
-ctd <- ewceData::ctd()
+# ewceData::ctd() resolves EH5376 through ExperimentHub, which needs bioconductor.org even when the
+# resource is cached; when the hub is unreachable the cached EH5376 file is read instead.
+ctd <- tryCatch(ewceData::ctd(), error = function(e) {
+  bfc <- BiocFileCache::BiocFileCache(ExperimentHub::getExperimentHubOption("CACHE"), ask = FALSE)
+  hit <- BiocFileCache::bfcquery(bfc, "EH5376", field = "rname")
+  if (!nrow(hit)) stop("ExperimentHub unreachable and EH5376 (ewceData ctd) is not cached: ", conditionMessage(e), call. = FALSE)
+  message("ExperimentHub unreachable (", conditionMessage(e), "); using cached EH5376: ", hit$rpath[[1]])
+  cached <- new.env()
+  get(load(hit$rpath[[1]], envir = cached)[[1]], envir = cached)  # the hub stores this resource as .rda
+})
 ref_genes_by_level <- lapply(ctd, function(x) rownames(x$specificity))
 ref_genes <- unique(unlist(ref_genes_by_level, use.names = FALSE))
 
 raw_df <- readxl::read_excel(data_path)
 input_hash <- if (file.exists(data_path)) digest::digest(file = data_path, algo = "sha256") else NA_character_
-required_raw_cols <- c("Genes")
+required_raw_cols <- c("Protein.Group", "T: Protein.Names", "Genes")
 missing_raw_cols <- setdiff(required_raw_cols, colnames(raw_df))
 if (length(missing_raw_cols) > 0) {
   stop("EWCE input matrix missing required columns: ", paste(missing_raw_cols, collapse = ", "), call. = FALSE)
@@ -404,13 +418,6 @@ safe_sheet <- function(x) {
 safe_file_stem <- function(x) {
   x <- stringr::str_replace_all(x, "[^A-Za-z0-9_.-]", "_")
   substr(x, 1, 180)
-}
-
-clean_gene_token <- function(x) {
-  x %>%
-    as.character() %>%
-    stringr::str_split_i(";", 1) %>%
-    stringr::str_trim()
 }
 
 extract_sample_token <- function(sample_names, tokens, case = c("asis", "upper", "lower")) {
@@ -727,7 +734,7 @@ run_ewce_once <- function(hits, bg, annot_level) {
     reference = ctd,
     annot_level = annot_level,
     reps = analysis_params$reps,
-    min_hits = 10L
+    min_hits = 10L, output_species = "mouse"
   )
 }
 
@@ -806,47 +813,44 @@ celltype_marker_overlap <- function(results_tbl, target_gene_tbl, annot_level) {
 # 3. GENE MAPPING AND EXPRESSION MATRIX
 # ==========================================
 
-message("Step 2: Robust gene mapping and QC logs...")
+message("Step 2: Official gene mapping and QC logs...")
 sample_cols <- colnames(raw_df)[grep("^D:", colnames(raw_df))]
 if (length(sample_cols) == 0) {
   stop("No sample columns detected. Expected sample columns starting with 'D:'.")
 }
 
-mapping_input <- raw_df %>%
+# Gene identity is the official mouse symbol of the canonical protein-group mapping (Stage 02,
+# mouse_gene_annotation_v1), as in the differential-abundance GSEA/ORA; the DIA-NN Genes token is
+# display only. A group gets a gene only when it is enrichment-eligible, gene-level and annotated
+# with one concordant official gene (the rule of protein_group_gene_transform()).
+canonical_identity <- qc_load_canonical_expression(
+  data_path, sample_metadata_path,
+  dataset = EWCE_DATASET, sample_columns = sample_cols, strict = TRUE
+)
+canonical_features <- canonical_identity$feature_table
+if (nrow(canonical_features) != nrow(raw_df) ||
+    !identical(as.character(canonical_features$source_feature_id), as.character(raw_df$Protein.Group))) {
+  stop("Canonical protein-group identities are not row-aligned with the EWCE input matrix.", call. = FALSE)
+}
+gene_level_official <- canonical_features$enrichment_eligible %in% TRUE &
+  canonical_features$protein_group_ambiguity_class %in% c("single_accession_single_gene", "multi_accession_same_gene") &
+  canonical_features$protein_group_gene_annotation_status %in% "concordant_official_gene" &
+  !is.na(canonical_features$official_gene_symbol) & nzchar(canonical_features$official_gene_symbol)
+
+clean_df <- raw_df %>%
   dplyr::mutate(
     RowID = dplyr::row_number(),
-    Gene_Input = clean_gene_token(Genes)
-  ) %>%
-  dplyr::filter(!is.na(Gene_Input), Gene_Input != "0", Gene_Input != "")
-
-mapping_selected <- AnnotationDbi::mapIds(
-  org.Mm.eg.db,
-  keys = mapping_input$Gene_Input,
-  column = "SYMBOL",
-  keytype = "ALIAS",
-  multiVals = "first"
-)
-
-mapping_all <- AnnotationDbi::select(
-  org.Mm.eg.db,
-  keys = unique(mapping_input$Gene_Input),
-  columns = "SYMBOL",
-  keytype = "ALIAS"
-) %>%
-  tibble::as_tibble() %>%
-  dplyr::group_by(ALIAS) %>%
-  dplyr::summarise(
-    All_SYMBOL_Matches = paste(sort(unique(stats::na.omit(SYMBOL))), collapse = ";"),
-    N_SYMBOL_Matches = dplyr::n_distinct(stats::na.omit(SYMBOL)),
-    .groups = "drop"
-  )
-
-clean_df <- mapping_input %>%
-  dplyr::mutate(Gene = as.character(mapping_selected[Gene_Input])) %>%
-  dplyr::left_join(mapping_all, by = c("Gene_Input" = "ALIAS")) %>%
-  dplyr::mutate(
+    ProteinGroupID = canonical_features$ProteinGroupID,
+    official_gene_symbol = as.character(canonical_features$official_gene_symbol),
+    official_entrez_id = as.character(canonical_features$official_entrez_id),
+    protein_group_ambiguity_class = canonical_features$protein_group_ambiguity_class,
+    protein_group_gene_annotation_status = canonical_features$protein_group_gene_annotation_status,
+    gene_level_claim_allowed = canonical_features$gene_level_claim_allowed,
+    enrichment_exclusion_reason = canonical_features$enrichment_exclusion_reason,
+    gene_annotation_contract_version = canonical_features$gene_annotation_contract_version,
+    Gene = dplyr::if_else(gene_level_official, official_gene_symbol, NA_character_),
     MappingStatus = dplyr::case_when(
-      is.na(Gene) ~ "unmapped",
+      is.na(Gene) ~ "no_gene_level_official_symbol",
       !Gene %in% ref_genes ~ "mapped_not_in_CTD",
       duplicated(Gene) | duplicated(Gene, fromLast = TRUE) ~ "mapped_duplicate_symbol",
       TRUE ~ "mapped_unique"
@@ -854,7 +858,12 @@ clean_df <- mapping_input %>%
   )
 
 mapping_qc <- clean_df %>%
-  dplyr::select(RowID, Genes, Gene_Input, Gene, MappingStatus, N_SYMBOL_Matches, All_SYMBOL_Matches)
+  dplyr::select(
+    RowID, ProteinGroupID, Protein.Group, `T: Protein.Names`, Genes, Gene, MappingStatus,
+    official_gene_symbol, official_entrez_id, protein_group_ambiguity_class,
+    protein_group_gene_annotation_status, gene_level_claim_allowed, enrichment_exclusion_reason,
+    gene_annotation_contract_version
+  )
 
 openxlsx::write.xlsx(mapping_qc, file.path(dirs$qc, "gene_mapping_audit.xlsx"), overwrite = TRUE)
 write.table(
@@ -894,10 +903,11 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
   )
   sample_cols <- colnames(expr_mat)
 
+  # CTD genes measured under the official gene mapping
   expected_background <- c(
-    neuron_neuropil = 4558L,
-    neuron_soma = 5022L,
-    microglia = 4719L
+    neuron_neuropil = 4575L,
+    neuron_soma = 5037L,
+    microglia = 4734L
   )
   metadata_rows <- intersect(rownames(expr_mat), names(animal_bundle$output_metadata))
   invariance_checks <- tibble::tribble(
@@ -1171,7 +1181,8 @@ if (EWCE_SIGNATURE_ONLY) {
 # ==========================================
 
 message("Step 4: Running EWCE bootstraps across sensitivity grid...")
-workers <- max(1, parallel::detectCores() - 1)
+workers <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_EWCE_WORKERS", unset = "")))
+if (is.na(workers) || workers < 1L) workers <- max(1, parallel::detectCores() - 1)
 future::plan(future::multisession, workers = workers)
 
 target_grid <- target_manifest %>%
@@ -1936,7 +1947,6 @@ sig_rank_tbl <- results_all %>%
 
 input_gene_stats <- tibble::tibble(
   Total_Input_Rows = nrow(raw_df),
-  Rows_With_Gene_Input = nrow(mapping_input),
   Mapped_Rows = sum(!is.na(clean_df$Gene)),
   Unique_Mapped_Genes = dplyr::n_distinct(stats::na.omit(clean_df$Gene)),
   Unique_Mapped_In_CTD = length(background_universe),
@@ -2055,7 +2065,14 @@ write_result_manifest(
   domain = "enrichment",
   analysis_id = ANALYSIS_ID,
   scope = EWCE_SCOPE,
-  inputs = list(pg_matrix = data_path, sample_metadata = sample_metadata_path),
+  inputs = c(
+    list(pg_matrix = data_path, sample_metadata = sample_metadata_path),
+    with(
+      canonical_identity$input_manifest[canonical_identity$input_manifest$input_role %in%
+        c("mouse_uniprot_idmapping", "manual_protein_mapping", "manual_gene_annotation"), , drop = FALSE],
+      stats::setNames(as.list(resolved_path), input_role)
+    )
+  ),
   outputs = list(
     supplementary_table = file.path(dirs$tables, "Supplementary_Table_EWCE.xlsx"),
     high_confidence = file.path(dirs$tables, "High_Confidence_EWCE_Findings.xlsx"),

@@ -35,6 +35,7 @@ source(repo_path("R", "wgcna_paths.R"))
 source(repo_path("R", "enrichment_io.R"))
 source(repo_path("R", "spatial_systems_paths.R"))
 source(repo_path("R", "theme_module_composition_utils.R"))
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
 ANALYSIS_ID <- "test_theme_module_composition"
 SCRIPT_ID <- "analysis/integration/test_theme_module_composition.R"
@@ -56,7 +57,7 @@ theme_table_file <- integration_find(
   owner = "test_enrichment_module_concordance",
   legacy_stage = "10_biological_integration", legacy_substep = "gsea_wgcna_concordance")
 registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
-mapping_file <- repo_path("config", "gsea_wgcna_theme_module_mapping.csv")
+mapping_file <- gww_theme_mapping_path()
 spatial_file <- spatial_systems_find("WGCNA_module_spatial_cell_affinity.csv", "atlas")
 dataset_inputs <- lapply(stats::setNames(datasets, datasets), function(ds) c(
   wgcna_universe = wgcna_modules_artifact("WGCNA_feature_universe.csv", ds, child = "tables", "modules"),

@@ -441,11 +441,11 @@ add_unavailable_neuropil_program_annotation <- function(program_summary) {
 }
 
 neuropil_annotation_path <- file.path(
-  path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET),
+  path_results("differential_abundance", "annotate_neuropil_reference", DATASET, "tables"),
   "microglia_neuropil_annotation_latest.csv"
 )
 microglia_signature_path <- file.path(
-  path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET),
+  path_results("differential_abundance", "test_microglia_targeted_signatures", DATASET, "tables"),
   "microglia_signature_enrichment_with_contrast_class.csv"
 )
 
@@ -454,7 +454,7 @@ record_input_resolution(
   dataset = DATASET,
   stage = "enrichment",
   input_name = "neuropil_reference_annotation",
-  expected_path = file.path(path_results("tables", MODULE_ID, "neuropil_reference_annotation", DATASET), "microglia_neuropil_annotation_latest.csv"),
+  expected_path = file.path(path_results("differential_abundance", "annotate_neuropil_reference", DATASET, "tables"), "microglia_neuropil_annotation_latest.csv"),
   resolved_path = neuropil_annotation_path,
   resolution_mode = if (file.exists(neuropil_annotation_path)) "canonical" else "missing",
   strict_mode = strict_inputs_enabled(),
@@ -466,7 +466,7 @@ record_input_resolution(
   dataset = DATASET,
   stage = "enrichment",
   input_name = "microglia_targeted_signature_annotation",
-  expected_path = file.path(path_results("tables", MODULE_ID, "microglia_targeted_signature_enrichment", DATASET), "microglia_signature_enrichment_with_contrast_class.csv"),
+  expected_path = file.path(path_results("differential_abundance", "test_microglia_targeted_signatures", DATASET, "tables"), "microglia_signature_enrichment_with_contrast_class.csv"),
   resolved_path = microglia_signature_path,
   resolution_mode = if (file.exists(microglia_signature_path)) "canonical" else "missing",
   strict_mode = strict_inputs_enabled(),

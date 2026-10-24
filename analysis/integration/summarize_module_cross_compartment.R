@@ -60,7 +60,7 @@ input_spec <- function(ds) {
 }
 
 global_inputs <- list(
-  biological_claims_table = list(path = path_results("tables", "biological_claims_table.csv"), required = FALSE),
+  biological_claims_table = list(path = path_results("publication_source_data", "build_biological_claims_table", "global", "tables", "biological_claims_table.csv"), required = FALSE),
   final_biological_evidence_bundle = list(path = integration_find(
     "final_biological_evidence_bundle.xlsx",
     owner = "build_evidence_priority_matrix",

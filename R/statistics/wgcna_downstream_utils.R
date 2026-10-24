@@ -667,7 +667,7 @@ wgcna_marker_sets <- function() {
   "Homer1", "Camk2a", "Camk2b", "Gria1", "Gria2",
   "Grin1", "Grin2a", "Map2", "Tubb3", "Nefl", "Nefm",
   "Nefh", "Rbfox3"),
-    nuclear_soma = c("H2ac1", "H4c1", "H3-3a", "H1-4", "H1-3",
+    nuclear_soma = c("H2ac1", "H4c1", "H3-3a", "H1-4", "H1-3", "H1f4", "H1f3",
   "Matr3", "Srsf3", "Ddx39b", "Lmna", "Lmnb1", "Lmnb2",
   "Ncl", "Npm1", "Nono", "Sfpq", "Hnrnpm", "Hnrnpu",
   "Rbm39", "Top2b", "Hist1h1c"),
@@ -900,7 +900,7 @@ resolve_wgcna_files <- function(dataset) {
                             owner = "export_marker_traits",
                             legacy_substep = "06_wgcna_marker_trait_export",
                             scope = dataset),
-    neuropil_annotation = path_results("tables", "04_differential_expression_enrichment", "neuropil_reference_annotation", "microglia", "microglia_neuropil_annotation_latest.csv")
+    neuropil_annotation = path_results("differential_abundance", "annotate_neuropil_reference", "microglia", "tables", "microglia_neuropil_annotation_latest.csv")
   )
 }
 

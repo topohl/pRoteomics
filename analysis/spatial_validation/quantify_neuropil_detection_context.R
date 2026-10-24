@@ -53,11 +53,10 @@ cli <- integration_cli(default_dataset = "all")
 OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
-DAP <- path_results("tables", "04_differential_expression_enrichment",
-                    "sus_res_spatial_dap_atlas", "global", "sus_res_dap_counts.csv")
-LONG <- function(ds) path_results("tables", "10_biological_integration",
-                                  "wgcna_candidate_protein_shortlist", ds,
-                                  "wgcna_candidate_proteins_long.csv")
+DAP <- path_results("differential_abundance", "build_sus_res_dap_atlas", "global",
+                    "tables", "sus_res_dap_counts.csv")
+LONG <- function(ds) path_results("integration", "build_candidate_protein_shortlist", ds,
+                                  "tables", "wgcna_candidate_proteins_long.csv")
 DS <- "neuron_neuropil"
 
 if (isTRUE(cli$dry_run)) {

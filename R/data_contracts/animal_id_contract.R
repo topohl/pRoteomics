@@ -235,10 +235,10 @@ aid_resolution_report <- function(x, source_system, canonical = NULL,
 # tests can demonstrate what it did. Never call it to produce analysis values.
 aid_legacy_broken_normalizer <- function(x) {
   x <- trimws(as.character(x))
-  m <- regmatches(x, regexpr("A[0-9]{3,4}|[0-9]{3,4}", x))
   out <- rep(NA_character_, length(x))
-  has <- regexpr("A[0-9]{3,4}|[0-9]{3,4}", x) > 0
-  out[has] <- m
+  has <- !is.na(x) & regexpr("A[0-9]{3,4}|[0-9]{3,4}", x) > 0
+  has[is.na(has)] <- FALSE  # missing IDs stay NA instead of breaking the subassignment
+  out[has] <- regmatches(x[has], regexpr("A[0-9]{3,4}|[0-9]{3,4}", x[has]))
   # str_pad(x, 4, pad = "0") on a character vector, reproduced without stringr.
   # formatC(flag = "0") pads character input with SPACES, not zeros.
   pad0 <- function(z) ifelse(nchar(z) >= 4L, z,

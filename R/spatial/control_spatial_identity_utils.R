@@ -335,13 +335,19 @@ control_spatial_signature_family_sizes <- function() {
   c(soma_tissue = 12L, neuropil_subregion = 6L, ca1_strata = 12L)
 }
 
-control_spatial_signature_max_gs_size <- function(largest_mapped_signature_size) {
+# Floor is the configured GO term-size cap (analysis$max_gs_size), raised to the largest signature.
+control_spatial_signature_max_gs_size <- function(largest_mapped_signature_size, configured_max_gs_size) {
   largest_mapped_signature_size <- as.integer(largest_mapped_signature_size)
   if (length(largest_mapped_signature_size) != 1L || is.na(largest_mapped_signature_size) ||
       largest_mapped_signature_size < 0L) {
     stop("Largest mapped signature size must be one non-negative integer.", call. = FALSE)
   }
-  max(500L, largest_mapped_signature_size)
+  configured_max_gs_size <- as.integer(configured_max_gs_size)
+  if (length(configured_max_gs_size) != 1L || is.na(configured_max_gs_size) ||
+      configured_max_gs_size < 1L) {
+    stop("Configured max_gs_size must be one positive integer.", call. = FALSE)
+  }
+  max(configured_max_gs_size, largest_mapped_signature_size)
 }
 
 control_spatial_apply_signature_fdr <- function(x, family_sizes = control_spatial_signature_family_sizes()) {

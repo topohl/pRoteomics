@@ -18,6 +18,8 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "export_helpers.R"))
 source(repo_path("R", "wgcna_paths.R"))
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("analysis/publication_source_data/08_export_manuscript_figures.R", dry_run_capable = TRUE)  # waits for the normalisation decision (config/normalisation.yml)
 source(repo_path("R", "publication_source_data_paths.R"))
 
 args <- commandArgs(trailingOnly = TRUE)

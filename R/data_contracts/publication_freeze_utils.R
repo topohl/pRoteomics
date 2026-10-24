@@ -822,6 +822,8 @@ write_publication_freeze_manifest <- function(manifest,
     stop("Package 'yaml' is required to write the freeze manifest.", call. = FALSE)
   }
   dir_create(dirname(path))
+  # The sample centring the frozen results were produced under (config/normalisation.yml and the working-tree stamp).
+  if (is.null(manifest$normalisation)) manifest$normalisation <- normalisation_provenance_safe()
   # yaml::as.yaml() already terminates with a newline; writeLines() would add a
   # second one and leave a blank line at EOF.
   cat(yaml::as.yaml(manifest), file = path)

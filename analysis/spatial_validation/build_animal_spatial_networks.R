@@ -335,9 +335,12 @@ for (k in names(matrices)) {
   write_csv_safe(cbind(data.frame(node = rownames(m), stringsAsFactors = FALSE),
                        as.data.frame(m, check.names = FALSE)), f)
 }
+# The model object belongs in models/, where spatial_systems_find(kind = "models") and the registry
+# look for it; otherwise readers fall back to the historical copy of an older run.
+dir_create(CANONICAL_PATHS$models)
 saveRDS(list(matrices = matrices, nodes = node_sets, representation = PRIMARY,
              edge_metric = EDGE_METHOD, contract_version = asn_contract_version()),
-        file.path(root, "animal_network_objects.rds"))
+        file.path(CANONICAL_PATHS$models, "animal_network_objects.rds"))
 
 cat("\n===== Animal-level spatial molecular-similarity networks =====\n")
 cat("primary representation:", PRIMARY, " edge metric:", EDGE_METHOD, "\n\n")

@@ -18,6 +18,8 @@
 # Deliberately NOT a re-run of anything. It reads and hashes.
 
 source(file.path("R", "paths.R"))
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("audits/migration/generate_prerestructure_freeze.R")  # waits for the normalisation decision (config/normalisation.yml)
 source(repo_path("R", "null_coalescing.R"))
 
 OUT_CSV <- repo_path("manuscript", "prerestructure_freeze_manifest.csv")

@@ -68,12 +68,16 @@ repo_relative_path <- function(path) {
 lookup <- read_csv(inputs$stage07_lookup)
 member_map <- wgcna_normalize_current_member_map(read_csv(inputs$stage01_supermodule_annotation), DATASET)
 wgcna_validate_canonical_lookup(lookup, DATASET, member_map)
-if (nrow(lookup) != 22L) stop("Stage 07 lookup must contain exactly 22 current microglia identities.", call. = FALSE)
+n_current_modules <- length(unique(member_map$ModuleID))
+n_current_supermodules <- length(unique(member_map$SupermoduleID))
+n_identities <- n_current_modules + n_current_supermodules
+if (nrow(lookup) != n_identities) stop("Stage 07 lookup must contain exactly ", n_identities, " current microglia identities.", call. = FALSE)
+current_blocks <- names(which(table(member_map$SupermoduleID) > 1L))
 
 modules <- read_csv(inputs$stage12_modules)
 blocks <- read_csv(inputs$stage12_blocks)
-if (nrow(modules) != 13L || anyDuplicated(modules$ModuleID)) stop("Stage 12 module readiness must contain exactly 13 unique ModuleIDs.", call. = FALSE)
-if (!setequal(blocks$SupermoduleID, c("SM01", "SM03", "SM09"))) stop("Stage 12 block readiness must contain SM01, SM03 and SM09 only.", call. = FALSE)
+if (nrow(modules) != n_current_modules || anyDuplicated(modules$ModuleID)) stop("Stage 12 module readiness must contain exactly ", n_current_modules, " unique ModuleIDs.", call. = FALSE)
+if (!setequal(blocks$SupermoduleID, current_blocks)) stop("Stage 12 block readiness must contain the current multi-module supermodules only: ", paste(current_blocks, collapse = ", "), ".", call. = FALSE)
 module_ready <- modules |>
   dplyr::transmute(level = "module", entity_id = as.character(.data$ModuleID), primary_architecture_status, spatial_dependence_class,
                    animal_stability_status, strict_nonspatial_sensitivity_status,
@@ -84,7 +88,7 @@ super_members <- member_map |>
   dplyr::group_by(.data$SupermoduleID) |>
   dplyr::summarise(n_member_modules = dplyr::n(), member_ModuleID = dplyr::first(.data$ModuleID), .groups = "drop")
 singleton_members <- super_members |> dplyr::filter(.data$n_member_modules == 1L)
-if (nrow(singleton_members) != 6L || anyDuplicated(singleton_members$member_ModuleID) ||
+if (nrow(singleton_members) != n_current_supermodules - length(current_blocks) || anyDuplicated(singleton_members$member_ModuleID) ||
     any(!singleton_members$member_ModuleID %in% module_ready$entity_id)) {
   stop("Every singleton compatibility identity must map to exactly one distinct current module.", call. = FALSE)
 }
@@ -273,18 +277,20 @@ out <- lookup |>
   ) |>
     dplyr::select(dataset, level, entity_id, canonical_claim_entity_id, claim_entity_role, separate_manuscript_claim_allowed, compatibility_target_level, compatibility_target_entity_id, canonical_biological_label, canonical_short_label, structural_status, primary_architecture_status, spatial_dependence_class, animal_stability_status, strict_nonspatial_sensitivity_status, conventional_preservation_status, conventional_preservation_claim_gate_eligible, biological_process_confidence, context_assignment_class, context_assignment_confidence, neuropil_independence_status, selected_contrast, selected_effect_scope, selected_spatial_unit, group_effect_analysis_tier, group_effect_result_scope, group_effect_estimate, group_effect_SE, group_effect_CI_low, group_effect_CI_high, group_effect_p_value, group_effect_tier_specific_fdr, group_effect_tier_specific_family_id, group_effect_tier_specific_family_size, group_effect_adjustment_scope, group_effect_evidence_status, group_effect_status, group_effect_model_formula, group_effect_model_type, group_effect_n_animals, group_effect_n_samples, group_effect_biological_replicate_unit, group_effect_handoff_file, group_effect_source_artifact, group_effect_source_key, group_effect_source_key_contract, model_stability, allowed_claim_scope, prohibited_claim_scope, manuscript_placement, allowed_wording, readiness_contract_version) |>
   dplyr::arrange(factor(.data$level, levels = c("module", "supermodule")), .data$entity_id)
-if (nrow(out) != 22L || anyDuplicated(out[c("dataset", "level", "entity_id")])) stop("Claim-readiness join did not yield exactly one row per 22 stable identities.", call. = FALSE)
-if (any(!out$entity_id %in% c(sprintf("WGCNA_m%02d", 1:13), sprintf("SM%02d", 1:9)))) stop("Claim-readiness table contains stale IDs.", call. = FALSE)
+if (nrow(out) != n_identities || anyDuplicated(out[c("dataset", "level", "entity_id")])) stop("Claim-readiness join did not yield exactly one row per ", n_identities, " stable identities.", call. = FALSE)
+if (any(!out$entity_id %in% c(unique(member_map$ModuleID), unique(member_map$SupermoduleID)))) stop("Claim-readiness table contains stale IDs.", call. = FALSE)
 if (any(out$conventional_preservation_claim_gate_eligible %in% TRUE)) stop("Conventional unblocked WGCNA preservation cannot be claim-gating.", call. = FALSE)
 aliases <- out |> dplyr::filter(.data$claim_entity_role == "compatibility_alias")
-if (nrow(aliases) != 6L || any(aliases$separate_manuscript_claim_allowed) ||
+if (nrow(aliases) != nrow(singleton_members) || any(aliases$separate_manuscript_claim_allowed) ||
     any(aliases$compatibility_target_level != "module") ||
     any(aliases$canonical_claim_entity_id != aliases$compatibility_target_entity_id) ||
     any(!aliases$compatibility_target_entity_id %in% out$entity_id[out$level == "module"])) {
   stop("Compatibility-alias validation failed.", call. = FALSE)
 }
+## Which blocks are separately claimable is this audit's result (SM09 alone for the network frozen
+## before 2026-10-19); it is reported, not pinned.
 claimable_blocks <- out$entity_id[out$claim_entity_role == "higher_order_block" & out$separate_manuscript_claim_allowed]
-if (!identical(claimable_blocks, "SM09")) stop("SM09 must be the only separately claimable higher-order block.", call. = FALSE)
+cat("Separately claimable higher-order blocks: ", if (length(claimable_blocks)) paste(claimable_blocks, collapse = ", ") else "none", "\n", sep = "")
 if (anyDuplicated(out$canonical_claim_entity_id[out$separate_manuscript_claim_allowed])) stop("Canonical claim entities are duplicated among independently claimable rows.", call. = FALSE)
 if (any(
   !is.na(aliases$group_effect_tier_specific_fdr) |

@@ -66,9 +66,9 @@ script_file <- local({
 })
 script_dir <- if (!is.na(script_file)) dirname(script_file) else getwd()
 paths_candidates <- c(
-  repo_path("R", "paths.R"),
+  file.path(getwd(), "R", "paths.R"),
   file.path(getwd(), "..", "R", "paths.R"),
-  repo_path("R", "paths.R"),
+  file.path(script_dir, "R", "paths.R"),
   file.path(script_dir, "..", "R", "paths.R")
 )
 paths_file <- normalizePath(paths_candidates[file.exists(paths_candidates)][1], winslash = "/", mustWork = FALSE)
@@ -432,9 +432,7 @@ DATASET <- current_dataset_from_cli(default = comparego_cfg$dataset %||% "neuron
 comparego_cfg$dataset <- DATASET
 CANONICAL_PATHS <- differential_abundance_dirs(ANALYSIS_ID, scope = DATASET)
 if (!nzchar(as.character(comparego_cfg$clusterProfiler_manifest))) {
-  comparego_cfg$clusterProfiler_manifest <- path_processed(
-    MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
-  )
+  comparego_cfg$clusterProfiler_manifest <- canonical_clusterprofiler_manifest_path(DATASET)
 }
 comparego_cfg$clusterProfiler_manifest <- as_repo_path(comparego_cfg$clusterProfiler_manifest)
 legacy_mode <- isTRUE(comparego_cfg$legacy_mode)
@@ -452,9 +450,7 @@ manifest_path <- as.character(comparego_cfg$clusterProfiler_manifest)
 if (isTRUE(legacy_mode)) {
   stop("compareGO production execution requires the canonical clusterProfiler manifest; legacy_mode is disabled.", call. = FALSE)
 }
-canonical_manifest_path <- path_processed(
-  MODULE_ID, "clusterProfiler", DATASET, "clusterProfiler_manifest.csv"
-)
+canonical_manifest_path <- canonical_clusterprofiler_manifest_path(DATASET)
 if (!identical(
     normalizePath(manifest_path, winslash = "/", mustWork = FALSE),
     normalizePath(canonical_manifest_path, winslash = "/", mustWork = FALSE))) {
@@ -544,7 +540,9 @@ if (isTRUE(DRY_RUN)) {
   quit(status = 0, save = "no")
 }
 
-comparego_processed_dir <- file.path(CANONICAL_PATHS$models, DATASET)
+# CANONICAL_PATHS is already dataset-scoped; the manifest sits where canonical_comparego_manifest_path()
+# resolves it, otherwise readers fall back to the historical compareGO tree.
+comparego_processed_dir <- CANONICAL_PATHS$models
 comparego_table_dir <- file.path(
   CANONICAL_PATHS$tables, DATASET, ont, ensemble_profiling,
   if (nzchar(condition)) condition else "all_route_units"

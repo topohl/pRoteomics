@@ -7,6 +7,11 @@
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 if (!file.exists(file.path(root, "pipeline.yml")))
   stop("Run from the pRoteomics repository root.", call. = FALSE)
+local({  # waits for the normalisation decision (config/normalisation.yml)
+  source(file.path(root, "R", "paths.R"), local = TRUE)
+  source(repo_path("R", "normalisation_contract.R"), local = TRUE)
+  assert_normalisation_decided("tools/export_wgcna_theme_composition_candidate.R")
+})
 rel <- function(...) file.path(root, ...)
 git <- function(...) {
   out <- suppressWarnings(system2("git", c("-C", shQuote(root), ...),

@@ -58,7 +58,7 @@ VALIDATION_ONLY <- "--validation-only" %in% args || tolower(Sys.getenv("PROTEOMI
 SUBSTEP_ID <- if (VALIDATION_ONLY) "compareGO_spatial_atlas_validation_proposed" else "compareGO_spatial_atlas"
 CANONICAL_PATHS <- differential_abundance_dirs(
   ANALYSIS_ID, scope = "global",
-  suffix = if (VALIDATION_ONLY) "validation_proposed" else NULL)
+  suffix = if (VALIDATION_ONLY) "validation_proposed" else NULL, create = TRUE)
 
 required_pkgs <- c("dplyr", "tidyr", "purrr", "readr", "writexl", "ggplot2", "stringr", "tibble", "scales")
 MANUSCRIPT_GO_THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
@@ -1161,7 +1161,7 @@ build_contract_validation <- function(loaded, enrichment_df, program_summary) {
     dplyr::arrange(.data$dataset, dplyr::desc(.data$admitted_to_stage07), .data$result_type, .data$ontology)
 
   stage06_detail <- purrr::map_dfr(unique(as.character(program_summary$dataset)), function(dataset) {
-    path <- path_results("tables", MODULE_ID, "biological_program_summary", dataset, "program_summary.csv")
+    path <- path_results("differential_abundance", "summarize_biological_programs", dataset, "tables", "program_summary.csv")
     stage07 <- program_summary %>%
       dplyr::filter(.data$dataset == .env$dataset, as.character(.data$program_class) %in% canonical_program_levels) %>%
       dplyr::transmute(

@@ -103,6 +103,22 @@ testthat::test_that("MapThatProt and WGCNA source shared protein mapping utiliti
   testthat::expect_match(wgcna, "protein_mapping_utils.R", fixed = TRUE)
 })
 
+testthat::test_that("WGCNA takes module gene identity from the official annotation contract", {
+  wgcna <- paste(readLines(repo_path("analysis/wgcna", "build_wgcna_modules.R"), warn = FALSE), collapse = "\n")
+  testthat::expect_match(wgcna, "gene_annotation_maps = gene_annotation_maps", fixed = TRUE)
+  testthat::expect_match(wgcna, "build_mouse_gene_annotation_maps(", fixed = TRUE)
+  testthat::expect_match(wgcna, "as.character(annotation_feature_table$official_entrez_id)", fixed = TRUE)
+  testthat::expect_false(grepl("\\bbitr\\s*\\(", wgcna))
+  testthat::expect_false(grepl("acc_to_entrez", wgcna, fixed = TRUE))
+  testthat::expect_match(wgcna, "maxGSSize = module_go_max_gs_size", fixed = TRUE)
+  testthat::expect_match(wgcna, "clusterProfiler_config.yml", fixed = TRUE)
+  # a cached state is checked against the current annotation inputs in the dry run and in the cached branch
+  testthat::expect_equal(lengths(regmatches(wgcna, gregexpr("wgcna_cached_annotation_mismatches(", wgcna, fixed = TRUE))), 2L)
+  testthat::expect_match(wgcna, "manual_gene_annotation_overrides_hash = file_hash(manual_gene_annotation_path)", fixed = TRUE)
+  testthat::expect_match(wgcna, "Sys.getenv(\"PROTEOMICS_WGCNA_THREADS\", unset = \"4\")", fixed = TRUE)
+  testthat::expect_false(grepl("detectCores", wgcna, fixed = TRUE))
+})
+
 testthat::test_that("canonical protein-group mapping preserves rows and members", {
   testthat::skip_if_not_installed("dplyr")
   source(repo_path("R", "protein_mapping_utils.R"))

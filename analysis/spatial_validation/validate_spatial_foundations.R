@@ -91,7 +91,7 @@ add("bilateral_mean_reproduces_canonical_aggregation", TRUE,
              " against protigy_aggregate_expression_columns()"))
 
 # ---- 4. contrast definitions reused (exactly one registry) ----------------
-reg_files <- Sys.glob(repo_path("R", "*.R"))
+reg_files <- list.files(repo_path("R"), pattern = "[.]R$", recursive = TRUE, full.names = TRUE)
 defs <- sum(vapply(reg_files, function(f) {
   any(grepl("^control_spatial_contrast_registry <- function", readLines(f, warn = FALSE)))
 }, logical(1)))

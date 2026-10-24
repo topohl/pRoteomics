@@ -1,10 +1,14 @@
 #!/usr/bin/env Rscript
 # Downstream-only, one-time source-data export for a supplementary figure candidate.
 # Run from the pRoteomics repository root. No enrichment test or DA model is fitted.
-
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 if (!file.exists(file.path(root, "pipeline.yml")))
   stop("Run from the pRoteomics repository root.", call. = FALSE)
+local({  # waits for the normalisation decision (config/normalisation.yml)
+  source(file.path(root, "R", "paths.R"), local = TRUE)
+  source(repo_path("R", "normalisation_contract.R"), local = TRUE)
+  assert_normalisation_decided("tools/export_supplementary_go_pathways_candidate.R")
+})
 if (!requireNamespace("AnnotationDbi", quietly = TRUE) ||
     !requireNamespace("org.Mm.eg.db", quietly = TRUE)) {
   stop("AnnotationDbi and org.Mm.eg.db are required to verify GO membership.",

@@ -14,6 +14,8 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("analysis/publication_source_data/build_sample_metadata.R")  # waits for the normalisation decision (config/normalisation.yml); writes pride_submission/
 source(repo_path("R", "export_helpers.R"))
 
 ensure_pride_dirs()

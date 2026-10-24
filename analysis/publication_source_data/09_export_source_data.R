@@ -17,6 +17,8 @@ source(paths_file)
 source(repo_path("R", "validation_utils.R"))
 source(repo_path("R", "export_helpers.R"))
 source(repo_path("R", "publication_source_data_paths.R"))
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("analysis/publication_source_data/09_export_source_data.R", dry_run_capable = TRUE)  # waits for the normalisation decision (config/normalisation.yml)
 
 dry_run <- is_dry_run()
 manuscript_root <- output_namespace_manuscript_export_root()

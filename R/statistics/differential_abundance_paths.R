@@ -68,7 +68,7 @@ differential_abundance_relative_path <- function(analysis_id, scope = "global",
   abs <- do.call(canonical_result_path,
                  c(list("differential_abundance", analysis_id, scope, child),
                    extra))
-  root <- normalizePath(repo_root(), winslash = "/", mustWork = FALSE)
+  root <- sub("/+$", "", normalizePath(repo_root(), winslash = "/", mustWork = FALSE))
   sub(paste0("^", root, "/"), "",
       normalizePath(abs, winslash = "/", mustWork = FALSE))
 }

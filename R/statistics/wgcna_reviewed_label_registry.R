@@ -79,7 +79,8 @@ wgcna_normalize_current_member_map <- function(member_map, dataset) {
 
 wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
                                              expected_n_modules = NULL,
-                                             expected_n_supermodules = NULL) {
+                                             expected_n_supermodules = NULL,
+                                             allow_provisional = FALSE) {
   if (!is.data.frame(registry)) stop("Reviewed WGCNA label registry must be a data frame.", call. = FALSE)
   expected_columns <- wgcna_reviewed_registry_columns()
   if (!identical(names(registry), expected_columns)) {
@@ -121,7 +122,11 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
   if (!identical(sort(modules$entity_id), current_modules) || !identical(sort(supers$entity_id), current_supers)) {
     stop("Reviewed registry contains stale identities or omits current stable identities.", call. = FALSE)
   }
-  if (any(registry$adjudication_status != "reviewed")) {
+  # A provisional registry (all rows provisional_unreviewed) is accepted only when the caller
+  # asks for it; reviewed and provisional rows are never mixed in one registry.
+  allowed_status <- if (isTRUE(allow_provisional)) c("reviewed", "provisional_unreviewed") else "reviewed"
+  if (any(!registry$adjudication_status %in% allowed_status) ||
+      length(unique(registry$adjudication_status)) != 1L) {
     stop("All reviewed registry rows must have adjudication_status = reviewed.", call. = FALSE)
   }
   allowed_confidence <- c("high", "moderate", "low")
@@ -150,7 +155,7 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
     dplyr::filter(.data$n == 1L)
   # Singleton IDENTITY is checked below, which is strictly stronger than the
   # previous hard-coded count of six microglia singletons.
-  if (!nrow(singleton_map) && nrow(current_map)) {
+  if (!nrow(singleton_map) && nrow(current_map) && !isTRUE(allow_provisional)) {
     stop("Current member map for ", dataset, " contains no singleton supermodule; ",
          "the singleton-inheritance contract cannot be evaluated.", call. = FALSE)
   }
@@ -184,11 +189,89 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
 }
 
 wgcna_read_reviewed_registry <- function(dataset, member_map,
-                                         path = file.path("config", "wgcna_labels", paste0(dataset, ".csv"))) {
+                                         path = file.path("config", "wgcna_labels", paste0(dataset, ".csv")),
+                                         allow_provisional = FALSE) {
   if (!file.exists(path)) stop("Missing reviewed WGCNA label registry: ", path, call. = FALSE)
   registry <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
-  wgcna_validate_reviewed_registry(registry, dataset, member_map)
+  wgcna_validate_reviewed_registry(registry, dataset, member_map, allow_provisional = allow_provisional)
   registry
+}
+
+# A provisional registry, in the reviewed-registry schema, from this run's automatic labels.
+# Used when the network was rebuilt and the reviewed registry describes the previous network.
+# Every row is adjudication_status = provisional_unreviewed with manual_review_required = TRUE;
+# singleton supermodules inherit their member module's label, as the reviewed contract requires.
+wgcna_provisional_registry_from_lookup <- function(lookup, member_map, dataset,
+                                                   prepared_by = "automatic label from this network (summarize_module_interpretation.R)") {
+  current_map <- wgcna_normalize_current_member_map(member_map, dataset)
+  short_of <- function(x) {
+    s <- trimws(sub("^(?:WGCNA_m\\d+|SM\\d+)\\s*[^\\w\\s]\\s*", "", as.character(x), perl = TRUE))
+    s[is.na(s) | !nzchar(s)] <- NA_character_
+    s
+  }
+  lk <- tibble::as_tibble(lookup) |>
+    dplyr::mutate(dplyr::across(dplyr::everything(), as.character)) |>
+    dplyr::filter(.data$dataset == .env$dataset)
+  n_members <- current_map |> dplyr::count(.data$SupermoduleID, name = "n")
+  out <- lk |>
+    dplyr::transmute(
+      dataset = .data$dataset, level = .data$level, entity_id = .data$entity_id,
+      reviewed_biological_label = dplyr::coalesce(
+        wgcna_clean_registry_text(.data$best_data_driven_label),
+        wgcna_clean_registry_text(.data$raw_top_GO_label),
+        "Provisionally unannotated"
+      ),
+      reviewed_short_label = dplyr::coalesce(
+        short_of(.data$final_plot_label),
+        .data$reviewed_biological_label
+      ),
+      subcellular_context = "not yet reviewed",
+      roi_context = dplyr::coalesce(wgcna_clean_registry_text(.data$microenvironment_context), "not yet reviewed"),
+      label_confidence = dplyr::if_else(.data$label_confidence %in% c("high", "moderate", "low"), .data$label_confidence, "low"),
+      manual_review_required = TRUE,
+      rationale = paste0("Provisional label, not reviewed. ",
+                         dplyr::coalesce(.data$label_basis, ""), "; ",
+                         dplyr::coalesce(.data$label_rationale, ""))
+    ) |>
+    dplyr::left_join(n_members, by = c("entity_id" = "SupermoduleID")) |>
+    dplyr::mutate(
+      structural_status = dplyr::case_when(
+        .data$level == "module" ~ "module",
+        .data$n == 1L ~ "singleton",
+        TRUE ~ "multi_module"
+      ),
+      aggregation_evidence_class = dplyr::case_when(
+        .data$level == "module" ~ "not_applicable_module",
+        .data$structural_status == "singleton" ~ "not_applicable_singleton",
+        TRUE ~ "provisional_unreviewed"
+      )
+    )
+  singleton_member <- current_map |>
+    dplyr::group_by(.data$SupermoduleID) |>
+    dplyr::filter(dplyr::n() == 1L) |>
+    dplyr::ungroup() |>
+    dplyr::select(entity_id = "SupermoduleID", member = "ModuleID")
+  mods <- out |> dplyr::filter(.data$level == "module")
+  inherit <- singleton_member |>
+    dplyr::left_join(mods |> dplyr::select(member = "entity_id", m_bio = "reviewed_biological_label",
+                                           m_short = "reviewed_short_label", m_conf = "label_confidence"),
+                     by = "member")
+  out <- out |>
+    dplyr::left_join(inherit, by = "entity_id") |>
+    dplyr::mutate(
+      single = .data$level == "supermodule" & !is.na(.data$member),
+      reviewed_biological_label = dplyr::if_else(.data$single, .data$m_bio, .data$reviewed_biological_label),
+      reviewed_short_label = dplyr::if_else(.data$single, .data$m_short, .data$reviewed_short_label),
+      label_confidence = dplyr::if_else(.data$single, .data$m_conf, .data$label_confidence),
+      reviewer = "not yet reviewed",
+      proposal_prepared_by = prepared_by,
+      review_date = NA_character_,
+      adjudication_status = "provisional_unreviewed"
+    ) |>
+    dplyr::select(dplyr::all_of(wgcna_reviewed_registry_columns())) |>
+    dplyr::arrange(factor(.data$level, levels = c("module", "supermodule")), .data$entity_id)
+  wgcna_validate_reviewed_registry(out, dataset, current_map, allow_provisional = TRUE)
+  out
 }
 
 wgcna_annotation_fingerprints <- function(registry, label_candidates, module_rows, supermodule_rows) {
@@ -280,8 +363,10 @@ wgcna_structural_coherence <- function(supermodule_rows, ids) {
 wgcna_build_reviewed_canonical_lookup <- function(registry, member_map, label_candidates,
                                                    module_rows, supermodule_rows,
                                                    dataset,
-                                                   label_source = file.path("config", "wgcna_labels", paste0(dataset, ".csv"))) {
-  wgcna_validate_reviewed_registry(registry, dataset, member_map)
+                                                   label_source = file.path("config", "wgcna_labels", paste0(dataset, ".csv")),
+                                                   label_contract_version = paste0(dataset, "_wgcna_reviewed_labels_v1"),
+                                                   allow_provisional = FALSE) {
+  wgcna_validate_reviewed_registry(registry, dataset, member_map, allow_provisional = allow_provisional)
   current_map <- wgcna_normalize_current_member_map(member_map, dataset)
   module_meta <- current_map |>
     dplyr::transmute(
@@ -323,7 +408,7 @@ wgcna_build_reviewed_canonical_lookup <- function(registry, member_map, label_ca
       canonical_plot_label = paste0(.data$entity_id, "\n", .data$canonical_short_label),
       biological_label_confidence = as.character(.data$label_confidence),
       structural_coherence_class = as.character(.data$structural_coherence_class),
-      label_contract_version = paste0(dataset, "_wgcna_reviewed_labels_v1"),
+      label_contract_version = .env$label_contract_version,
       label_source = label_source,
       label_rationale = as.character(.data$rationale),
       unsafe_interpretation = dplyr::case_when(

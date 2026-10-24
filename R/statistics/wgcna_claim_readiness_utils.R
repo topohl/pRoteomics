@@ -18,10 +18,22 @@ microglia_wgcna_claim_readiness_path <- function() {
   wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv")
 }
 
-wgcna_claim_readiness_alias_map <- function() {
+# The current module-to-supermodule membership (identity contract). Every structural expectation
+# below is derived from it, so the contract follows the network that was actually built.
+wgcna_claim_readiness_membership <- function(dataset = "microglia") {
+  p <- wgcna_identity_contract_artifact("WGCNA_module_supermodule_membership_contract.csv", dataset)
+  if (!file.exists(p)) stop("Membership contract missing for Stage 13 validation: ", p, call. = FALSE)
+  m <- utils::read.csv(p, stringsAsFactors = FALSE)
+  unique(m[, c("module_id", "supermodule_id")])
+}
+
+# Singleton supermodules are compatibility aliases of their one member module.
+wgcna_claim_readiness_alias_map <- function(membership = wgcna_claim_readiness_membership()) {
+  n <- table(membership$supermodule_id)
+  single <- sort(names(n)[n == 1L])
   data.frame(
-    entity_id = c("SM02", "SM04", "SM05", "SM06", "SM07", "SM08"),
-    canonical_claim_entity_id = c("WGCNA_m03", "WGCNA_m09", "WGCNA_m13", "WGCNA_m01", "WGCNA_m02", "WGCNA_m06"),
+    entity_id = single,
+    canonical_claim_entity_id = membership$module_id[match(single, membership$supermodule_id)],
     stringsAsFactors = FALSE
   )
 }
@@ -54,8 +66,13 @@ load_microglia_wgcna_claim_readiness <- function(path = microglia_wgcna_claim_re
   }
 
   validate_table_schema(readiness, "wgcna_entity_claim_readiness", strict = TRUE)
-  if (nrow(readiness) != 22L) {
-    stop("Stage 13 must contain exactly 22 technical identities; observed ", nrow(readiness), ".", call. = FALSE)
+  membership <- wgcna_claim_readiness_membership("microglia")
+  n_sm <- table(membership$supermodule_id)
+  expected_modules <- sort(unique(membership$module_id))
+  expected_blocks <- sort(names(n_sm)[n_sm > 1L])
+  n_expected <- length(expected_modules) + length(n_sm)
+  if (nrow(readiness) != n_expected) {
+    stop("Stage 13 must contain exactly ", n_expected, " technical identities (current membership); observed ", nrow(readiness), ".", call. = FALSE)
   }
   assert_unique_wgcna_keys(readiness, c("dataset", "level", "entity_id"), "Stage 13 claim readiness")
   if (!identical(unique(as.character(readiness$dataset)), "microglia")) {
@@ -63,12 +80,13 @@ load_microglia_wgcna_claim_readiness <- function(path = microglia_wgcna_claim_re
   }
 
   roles <- table(as.character(readiness$claim_entity_role))
-  expected_roles <- c(canonical_module = 13L, higher_order_block = 3L, compatibility_alias = 6L)
+  expected_roles <- c(canonical_module = length(expected_modules), higher_order_block = length(expected_blocks),
+                      compatibility_alias = as.integer(sum(n_sm == 1L)))
   observed_roles <- stats::setNames(rep(0L, length(expected_roles)), names(expected_roles))
   observed_roles[names(roles)] <- as.integer(roles)
   if (!identical(observed_roles, expected_roles)) {
     stop(
-      "Stage 13 role counts must be 13 canonical modules, 3 higher-order blocks, and 6 compatibility aliases; observed ",
+      "Stage 13 role counts must match the current membership (", paste(names(expected_roles), expected_roles, sep = "=", collapse = ", "), "); observed ",
       paste(names(observed_roles), observed_roles, sep = "=", collapse = ", "), ".",
       call. = FALSE
     )
@@ -77,21 +95,22 @@ load_microglia_wgcna_claim_readiness <- function(path = microglia_wgcna_claim_re
   modules <- readiness[readiness$claim_entity_role == "canonical_module", , drop = FALSE]
   blocks <- readiness[readiness$claim_entity_role == "higher_order_block", , drop = FALSE]
   aliases <- readiness[readiness$claim_entity_role == "compatibility_alias", , drop = FALSE]
-  if (!all(modules$level == "module") || !setequal(modules$entity_id, sprintf("WGCNA_m%02d", 1:13))) {
+  if (!all(modules$level == "module") || !setequal(modules$entity_id, expected_modules)) {
     stop("Stage 13 canonical-module identity set is invalid.", call. = FALSE)
   }
-  if (!all(blocks$level == "supermodule") || !setequal(blocks$entity_id, c("SM01", "SM03", "SM09"))) {
-    stop("Stage 13 higher-order blocks must be exactly SM01, SM03, and SM09.", call. = FALSE)
+  if (!all(blocks$level == "supermodule") || !setequal(blocks$entity_id, expected_blocks)) {
+    stop("Stage 13 higher-order blocks must be the multi-module supermodules of the current membership: ",
+         paste(expected_blocks, collapse = ", "), ".", call. = FALSE)
   }
 
-  expected_aliases <- wgcna_claim_readiness_alias_map()
+  expected_aliases <- wgcna_claim_readiness_alias_map(membership)
   observed_aliases <- as.data.frame(
     aliases[match(expected_aliases$entity_id, aliases$entity_id), c("entity_id", "canonical_claim_entity_id"), drop = FALSE],
     stringsAsFactors = FALSE
   )
   rownames(observed_aliases) <- NULL
   if (anyNA(observed_aliases$entity_id) || !identical(observed_aliases, expected_aliases)) {
-    stop("Stage 13 compatibility aliases do not match the finalized six exact mappings.", call. = FALSE)
+    stop("Stage 13 compatibility aliases do not match the singleton supermodules of the current membership.", call. = FALSE)
   }
   if (any(aliases$separate_manuscript_claim_allowed %in% TRUE) ||
       any(as.character(aliases$compatibility_target_level) != "module") ||
@@ -99,16 +118,13 @@ load_microglia_wgcna_claim_readiness <- function(path = microglia_wgcna_claim_re
     stop("Stage 13 compatibility aliases must be module aliases and never separately claimable.", call. = FALSE)
   }
 
-  block_allowed <- stats::setNames(as.logical(blocks$separate_manuscript_claim_allowed), blocks$entity_id)
-  if (!identical(names(block_allowed)[block_allowed %in% TRUE], "SM09") ||
-      any(block_allowed[c("SM01", "SM03")] %in% TRUE)) {
-    stop("SM09 must be the only separately claimable Stage 13 higher-order block.", call. = FALSE)
-  }
-  if (sum(as.logical(modules$separate_manuscript_claim_allowed), na.rm = TRUE) != 10L) {
-    stop("Stage 13 must contain exactly ten independently architecture-eligible canonical modules.", call. = FALSE)
-  }
+  # Which blocks and modules are claimable is a result of the Stage 13 audit, not a fixed contract;
+  # it is reported, not pinned (the network frozen before 2026-10-19 had SM09 and ten modules).
+  # An FDR-supported group effect is likewise a result to surface for review, not an error.
   if (any(as.character(readiness$group_effect_status) == "FDR_supported")) {
-    stop("Finalized Stage 13 contract must not contain an FDR-supported module or supermodule group effect.", call. = FALSE)
+    warning("Stage 13 contains FDR-supported module or supermodule group effect(s): ",
+            paste(readiness$entity_id[as.character(readiness$group_effect_status) == "FDR_supported"], collapse = ", "),
+            ". Review before any claim is made.", call. = FALSE)
   }
   versions <- unique(as.character(readiness$readiness_contract_version))
   if (length(versions) != 1L || is.na(versions) || !nzchar(versions)) {

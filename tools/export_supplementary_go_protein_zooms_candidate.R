@@ -5,6 +5,11 @@
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 if (!file.exists(file.path(root, "pipeline.yml")))
   stop("Run from the pRoteomics repository root.", call. = FALSE)
+local({  # waits for the normalisation decision (config/normalisation.yml)
+  source(file.path(root, "R", "paths.R"), local = TRUE)
+  source(repo_path("R", "normalisation_contract.R"), local = TRUE)
+  assert_normalisation_decided("tools/export_supplementary_go_protein_zooms_candidate.R")
+})
 rel <- function(...) file.path(root, ...)
 source_dir <- rel("exports", "publication_source_data",
                   "supplementary_go_pathways_candidate")

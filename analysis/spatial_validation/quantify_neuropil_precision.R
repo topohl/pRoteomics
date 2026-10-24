@@ -57,7 +57,7 @@ cli <- integration_cli(default_dataset = "all")
 DS <- "neuron_neuropil"
 UNITS <- c("ca1_slm", "ca1_so", "ca1_sr", "ca2_slm", "ca2_so", "ca2_sr",
            "ca3_so", "ca3_sr", "dg_mo", "dg_po")
-DA_DIR <- path_processed("02_id_mapping_animal_level", "mapped", DS, "forward", "per_file")
+DA_DIR <- preprocessing_mapped_contrast_dir(DS, "forward")
 RAW <- repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv")
 OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d

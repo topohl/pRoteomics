@@ -158,9 +158,8 @@ meta$StressGroup <- csr_expgroup_to_stress(meta$ExpGroup)
 # The atlas is keyed on ProteinGroupID and carries no raw-matrix identifier.
 # The canonical DAP membership table carries BOTH, plus the spatial unit each
 # hit was called in, so it is the bridge to the raw matrix.
-MEMBER <- path_results("source_data", "04_differential_expression_enrichment",
-                       "sus_res_spatial_dap_atlas", "global",
-                       "sus_res_dap_membership.csv")
+MEMBER <- path_results("differential_abundance", "build_sus_res_dap_atlas", "global",
+                       "tables", "source_data", "sus_res_dap_membership.csv")
 if (!file.exists(MEMBER)) {
   stop("missing_required_input: DAP membership bridge: ", MEMBER, call. = FALSE)
 }

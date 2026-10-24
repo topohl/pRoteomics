@@ -94,7 +94,7 @@ testthat::test_that("Stage 06 and publication code enforce stable non-circular c
   testthat::expect_match(stage06, "member_modules_fingerprint", fixed = TRUE)
   testthat::expect_match(stage06, "automatic_biological_label", fixed = TRUE)
   testthat::expect_false(grepl("n_member_modules <= 1L, \"low\"", stage06, fixed = TRUE))
-  testthat::expect_match(stage08, "multi_ids <- c(\"SM01\", \"SM03\", \"SM09\")", fixed = TRUE)
+  testthat::expect_match(stage08, "multi_ids <- sort(", fixed = TRUE)
   testthat::expect_match(stage08, "Singleton loading panels are forbidden", fixed = TRUE)
   testthat::expect_match(stage08, "singular_models_have_no_claim_symbols", fixed = TRUE)
   testthat::expect_false(grepl("selected_significant|selected significant supermodules", stage08, ignore.case = TRUE))

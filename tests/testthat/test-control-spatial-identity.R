@@ -237,10 +237,22 @@ testthat::test_that("tissue and synaptosome validation domains remain separate",
   testthat::expect_false(identical(tissue$validation_domain, synaptosome$validation_domain))
 })
 
-testthat::test_that("maxGSSize includes the largest mapped prespecified signature", {
-  testthat::expect_identical(control_spatial_signature_max_gs_size(312L), 500L)
-  testthat::expect_identical(control_spatial_signature_max_gs_size(811L), 811L)
-  testthat::expect_gte(control_spatial_signature_max_gs_size(811L), 811L)
+testthat::test_that("maxGSSize floor is the configured cap and includes the largest mapped prespecified signature", {
+  testthat::expect_identical(control_spatial_signature_max_gs_size(312L, 800L), 800L)
+  testthat::expect_identical(control_spatial_signature_max_gs_size(903L, 800L), 903L)
+  testthat::expect_gte(control_spatial_signature_max_gs_size(903L, 800L), 903L)
+  testthat::expect_error(control_spatial_signature_max_gs_size(312L, NULL), "max_gs_size")
+})
+
+testthat::test_that("control-spatial GO-BP GSEA uses the shared configured term-size limits", {
+  script <- paste(readLines(repo_path("analysis/differential_abundance",
+    "validate_control_spatial_identity.R"
+  ), warn = FALSE), collapse = "\n")
+  testthat::expect_match(script, "gsea_cfg$analysis$min_gs_size", fixed = TRUE)
+  testthat::expect_match(script, "gsea_cfg$analysis$max_gs_size", fixed = TRUE)
+  testthat::expect_match(script, "minGSSize = go_min_gs_size, maxGSSize = go_max_gs_size", fixed = TRUE)
+  testthat::expect_match(script, "control_spatial_signature_max_gs_size(largest_mapped_signature_size, go_max_gs_size)", fixed = TRUE)
+  testthat::expect_match(script, "go_bp_maxGSSize = go_max_gs_size", fixed = TRUE)
 })
 
 testthat::test_that("signature BH correction uses each complete declared family", {

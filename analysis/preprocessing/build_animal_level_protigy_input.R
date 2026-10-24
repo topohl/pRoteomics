@@ -22,11 +22,8 @@ suppressPackageStartupMessages({
   }
 })
 
-source(if (file.exists(file.path("R", "script_runtime.R"))) {
-  file.path("R", "script_runtime.R")
-} else {
-  file.path("..", "R", "script_runtime.R")
-})
+source(if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R"))
+source(repo_path("R", "script_runtime.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "protigy_input_utils.R"))
 

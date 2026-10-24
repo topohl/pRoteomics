@@ -20,6 +20,21 @@ early_arg_value <- function(flag, default = "") {
   if (!length(hit) || hit[1] == length(early_args)) return(default)
   early_args[[hit[1] + 1]]
 }
+wgcna_manual_gene_annotation_path <- function() {
+  Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv"))
+}
+# Why a cached WGCNA state cannot be reused: its gene annotation or module GO evidence was built from other inputs or
+# settings than the current ones. Empty when the state is current.
+wgcna_cached_annotation_mismatches <- function(feature_table, parameters, idmap_path, go_min, go_max) {
+  same <- function(saved, current) identical(unique(as.character(saved)), as.character(current))
+  c(
+    if (!same(feature_table$gene_annotation_contract_version, mouse_gene_annotation_contract_version())) "gene annotation contract",
+    if (!same(feature_table$uniprot_mapping_file_hash, file_hash(idmap_path))) "UniProt idmapping file",
+    if (!same(feature_table$orgdb_package_version, as.character(utils::packageVersion("org.Mm.eg.db")))) "org.Mm.eg.db version",
+    if (!same(parameters$manual_gene_annotation_overrides_hash, file_hash(wgcna_manual_gene_annotation_path()))) "manual gene-annotation overrides",
+    if (!same(parameters$module_go_min_gs_size, go_min) || !same(parameters$module_go_max_gs_size, go_max)) "module GO term-size limits"
+  )
+}
 if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unset = "")) %in% c("1", "true", "yes")) {
   paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
     source(paths_file)
@@ -94,14 +109,23 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     "ProteinGroupID" %in% staged_names_early || all(c("Protein.Group", "T: Protein.Names") %in% staged_names_early)
   }
   cache_contract_error_early <- NA_character_
+  cache_annotation_mismatch_early <- character()
   cache_contract_ok_early <- if (!file.exists(wgcna_final_state_path_early)) FALSE else tryCatch({
-    validate_wgcna_cached_state(readRDS(wgcna_final_state_path_early))
+    state_early <- readRDS(wgcna_final_state_path_early)
+    validate_wgcna_cached_state(state_early)
+    go_limits_early <- yaml::read_yaml(repo_path("config", "clusterProfiler_config.yml"))$analysis
+    cache_annotation_mismatch_early <- wgcna_cached_annotation_mismatches(
+      state_early$wgcna_feature_table, state_early$parameters, idmap_dat_early,
+      go_limits_early$min_gs_size, go_limits_early$max_gs_size
+    )
     TRUE
   }, error = function(e) {
     cache_contract_error_early <<- conditionMessage(e)
     FALSE
   })
-  can_use_cache_early <- cache_contract_ok_early && !force_full_analysis_early
+  reuse_stale_state_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STALE_STATE", unset = "false")) %in% c("1", "true", "yes", "y")
+  can_use_cache_early <- cache_contract_ok_early && !force_full_analysis_early &&
+    (!length(cache_annotation_mismatch_early) || reuse_stale_state_early)
   can_write_outputs_early <- all(vapply(c(output_root_early, unlist(subdirs_early)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
   sample_check_early <- "not checked"
   sample_check_ok_early <- TRUE
@@ -148,6 +172,13 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Force full analysis", force_full_analysis_early)
   dry_run_line("Cached state", wgcna_final_state_path_early, if (can_use_cache_early) "PASS" else if (reuse_completed_analysis_early) "WARN" else "INFO")
   dry_run_line("Cached feature-key contract", if (cache_contract_ok_early) wgcna_feature_key_contract_version() else cache_contract_error_early, if (cache_contract_ok_early) "PASS" else "WARN")
+  dry_run_line(
+    "Cached gene annotation and module GO limits",
+    if (!cache_contract_ok_early) "no usable cached state"
+    else if (length(cache_annotation_mismatch_early)) paste0("out of date (", paste(cache_annotation_mismatch_early, collapse = ", "), "); a default run stops, set PROTEOMICS_WGCNA_FORCE_FULL=true")
+    else "current",
+    if (cache_contract_ok_early && !length(cache_annotation_mismatch_early)) "PASS" else if (force_full_analysis_early) "INFO" else "WARN"
+  )
   dry_run_line("Explicit/staged expression workbook", expr_xlsx_early, if (file.exists(expr_xlsx_early)) "PASS" else "WARN")
   dry_run_line("Explicit/staged sample metadata workbook", meta_xlsx_early, if (file.exists(meta_xlsx_early)) "PASS" else "WARN")
   dry_run_line("Canonical upstream expression", dataset_inputs_early$expression_file, if (file.exists(dataset_inputs_early$expression_file)) "PASS" else "FAIL")
@@ -315,11 +346,9 @@ theme_publication <- function(base_size = figure_base_size) {
 }
 ggplot2::theme_set(theme_publication())
 
-# Parallel setup
-nCores <- tryCatch({
-  pc <- parallel::detectCores(logical = FALSE)
-  if (is.na(pc) || pc < 2) 2 else pc
-}, error = function(e) 2)
+# Parallel setup: PROTEOMICS_WGCNA_THREADS threads (default 4)
+nCores <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_WGCNA_THREADS", unset = "4")))
+if (is.na(nCores) || nCores < 1L) nCores <- 4L
 enableWGCNAThreads(nThreads = nCores)
 WGCNAnThreads()
 
@@ -439,6 +468,13 @@ min_module_size <- 30
 deep_split <- 2
 merge_cut_height <- 0.25
 module_preservation_permutations <- 100
+# Module GO over-representation term-size limits: the same as the differential-abundance ORA and GSEA
+cluster_profiler_analysis_config <- yaml::read_yaml(repo_path("config", "clusterProfiler_config.yml"))$analysis
+module_go_min_gs_size <- as.integer(cluster_profiler_analysis_config$min_gs_size)
+module_go_max_gs_size <- as.integer(cluster_profiler_analysis_config$max_gs_size)
+if (length(module_go_min_gs_size) != 1L || length(module_go_max_gs_size) != 1L || anyNA(c(module_go_min_gs_size, module_go_max_gs_size))) {
+  stop("config/clusterProfiler_config.yml must set analysis$min_gs_size and analysis$max_gs_size.", call. = FALSE)
+}
 reuse_completed_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STATE", unset = "true")) %in% c("1", "true", "yes", "y")
 force_full_analysis <- tolower(Sys.getenv("PROTEOMICS_WGCNA_FORCE_FULL", unset = "false")) %in% c("1", "true", "yes", "y")
 reuse_stale_state <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STALE_STATE", unset = "false")) %in% c("1", "true", "yes", "y")
@@ -468,6 +504,15 @@ check_wgcna_cached_state_freshness <- function(manifest_path, current_paths, all
     return(invisible(list(status = "yaml_missing", stale = NA, current_hashes = current_hashes)))
   }
   manifest <- yaml::read_yaml(manifest_path)
+  # A run that reused a stale state recorded the hashes of its new inputs, which the state still predates.
+  if (identical(manifest$parameters$cache_reuse_check, "stale_allowed")) {
+    msg <- paste0(
+      "The previous run reused a stale cached WGCNA state, so its recorded input hashes do not describe the state. ",
+      "Rerun with PROTEOMICS_WGCNA_FORCE_FULL=true, or set PROTEOMICS_WGCNA_REUSE_STALE_STATE=true to reuse it anyway."
+    )
+    if (allow_stale) warning(msg, call. = FALSE) else stop(msg, call. = FALSE)
+    return(invisible(list(status = "stale_allowed", stale = TRUE, stale_roles = "previous_run_reused_stale_state", current_hashes = current_hashes)))
+  }
   previous <- unlist(manifest$input_hashes, recursive = TRUE, use.names = TRUE)
   if (!length(previous)) {
     warning("Cached WGCNA manifest contains no input_hashes: ", manifest_path, call. = FALSE)
@@ -1515,6 +1560,17 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   cached_state <- readRDS(wgcna_final_state_path)
   hydrated_state <- wgcna_hydrate_cached_state(cached_state)
   list2env(hydrated_state, envir = environment())
+  cached_annotation_mismatch <- wgcna_cached_annotation_mismatches(
+    wgcna_feature_table, parameters, current_staged_input_paths()[["mouse_idmapping"]],
+    module_go_min_gs_size, module_go_max_gs_size
+  )
+  if (length(cached_annotation_mismatch)) {
+    msg <- paste0(
+      "Cached WGCNA state is out of date for: ", paste(cached_annotation_mismatch, collapse = ", "),
+      ". Rerun with PROTEOMICS_WGCNA_FORCE_FULL=true, or set PROTEOMICS_WGCNA_REUSE_STALE_STATE=true to reuse it anyway."
+    )
+    if (reuse_stale_state) warning(msg, call. = FALSE) else stop(msg, call. = FALSE)
+  }
   if (exists("module_label_table")) {
     module_label_table <- ensure_module_label_schema(module_label_table) %>%
       dplyr::mutate(
@@ -1892,6 +1948,7 @@ meta.data <- { stop_if_missing(meta_xlsx); read_head(meta_xlsx) }
 # Robust UniProtKB-ID -> Accession map (offline)
 # --------------------------
 stop_if_missing(idmap_dat)
+manual_gene_annotation_path <- wgcna_manual_gene_annotation_path()
 input_manifest <- tibble::tibble(
   role = c(
     "canonical_upstream_expression_matrix",
@@ -1900,7 +1957,8 @@ input_manifest <- tibble::tibble(
     "staged_wgcna_sample_metadata",
     "expression_matrix",
     "sample_metadata",
-    "mouse_idmapping"
+    "mouse_idmapping",
+    "manual_gene_annotation_overrides"
   ),
   path = c(
     dataset_inputs$expression_file,
@@ -1909,7 +1967,8 @@ input_manifest <- tibble::tibble(
     meta_xlsx_default,
     expr_xlsx,
     meta_xlsx,
-    idmap_dat
+    idmap_dat,
+    manual_gene_annotation_path
   ),
   md5 = vapply(c(
     dataset_inputs$expression_file,
@@ -1918,7 +1977,8 @@ input_manifest <- tibble::tibble(
     meta_xlsx_default,
     expr_xlsx,
     meta_xlsx,
-    idmap_dat
+    idmap_dat,
+    manual_gene_annotation_path
   ), file_hash, character(1))
 )
 if (isTRUE(wgcna_inputs_auto_prepared) && file.exists(fp_log("auto_prepared_input_manifest.csv"))) {
@@ -1933,6 +1993,14 @@ mouse_maps <- build_mouse_maps(idmap_tbl)
 entry_map <- mouse_maps$entry_map
 gene_map <- mouse_maps$gene_map
 if (!nrow(entry_map)) stop("entry_map is empty after robust parse")
+# Official mouse SYMBOL/ENTREZ annotation, built as in Stage 02 (analysis/preprocessing/map_protein_identifiers.R),
+# so module gene identities match the differential-abundance tables.
+gene_annotation_maps <- build_mouse_gene_annotation_maps(
+  org.Mm.eg.db,
+  accessions = unique(mouse_maps$accession_gene_map$UNIPROT)
+)
+manual_gene_annotation_overrides <- read_manual_gene_annotation_overrides(manual_gene_annotation_path)
+uniprot_mapping_file_hash <- file_hash(idmap_dat)
 
 # Sentinel sanity check
 sentinels <- c("AIF1","AKAP2","ADCY1","AKAP1","AMPD3","ANXA3","1433S","ACK1","AIP","ADA10")
@@ -2143,10 +2211,16 @@ wgcna_canonical <- build_wgcna_canonical_features(
   accession_gene_map = mouse_maps$accession_gene_map,
   reviewed_map = mouse_maps$reviewed_map,
   manual_mapping = manual_mapping,
+  gene_annotation_maps = gene_annotation_maps,
+  manual_gene_annotation_overrides = manual_gene_annotation_overrides,
+  uniprot_mapping_file_hash = uniprot_mapping_file_hash,
   strict = TRUE
 )
 expression.data <- wgcna_canonical$expression_data
 wgcna_feature_table <- wgcna_canonical$feature_table
+if (!isTRUE(all(wgcna_feature_table$gene_annotation_contract_version == mouse_gene_annotation_contract_version()))) {
+  stop("WGCNA feature table is not on the official gene annotation contract (", mouse_gene_annotation_contract_version(), ").", call. = FALSE)
+}
 wgcna_member_bridge <- wgcna_canonical$member_bridge
 feature_mapping_tbl <- wgcna_feature_table %>%
   dplyr::filter(.data$included_in_wgcna) %>%
@@ -2555,31 +2629,7 @@ network_feature_table <- wgcna_feature_table %>%
 validate_wgcna_feature_alignment(expression.data, wgcna_feature_table)
 annotation_feature_table <- network_feature_table %>%
   dplyr::filter(.data$gene_level_claim_allowed)
-acc_universe <- unique(stats::na.omit(annotation_feature_table$representative_accession))
-if (length(acc_universe)) {
-  map_df <- tryCatch(
-    suppressWarnings(clusterProfiler::bitr(
-      acc_universe,
-      fromType = "UNIPROT",
-      toType = c("ENTREZID", "SYMBOL"),
-      OrgDb = org.Mm.eg.db
-    )),
-    error = function(e) NULL
-  )
-  map_df <- if (is.null(map_df) || !nrow(map_df)) {
-    tibble::tibble(UNIPROT = character(), ENTREZID = character(), SYMBOL = character())
-  } else {
-    tibble::as_tibble(map_df) %>%
-      dplyr::mutate(UNIPROT = toupper(.data$UNIPROT)) %>%
-      dplyr::distinct(.data$UNIPROT, .keep_all = TRUE)
-  }
-} else {
-  map_df <- tibble::tibble(UNIPROT = character(), ENTREZID = character(), SYMBOL = character())
-}
-acc_to_entrez <- stats::setNames(as.character(map_df$ENTREZID), map_df$UNIPROT)
-acc_to_symbol <- stats::setNames(as.character(map_df$SYMBOL), map_df$UNIPROT)
-universe_entrez <- unique(stats::na.omit(unname(acc_to_entrez[acc_universe])))
-universe_entrez <- as.character(universe_entrez)
+universe_entrez <- unique(stats::na.omit(as.character(annotation_feature_table$official_entrez_id)))
 
 compact_term <- function(term) {
   term <- gsub("\\b(process|regulation|pathway|of|the|cellular)\\b", "", term, ignore.case = TRUE)
@@ -2617,12 +2667,8 @@ feature_module_tbl <- wgcna_integrate_feature_module_metadata(
     MemberUniProts = .data$member_accessions,
     GeneSymbols = .data$member_gene_symbols,
     UniProt = .data$representative_accession,
-    GeneSymbol = dplyr::if_else(.data$gene_level_claim_allowed, .data$representative_gene_symbol, NA_character_),
-    EntrezID = dplyr::if_else(
-      .data$gene_level_claim_allowed,
-      as.character(unname(acc_to_entrez[.data$representative_accession])),
-      NA_character_
-    ),
+    GeneSymbol = dplyr::if_else(.data$gene_level_claim_allowed, as.character(.data$official_gene_symbol), NA_character_),
+    EntrezID = dplyr::if_else(.data$gene_level_claim_allowed, as.character(.data$official_entrez_id), NA_character_),
     original_token = .data$original_identifier,
     resolved_uniprot = .data$representative_accession,
     mapping_strategy = .data$representative_selection_rule,
@@ -2665,6 +2711,8 @@ enrich_module_set <- function(internal_color, set_name, set_tbl, ontology,
     ModuleSize = nrow(set_tbl),
     MappedModuleSize = length(mapped_genes),
     UniverseSize = length(universe_entrez),
+    MinGSSize = module_go_min_gs_size,
+    MaxGSSize = module_go_max_gs_size,
     TotalQuantitativeModuleFeatures = sum(feature_module_tbl$WGCNAInternalColor == internal_color),
     ExcludedFromGeneAnnotation = sum(
       feature_module_tbl$WGCNAInternalColor == internal_color & !feature_module_tbl$gene_level_claim_allowed
@@ -2686,6 +2734,8 @@ enrich_module_set <- function(internal_color, set_name, set_tbl, ontology,
       pAdjustMethod = "BH",
       pvalueCutoff = 1,
       qvalueCutoff = 1,
+      minGSSize = module_go_min_gs_size,
+      maxGSSize = module_go_max_gs_size,
       readable = FALSE
     )),
     error = function(e) e
@@ -2847,7 +2897,7 @@ WGCNA_modules_long <- wgcna_join_module_labels(feature_module_tbl, module_label_
     representative_accession, representative_gene_symbol, representative_selection_rule,
     n_members_canonical, n_mapped_accessions, n_unmapped_members, n_gene_symbols, same_gene_group,
     protein_group_ambiguity_class, gene_level_claim_allowed, protein_level_claim_allowed,
-    UniProt, EntrezID, GeneSymbol,
+    UniProt, EntrezID, GeneSymbol, official_gene_symbol, official_entrez_id, protein_group_gene_annotation_status,
     original_token, resolved_uniprot, mapping_strategy, manual_mapping_used, mapping_status,
     kME, abs_kME,
     GeneSignificanceP, GeneSignificanceFDR, is_core_kME_0.6, is_top_hub_25, Source
@@ -3083,6 +3133,10 @@ saveRDS(list(
     supermodule_merge_cut_height = selected_supermodule_merge_cut_height(dataset_profile_resolved),
     supermodule_merge_rule = "hclust_average_on_1_minus_module_eigengene_correlation",
     module_preservation_permutations = module_preservation_permutations,
+    gene_annotation_contract_version = mouse_gene_annotation_contract_version(),
+    manual_gene_annotation_overrides_hash = file_hash(manual_gene_annotation_path),
+    module_go_min_gs_size = module_go_min_gs_size,
+    module_go_max_gs_size = module_go_max_gs_size,
     dataset_profile = dataset_profile_resolved
   )
 ), file = fp_state("wgcna_final_model_state.rds"))
@@ -4386,7 +4440,7 @@ WGCNA_module_GSEA_coregene_overlap <- if (file.exists(gsea_overlap_file)) {
   readr::read_csv(gsea_overlap_file, show_col_types = FALSE) %>%
     dplyr::select(dplyr::any_of(c(
       "dataset", "ModuleID", "ModuleColor", "contrast", "route", "route_category",
-      "n_DE_overlap", "n_leading_edge_overlap", "jaccard_DE", "fisher_p", "fisher_fdr",
+      "result_type", "n_DE_overlap", "n_leading_edge_overlap", "jaccard_DE", "fisher_p", "fisher_fdr",
       "top_overlap_proteins"
     )))
 } else {
@@ -4416,6 +4470,7 @@ WGCNA_module_evidence_rank <- WGCNA_module_priority_summary %>%
       .data$preservation_min_Zsummary >= 2 ~ 1,
       TRUE ~ 0
     ),
+    # descriptive only: overlap counts grow with module size, so they do not enter evidence_score
     gsea_overlap_rank_component = dplyr::coalesce(.data$n_leading_edge_overlap, 0) + dplyr::coalesce(.data$n_DE_overlap, 0),
     label_confidence_component = dplyr::case_when(
       !is.na(.data$best_GO_padj_BP) & .data$best_GO_padj_BP <= 0.05 ~ 1,
@@ -4427,7 +4482,6 @@ WGCNA_module_evidence_rank <- WGCNA_module_priority_summary %>%
       .data$effect_rank_component +
       .data$hub_rank_component +
       .data$preservation_rank_component +
-      log1p(.data$gsea_overlap_rank_component) +
       .data$label_confidence_component,
     evidence_rank = dplyr::min_rank(dplyr::desc(.data$evidence_score)),
     evidence_warning = dplyr::case_when(

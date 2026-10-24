@@ -38,7 +38,7 @@ ensure_dir(out_dir)
 # --- 2. Load Your Data Files ---
 proteomics_input_file <- Sys.getenv(
   "PROTEOMICS_BEHAVIOR_COR_PROTEOMICS_FILE",
-  unset = path_processed("01_preprocessing/excel_convert", "20260526_pgmatrix_imputed_neuron_soma_71samples_missing70pct_with_metadata.xlsx")
+  unset = {source(repo_path("R", "dataset_inputs.R")); resolve_dataset_inputs("neuron_soma", purpose = "module_score", record_resolution = FALSE)$expression_file}
 )
 behavior_input_file <- Sys.getenv(
   "PROTEOMICS_BEHAVIOR_COR_BEHAVIOR_FILE",

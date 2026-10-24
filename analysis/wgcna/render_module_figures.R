@@ -106,7 +106,7 @@ theme_pub <- function(base_size = 7.5) {
 
 stress_colours <- c(CON = "#3E3C6F", RES = "#9E9A92", SUS = "#D7303F")
 effect_colours <- c(low = "#3B6FB6", mid = "#F7F7F5", high = "#C84C5A")
-sm_order <- sprintf("SM%02d", 1:9)
+# sm_order is derived from the current canonical lookup below (SM01..SM09 before 2026-10-19).
 roi_order <- c("CA1", "CA2", "CA3", "DG")
 contrast_order <- c("RES - CON", "SUS - CON", "SUS - RES")
 
@@ -114,6 +114,7 @@ lookup <- read_required(LABEL_FILE, "reviewed canonical label lookup")
 member_map_raw <- read_required(FILES$supermodule_annotation, "current Stage 01 module-to-supermodule map")
 member_map <- wgcna_normalize_current_member_map(member_map_raw, DATASET)
 wgcna_validate_canonical_lookup(lookup, DATASET, member_map)
+sm_order <- sort(as.character(lookup$entity_id[lookup$level == "supermodule"]))
 
 super_labels <- lookup |>
   dplyr::filter(.data$level == "supermodule") |>
@@ -296,7 +297,7 @@ p_global <- ggplot2::ggplot(global_eigengene_source, ggplot2::aes(x = .data$Stre
   ggplot2::labs(x = NULL, y = "Supermodule eigengene (z)") +
   theme_pub(7.3) +
   ggplot2::theme(legend.position = "none", panel.grid.major.y = ggplot2::element_line(colour = "#E6E6E6", linewidth = 0.12), panel.grid.minor = ggplot2::element_blank())
-save_publication_figure(p_global, "all_supermodule_global_eigengenes", 180, 155)
+save_publication_figure(p_global, "all_supermodule_global_eigengenes", 180, 52 * ceiling(length(sm_order) / 3))
 
 # 3. SUS-RES forest ---------------------------------------------------------
 forest_source <- global_effects |>
@@ -362,7 +363,8 @@ p_spatial <- ggplot2::ggplot(spatial_heatmap_source, ggplot2::aes(x = .data$roi,
 save_publication_figure(p_spatial, "all_supermodule_sus_res_spatial_heatmap", 225, 102)
 
 # 5. Multi-supermodule member loadings -------------------------------------
-multi_ids <- c("SM01", "SM03", "SM09")
+# The multi-module supermodules of the current network (SM01/SM03/SM09 before 2026-10-19).
+multi_ids <- sort(as.character(lookup$entity_id[lookup$level == "supermodule" & suppressWarnings(as.integer(lookup$n_member_modules)) > 1L]))
 multi_panel_levels <- super_labels |>
   dplyr::filter(.data$supermodule_id %in% multi_ids) |>
   dplyr::arrange(factor(.data$supermodule_id, levels = multi_ids)) |>
@@ -392,7 +394,7 @@ p_load <- ggplot2::ggplot(loading_source, ggplot2::aes(x = .data$loading, y = .d
   ggplot2::labs(x = "PC1 loading", y = NULL) +
   theme_pub() +
   ggplot2::theme(panel.grid.major.x = ggplot2::element_line(colour = "#E6E6E6", linewidth = 0.12), panel.grid.minor = ggplot2::element_blank())
-save_publication_figure(p_load, "multi_supermodule_member_loadings", 180, 78)
+save_publication_figure(p_load, "multi_supermodule_member_loadings", 180, 38 + 40 * ceiling(length(multi_ids) / 3))
 
 # 6. Supplementary all-contrast effect matrix ------------------------------
 effect_matrix_source <- global_effects |>
@@ -427,12 +429,12 @@ save_publication_figure(p_matrix, "supplementary_all_contrast_effect_matrix", 14
 # Validation ----------------------------------------------------------------
 validation <- tibble::tribble(
   ~validation_check, ~status, ~details,
-  "canonical_lookup_22_rows", if (nrow(lookup) == 22L) "pass" else "fail", paste0("n=", nrow(lookup)),
-  "architecture_has_9_supermodules", if (dplyr::n_distinct(architecture_source$supermodule_id) == 9L) "pass" else "fail", paste0("n=", dplyr::n_distinct(architecture_source$supermodule_id)),
-  "global_eigengenes_has_9_supermodules", if (dplyr::n_distinct(global_eigengene_source$supermodule_id) == 9L) "pass" else "fail", paste0("n=", dplyr::n_distinct(global_eigengene_source$supermodule_id)),
-  "forest_has_9_supermodules", if (nrow(forest_source) == 9L && dplyr::n_distinct(forest_source$supermodule_id) == 9L) "pass" else "fail", paste0("rows=", nrow(forest_source)),
-  "spatial_heatmap_has_9_supermodules", if (nrow(spatial_heatmap_source) == 36L && dplyr::n_distinct(spatial_heatmap_source$supermodule_id) == 9L) "pass" else "fail", paste0("rows=", nrow(spatial_heatmap_source)),
-  "effect_matrix_has_9_supermodules", if (nrow(effect_matrix_source) == 27L && dplyr::n_distinct(effect_matrix_source$supermodule_id) == 9L) "pass" else "fail", paste0("rows=", nrow(effect_matrix_source)),
+  "canonical_lookup_rows_match_membership", if (nrow(lookup) == dplyr::n_distinct(member_map$ModuleID) + length(sm_order)) "pass" else "fail", paste0("n=", nrow(lookup)),
+  "architecture_has_all_supermodules", if (dplyr::n_distinct(architecture_source$supermodule_id) == length(sm_order)) "pass" else "fail", paste0("n=", dplyr::n_distinct(architecture_source$supermodule_id)),
+  "global_eigengenes_has_all_supermodules", if (dplyr::n_distinct(global_eigengene_source$supermodule_id) == length(sm_order)) "pass" else "fail", paste0("n=", dplyr::n_distinct(global_eigengene_source$supermodule_id)),
+  "forest_has_all_supermodules", if (nrow(forest_source) == length(sm_order) && dplyr::n_distinct(forest_source$supermodule_id) == length(sm_order)) "pass" else "fail", paste0("rows=", nrow(forest_source)),
+  "spatial_heatmap_has_all_supermodules", if (nrow(spatial_heatmap_source) == length(roi_order) * length(sm_order) && dplyr::n_distinct(spatial_heatmap_source$supermodule_id) == length(sm_order)) "pass" else "fail", paste0("rows=", nrow(spatial_heatmap_source)),
+  "effect_matrix_has_all_supermodules", if (nrow(effect_matrix_source) == length(contrast_order) * length(sm_order) && dplyr::n_distinct(effect_matrix_source$supermodule_id) == length(sm_order)) "pass" else "fail", paste0("rows=", nrow(effect_matrix_source)),
   "singleton_loading_panels_absent", if (!any(loading_source$n_member_modules <= 1L) && identical(sort(unique(loading_source$supermodule_id)), sort(multi_ids))) "pass" else "fail", paste(unique(loading_source$supermodule_id), collapse = ";"),
   "singular_models_have_no_claim_symbols", if (!any((!forest_source$model_stable) & forest_source$claim_support_symbol != "none")) "pass" else "fail", "diagnostic-only rows cannot receive FDR claim symbols",
   "stable_symmetric_effect_scale", if (length(unique(c(spatial_heatmap_source$effect_scale_limit, effect_matrix_source$effect_scale_limit))) == 1L) "pass" else "fail", paste0("limit=", effect_limit),

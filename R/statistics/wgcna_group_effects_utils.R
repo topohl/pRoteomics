@@ -4038,6 +4038,15 @@ wgcna_group_legacy_staleness_audit <- function(dataset, paths) {
       )
     }
   }
+  if (!length(rows)) {
+    # A clean output tree (first run in the normalized layout) has nothing to audit.
+    return(data.frame(
+      dataset = character(), output_scope = character(), source_file = character(),
+      file_name = character(), size_bytes = numeric(), sha256 = character(),
+      modified_time_utc = character(), staleness_reason = character(),
+      preservation_status = character(), stringsAsFactors = FALSE
+    ))
+  }
   dplyr::bind_rows(rows) |>
     dplyr::arrange(.data$output_scope, .data$source_file)
 }

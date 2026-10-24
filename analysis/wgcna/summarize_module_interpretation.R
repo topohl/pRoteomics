@@ -1814,8 +1814,42 @@ make_dataset_summary <- function(ds) {
   label_candidates <- wgcna_make_label_candidates(module_join, super_join, dataset = ds) |>
     wgcna_score_label_candidates() |>
     wgcna_select_final_labels()
-  if (identical(ds, "microglia")) {
+  # PROTEOMICS_WGCNA_LABEL_MODE = "reviewed" (default) or "provisional".
+  # "provisional" is for a rebuilt network: the reviewed registry in config/wgcna_labels/ describes
+  # the previous network and is not read, because equal module IDs need not mean equal modules.
+  # Microglia labels then come from PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY when it is set (a
+  # lineage-checked proposal), otherwise from this run's automatic labels. Every row is
+  # adjudication_status = provisional_unreviewed with manual_review_required = TRUE, and the status
+  # of each dataset is written to manifests/label_review_status.csv.
+  label_mode <- tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed"))
+  if (!label_mode %in% c("reviewed", "provisional")) stop("PROTEOMICS_WGCNA_LABEL_MODE must be reviewed or provisional.", call. = FALSE)
+  use_registry <- identical(ds, "microglia")
+  registry_source <- NA_character_
+  if (use_registry && identical(label_mode, "provisional")) {
+    registry_source <- Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY", unset = "")
+    if (nzchar(registry_source)) {
+      reviewed_registry <- wgcna_read_reviewed_registry(ds, current_member_map, path = registry_source, allow_provisional = TRUE)
+    } else {
+      reviewed_registry <- wgcna_provisional_registry_from_lookup(
+        wgcna_build_final_label_lookup(label_candidates, module_join, super_join, dataset = ds),
+        current_member_map, ds
+      )
+      registry_source <- file.path(paths$tables, "WGCNA_provisional_label_registry.csv")
+      readr::write_csv(reviewed_registry, registry_source, na = "")
+    }
+    label_contract_version <- paste0(ds, "_wgcna_provisional_labels_v1")
+    warning("Microglia WGCNA labels are provisional and unreviewed (", registry_source, ").", call. = FALSE)
+  } else if (use_registry) {
+    registry_source <- file.path("config", "wgcna_labels", paste0(ds, ".csv"))
     reviewed_registry <- wgcna_read_reviewed_registry(ds, current_member_map)
+    label_contract_version <- paste0(ds, "_wgcna_reviewed_labels_v1")
+  }
+  label_status <- if (!use_registry) "automatic_unreviewed" else unique(reviewed_registry$adjudication_status)
+  readr::write_csv(tibble::tibble(
+    dataset = ds, label_mode = label_mode, label_review_status = label_status,
+    label_source = if (use_registry) registry_source else "automatic labels (WGCNA_final_label_lookup.csv)"
+  ), file.path(paths$manifests, "label_review_status.csv"))
+  if (use_registry) {
     super_evidence <- super_annot
     if (!is.null(current_super_summary) && nrow(current_super_summary)) {
       structural_cols <- intersect(c(
@@ -1842,7 +1876,10 @@ make_dataset_summary <- function(ds) {
       label_candidates = label_candidates,
       module_rows = module_join,
       supermodule_rows = super_evidence,
-      dataset = ds
+      dataset = ds,
+      label_source = registry_source,
+      label_contract_version = label_contract_version,
+      allow_provisional = identical(label_mode, "provisional")
     )
     wgcna_validate_canonical_lookup(final_label_lookup, ds, current_member_map)
   } else {
@@ -1850,7 +1887,7 @@ make_dataset_summary <- function(ds) {
     wgcna_validate_label_lookup(final_label_lookup)
   }
   validate_table_schema(label_candidates, "wgcna_label_candidates", strict = TRUE)
-  if (identical(ds, "microglia")) {
+  if (use_registry) {
     validate_table_schema(final_label_lookup, "wgcna_reviewed_final_label_lookup", strict = TRUE)
   } else {
     validate_table_schema(final_label_lookup, "wgcna_final_label_lookup", strict = TRUE)

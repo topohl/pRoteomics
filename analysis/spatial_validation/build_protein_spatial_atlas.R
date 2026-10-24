@@ -50,9 +50,8 @@ cli <- integration_cli(default_dataset = "all")
 OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
-CAND <- path_results("tables", "10_biological_integration",
-                     "wgcna_candidate_protein_shortlist", "global",
-                     "wgcna_candidate_proteins_all.csv")
+CAND <- path_results("integration", "build_candidate_protein_shortlist", "global",
+                     "tables", "wgcna_candidate_proteins_all.csv")
 EMP <- qc_find("empirical_roi_marker_sets.csv",
                owner = "discover_empirical_roi_markers",
                legacy_substep = "05_empirical_roi_marker_discovery")

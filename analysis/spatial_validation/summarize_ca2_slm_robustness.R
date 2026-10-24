@@ -42,18 +42,16 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 ROB <- function(f) spatial_systems_find(f, "ca2_slm_robustness")
-AID <- function(...) path_results("tables", "08_behavior_physio_coupling",
-                                  "animal_id_integrity", ...)
-COUP <- function(...) path_results("tables", "08_behavior_physio_coupling",
-                                   "network_behavior_coupling", ...)
+AID <- function(...) path_results("integration", "audit_animal_id_integrity", "global", "tables", ...)
+COUP <- function(...) path_results("integration", "test_network_behaviour_coupling", "global", "tables", ...)
 FIG <- function(...) {
   d <- CANONICAL_PATHS$plots
   dir_create(d); file.path(d, ...)
 }
 DA_FILE <- file.path(preprocessing_mapped_contrast_dir("neuron_neuropil", "forward"),
                      "CA2slmsus_CA2slmres.csv")
-IMPUTED <- path_processed("01_preprocessing", "impute",
-  "20260601_pgmatrix_imputed_neuron_neuropil_180samples_missing70pct.xlsx")
+source(repo_path("R", "dataset_inputs.R"))
+IMPUTED <- resolve_dataset_inputs("neuron_neuropil", purpose = "wgcna", record_resolution = FALSE)$expression_file
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] CA2-SLM robustness figures, workbook and validation.\n")

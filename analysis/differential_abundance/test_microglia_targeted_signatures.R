@@ -867,6 +867,8 @@ run_one_gsea <- function(stats, term2gene, methods, dataset, comparison) {
   pathways <- lapply(pathways, unique)
   pathways <- pathways[vapply(pathways, function(g) sum(g %in% names(stats)) >= 3, logical(1))]
   if (!length(pathways) || length(stats) < 10) return(tibble())
+  # Fallback cap is raised to the largest mapped signature so none is silently dropped
+  max_set_size <- max(TARGETED_MAX_GS_SIZE, vapply(pathways, function(g) sum(g %in% names(stats)), integer(1)))
 
   attempt_log <- character()
   for (method_index in seq_len(nrow(methods))) {
@@ -887,17 +889,17 @@ run_one_gsea <- function(stats, term2gene, methods, dataset, comparison) {
           if ("fgseaSimple" %in% getNamespaceExports("fgsea")) {
             fgsea::fgseaSimple(
               pathways = pathways, stats = stats, minSize = 3,
-              maxSize = 500, nperm = 1000, nproc = 1
+              maxSize = max_set_size, nperm = 1000, nproc = 1
             )
           } else if (requireNamespace("BiocParallel", quietly = TRUE)) {
             fgsea::fgsea(
               pathways = pathways, stats = stats, minSize = 3,
-              maxSize = 500, BPPARAM = BiocParallel::SerialParam()
+              maxSize = max_set_size, BPPARAM = BiocParallel::SerialParam()
             )
           } else {
             fgsea::fgsea(
               pathways = pathways, stats = stats, minSize = 3,
-              maxSize = 500, nproc = 1
+              maxSize = max_set_size, nproc = 1
             )
           }
         }, gsea_seed = reproducibility$gsea_seed),
@@ -952,7 +954,7 @@ run_one_gsea <- function(stats, term2gene, methods, dataset, comparison) {
           gsea_seed = reproducibility$gsea_seed,
           n_perm_simple = reproducibility$n_perm_simple,
           geneList = stats, TERM2GENE = term2gene, minGSSize = 3,
-          maxGSSize = 500, pvalueCutoff = 1, verbose = FALSE
+          maxGSSize = max_set_size, pvalueCutoff = 1, verbose = FALSE
         ),
         error = function(e) {
           failure <<- conditionMessage(e)
@@ -1392,6 +1394,10 @@ TARGETED_GSEA_CFG <- validate_clusterprofiler_gsea_config(yaml::read_yaml(
 ))
 TARGETED_GSEA_SEED_BASE <- TARGETED_GSEA_CFG$analysis$gsea_seed_base
 TARGETED_N_PERM_SIMPLE <- TARGETED_GSEA_CFG$analysis$n_perm_simple
+# Fallback fgsea/GSEA size cap floor: the configured GO term-size cap
+TARGETED_MAX_GS_SIZE <- clusterprofiler_integer_scalar(
+  TARGETED_GSEA_CFG$analysis$max_gs_size, "config/clusterProfiler_config.yml analysis.max_gs_size"
+)
 
 id_map <- read_mouse_id_map()
 curated_term2gene <- expand_term2gene_for_uniprot(make_term2gene(signature_sets), id_map)
@@ -2088,6 +2094,7 @@ write_run_manifest(
     enrichment_method_priority = as.list(SIGNATURE_METHOD_PRIORITY),
     stochastic_fallback_seed_base = TARGETED_GSEA_SEED_BASE,
     stochastic_clusterprofiler_n_perm_simple = TARGETED_N_PERM_SIMPLE,
+    stochastic_fallback_max_set_size = paste0("max(", TARGETED_MAX_GS_SIZE, ", largest mapped signature)"),
     stochastic_rng_kind = "L'Ecuyer-CMRG/Inversion/Rejection",
     primary_fdr_scope = "within_comparison_signature_panel",
     global_fdr_sensitivity_scope = "across_all_signature_comparison_rows_within_dataset"

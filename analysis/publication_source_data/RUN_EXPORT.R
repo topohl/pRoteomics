@@ -18,6 +18,8 @@
 
 paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.R") else file.path("..", "R", "paths.R")
 source(paths_file)
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("analysis/publication_source_data/RUN_EXPORT.R", dry_run_capable = TRUE)  # waits for the normalisation decision (config/normalisation.yml)
 source(repo_path("R", "export_helpers.R"))
 
 Sys.setenv(PROTEOMICS_PROJECT_ROOT = repo_root())

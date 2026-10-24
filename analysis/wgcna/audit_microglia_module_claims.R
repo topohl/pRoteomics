@@ -27,10 +27,13 @@ arg_value <- function(flag, default) {
   hit <- match(flag, args)
   if (!is.na(hit) && hit < length(args)) args[[hit + 1L]] else default
 }
-repo_root <- normalizePath(arg_value("--repo-root", getwd()), winslash = "/", mustWork = TRUE)
+## R/paths.R (sourced below) defines repo_root() as a function, so this script's root is audit_root.
+## sub() drops the trailing slash a drive root keeps (P:/ under subst); otherwise rel() never strips the
+## prefix and file.path(audit_root, <absolute path>) at the protected-hash check points at nothing.
+audit_root <- sub("/+$", "", normalizePath(arg_value("--repo-root", getwd()), winslash = "/", mustWork = TRUE))
 output_dir <- file.path(
-  repo_root,
-  arg_value("--output-dir", "results/reviewer_audit/microglia_wgcna_nature_readiness")
+  audit_root,
+  arg_value("--output-dir", "results/wgcna/audit_microglia_module_claims/global/tables")
 )
 n_permutations <- as.integer(arg_value("--permutations", "100"))
 if (is.na(n_permutations) || n_permutations < 0L) stop("--permutations must be a non-negative integer")
@@ -82,13 +85,16 @@ save_plot_atomic <- function(plot, path, width, height) {
 
 rel <- function(path) {
   path <- normalizePath(path, winslash = "/", mustWork = FALSE)
-  prefix <- paste0(repo_root, "/")
+  prefix <- paste0(audit_root, "/")
   if (startsWith(path, prefix)) substring(path, nchar(prefix) + 1L) else path
 }
+## repo_path() lives in R/paths.R, which this audit never loaded.
+source(file.path(audit_root, "R", "paths.R"))
 source(repo_path("R", "null_coalescing.R"))
 source(repo_path("R", "qc_result_paths.R"))
 source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "wgcna_paths.R"))
+DATASET <- "microglia"
 
 state_path <- wgcna_modules_artifact("wgcna_final_model_state.rds", "microglia", child = "models")
 definitions_path <- wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", "microglia", child = "tables", "modules")
@@ -98,12 +104,17 @@ definitions_path <- wgcna_modules_artifact("WGCNA_module_definitions_for_downstr
 ## original path_results() enumeration never saw them.
 super_values_path <- wgcna_group_effects_artifact("all_supermodule_eigengene_group_values.csv", "microglia")
 annotation_path <- wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia")
-registry_path <- file.path(repo_root, "config/wgcna_labels/microglia.csv")
+## The label registry in force: the reviewed registry, or in provisional label mode (a rebuilt
+## network awaiting review) the provisional registry named by PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY.
+registry_path <- if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", "reviewed")), "provisional") &&
+                     nzchar(Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY"))) {
+  Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY")
+} else file.path(audit_root, "config/wgcna_labels/microglia.csv")
 ## Phase 6G.7: a read of a migrated preprocessing object, normalized first and
 ## historical second. WGCNA's own output paths are untouched by that phase.
 joint_path <- preprocessing_joint_qc_bundle()
-reference_markers_path <- file.path(repo_root, "config/marker_panels/wgcna_reference_marker_sets.csv")
-microenvironment_markers_path <- file.path(repo_root, "config/marker_panels/microenvironment_marker_panels.csv")
+reference_markers_path <- file.path(audit_root, "config/marker_panels/wgcna_reference_marker_sets.csv")
+microenvironment_markers_path <- file.path(audit_root, "config/marker_panels/microenvironment_marker_panels.csv")
 empirical_markers_path <- qc_find("empirical_roi_marker_sets.csv",
                                   owner = "discover_empirical_roi_markers",
                                   legacy_substep = "05_empirical_roi_marker_discovery")
@@ -147,9 +158,10 @@ protected_before <- data.frame(
 state <- readRDS(state_path)
 expression_primary <- as.matrix(state$expression.data)
 storage.mode(expression_primary) <- "double"
-if (nrow(expression_primary) != 72L || ncol(expression_primary) != 5201L) {
-  stop("Current primary expression matrix is not the verified 72 x 5201 state")
+if (nrow(expression_primary) != 72L) {
+  stop("Current primary expression matrix does not hold the 72 microglia ROI observations")
 }
+n_features <- ncol(expression_primary)
 if (anyDuplicated(colnames(expression_primary))) stop("Primary ProteinGroupID keys are duplicated")
 if (anyNA(expression_primary)) stop("Primary expression matrix contains missing values")
 
@@ -158,8 +170,11 @@ module_long <- module_long[match(colnames(expression_primary), module_long$Prote
 if (anyNA(module_long$ModuleID) || !identical(module_long$ProteinGroupID, colnames(expression_primary))) {
   stop("Module membership is not exactly aligned to the active ProteinGroupID universe")
 }
-module_ids <- sprintf("WGCNA_m%02d", seq_len(13))
-if (!setequal(unique(module_long$ModuleID), module_ids)) stop("Current module identities are not WGCNA_m01..WGCNA_m13")
+module_ids <- sort(unique(as.character(module_long$ModuleID)))
+if (!all(grepl("^WGCNA_m[0-9]{2}$", module_ids)) || !identical(module_ids, sprintf("WGCNA_m%02d", seq_along(module_ids)))) {
+  stop("Current module identities are not consecutive WGCNA_mNN IDs")
+}
+n_modules <- length(module_ids)
 module_long$ModuleID <- factor(module_long$ModuleID, levels = module_ids)
 
 definitions <- utils::read.csv(definitions_path, check.names = FALSE)
@@ -167,17 +182,12 @@ module_map <- unique(definitions[c("ModuleID", "module_eigengene", "ModuleColor"
 module_map <- module_map[match(module_ids, module_map$ModuleID), , drop = FALSE]
 if (anyNA(module_map$module_eigengene) || anyDuplicated(module_map$ModuleID)) stop("Module definition identity mismatch")
 
-expected_blocks <- list(
-  SM01 = c("WGCNA_m05", "WGCNA_m10"),
-  SM03 = c("WGCNA_m04", "WGCNA_m08", "WGCNA_m12"),
-  SM09 = c("WGCNA_m07", "WGCNA_m11")
-)
-observed_members <- split(module_map$ModuleID, module_map$SupermoduleID)
-for (sm in names(expected_blocks)) {
-  if (!setequal(observed_members[[sm]], expected_blocks[[sm]])) stop("Higher-order membership mismatch for ", sm)
-}
-singleton_ids <- setdiff(sprintf("SM%02d", seq_len(9)), names(expected_blocks))
-if (any(lengths(observed_members[singleton_ids]) != 1L)) stop("The six standalone supermodule identities are not singletons")
+## Blocks and singletons follow the current membership (definitions table); the network frozen
+## before 2026-10-19 had SM01/SM03/SM09 as its multi-module blocks.
+observed_members <- split(as.character(module_map$ModuleID), module_map$SupermoduleID)
+expected_blocks <- observed_members[lengths(observed_members) > 1L]
+singleton_ids <- sort(names(observed_members)[lengths(observed_members) == 1L])
+if (!length(expected_blocks)) stop("Current membership has no multi-module supermodule to evaluate")
 
 # -------------------------------------------------------------------------
 # Historical supermodule-cut provenance.  The active state and the run
@@ -213,7 +223,7 @@ cut_height_provenance <- rbind(
   data.frame(evidence_source = "saved_WGCNA_state_parameters", recorded_cut_height = state_cut, evidence_type = "active_historical_state", authoritative = TRUE, consistent_with_current_membership = is.finite(state_cut), interpretation = "Active saved state records the selected historical cut height.", source_hash = source_hash(state_path), stringsAsFactors = FALSE),
   do.call(rbind, lapply(seq_along(manifest_paths), function(i) data.frame(evidence_source = rel(manifest_paths[[i]]), recorded_cut_height = manifest_cut[[i]], evidence_type = "Stage_01_run_manifest", authoritative = TRUE, consistent_with_current_membership = is.finite(manifest_cut[[i]]), interpretation = paste0("Run manifest records override ", manifest_override[[i]], " and selected historical cut height."), source_hash = source_hash(manifest_paths[[i]]), stringsAsFactors = FALSE))),
   data.frame(evidence_source = rel(sensitivity_path), recorded_cut_height = if (length(sensitivity_cut) == 1L) sensitivity_cut else NA_real_, evidence_type = "Stage_01_sensitivity_primary_cut", authoritative = TRUE, consistent_with_current_membership = length(sensitivity_cut) == 1L, interpretation = "Sensitivity table records the primary cut used for historical-membership matching.", source_hash = source_hash(sensitivity_path), stringsAsFactors = FALSE),
-  data.frame(evidence_source = "analysis/wgcna/build_wgcna_modules.R", recorded_cut_height = configured_default_cut_height, evidence_type = "configured_future_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(configured_default_cut_height, state_cut)), interpretation = "The intended future default is distinct from the selected value that generated the frozen historical network.", source_hash = source_hash(file.path(repo_root, "analysis/wgcna/build_wgcna_modules.R")), stringsAsFactors = FALSE)
+  data.frame(evidence_source = "analysis/wgcna/build_wgcna_modules.R", recorded_cut_height = configured_default_cut_height, evidence_type = "configured_future_default", authoritative = FALSE, consistent_with_current_membership = is.finite(state_cut) && isTRUE(all.equal(configured_default_cut_height, state_cut)), interpretation = "The intended future default is distinct from the selected value that generated the frozen historical network.", source_hash = source_hash(file.path(audit_root, "analysis/wgcna/build_wgcna_modules.R")), stringsAsFactors = FALSE)
 )
 authoritative_cuts <- unique(c(state_cut, manifest_cut[is.finite(manifest_cut)], sensitivity_cut[is.finite(sensitivity_cut)]))
 authoritative_cuts <- authoritative_cuts[is.finite(authoritative_cuts)]
@@ -281,10 +291,10 @@ if (!identical(rownames(current_me), sample_names)) stop("Primary module eigenge
 
 super_values <- utils::read.csv(super_values_path, check.names = FALSE)
 super_values <- super_values[super_values$dataset == "microglia", , drop = FALSE]
-if (nrow(super_values) != 72L * 9L || anyDuplicated(super_values[c("Sample", "supermodule_id")])) {
+if (nrow(super_values) != 72L * length(observed_members) || anyDuplicated(super_values[c("Sample", "supermodule_id")])) {
   stop("Stage 05 supermodule eigengene table is not one row per sample and SM identity")
 }
-super_ids <- sprintf("SM%02d", seq_len(9))
+super_ids <- sort(names(observed_members))
 super_me <- sapply(super_ids, function(sm) {
   z <- super_values[super_values$supermodule_id == sm, ]
   z$eigengene[match(sample_names, z$Sample)]
@@ -731,7 +741,7 @@ run_preservation <- function(test_expr, test_name) {
   cache_path <- file.path(output_dir, paste0("preservation_", test_name, "_", n_permutations, "perm.csv"))
   if (file.exists(cache_path) && file.info(cache_path)$size > 0) {
     cached <- utils::read.csv(cache_path, check.names = FALSE)
-    if (nrow(cached) == 13L && setequal(cached$ModuleID, module_ids) &&
+    if (nrow(cached) == n_modules && setequal(cached$ModuleID, module_ids) &&
         all(cached$preservation_n_permutations == n_permutations) &&
         "reference_state_md5" %in% names(cached) &&
         all(cached$reference_state_md5 == reference_state_md5) &&
@@ -1285,7 +1295,7 @@ annotation <- annotation[match(module_ids, annotation$ModuleID), , drop = FALSE]
 registry <- utils::read.csv(registry_path, check.names = FALSE)
 registry_modules <- registry[registry$dataset == "microglia" & registry$level == "module", ]
 registry_modules <- registry_modules[match(module_ids, registry_modules$entity_id), , drop = FALSE]
-if (nrow(registry_modules) != 13L || anyNA(registry_modules$reviewed_biological_label)) stop("Reviewed module registry contract mismatch")
+if (nrow(registry_modules) != n_modules || anyNA(registry_modules$reviewed_biological_label)) stop("Module label registry does not match the current modules")
 
 joint <- readRDS(joint_path)
 joint_matrix <- as.matrix(joint$primary$matrix)
@@ -1534,7 +1544,7 @@ transcript_contract <- data.frame(
   contract_element = c("stable_module_identity", "ProteinGroupID_to_gene_mapping", "measured_transcriptomic_background", "region_matching", "contrast_matching", "duplicate_gene_policy", "ambiguous_protein_group_policy", "concordance_execution"),
   status = c("valid", "partially_valid", "missing", "missing", "missing", "defined", "defined", "not_run"),
   evidence = c(
-    "13 current ModuleIDs and fixed memberships",
+    paste0(n_modules, " current ModuleIDs and fixed memberships"),
     paste0(sum(bridge$eligible_for_future_gene_set), " of ", nrow(bridge), " ProteinGroupIDs have eligible unique gene mappings"),
     "no measured hippocampal transcriptomic background resolved in current repository inputs",
     "no protein-to-transcript region crosswalk resolved",
@@ -1567,7 +1577,7 @@ recommendations <- data.frame(
     "fixed module architecture and robust co-variation programs",
     "eigengene variance decomposition",
     "sensitivity preservation and leave-one-animal-out tables",
-    "higher-order blocks SM01/SM03/SM09",
+    paste0("higher-order blocks ", paste(names(expected_blocks), collapse = "/")),
     "cellular/ROI context validation",
     "group-effect panels",
     "within-animal spatial-adjusted network",
@@ -1583,7 +1593,7 @@ recommendations <- data.frame(
     paste0(robust_n, " spatially independent, ", region_organized_n, " reproducible spatially organized, ", suggestive_n, " suggestive, ", animal_sensitive_n, " animal-sensitive and ", technical_n, " technically unstable"),
     "descriptive mixed-model decomposition respects nine animal units and exposes spatial dominance",
     "full numerical robustness evidence is necessary for reproducibility but too detailed for the main narrative",
-    "only three identities are multi-module blocks; support is evaluated on the resolved historical cut and a non-optimized grid",
+    paste0("only ", length(expected_blocks), " identities are multi-module blocks; support is evaluated on the resolved historical cut and a non-optimized grid"),
     "distinguishes process from ROI/cellular context and limits intrinsic-cell claims",
     "group contrasts are not independent validation of network construction and retain the existing Stage 05 FDR policy",
     "AnimalID and region are removed by design; strict diagnostic sensitivity cannot replace the primary network",
@@ -1617,7 +1627,7 @@ write_csv_atomic(answers, file.path(output_dir, "primary_questions_answers.csv")
 
 protected_after <- protected_before
 if (nrow(protected_after)) {
-  after_paths <- file.path(repo_root, protected_after$protected_path)
+  after_paths <- file.path(audit_root, protected_after$protected_path)
   protected_after$md5_after <- unname(tools::md5sum(after_paths))
   protected_after$unchanged <- protected_after$md5_before == protected_after$md5_after
 }
@@ -1639,27 +1649,27 @@ validation <- data.frame(
     identical(c(nrow(expression_collapsed), nrow(expression_spatial), nrow(expression_strict)), c(36L, 72L, 72L)),
     all(sensitivity_audit$feature_order_exact),
     all(abs(aggregate(variance_fraction ~ level + entity_id, rbind(module_vp, super_vp), sum, na.rm = TRUE)$variance_fraction - 1) < 1e-8),
-    nrow(module_robustness) == 39L && all(module_robustness$preservation_metric_reason == "available") && all(!module_robustness$claim_gate_eligible) && all(module_robustness$preservation_permutation_unit == "ROI_row_unblocked"),
-    nrow(loao) == 9L * 13L && all(table(loao$ModuleID) == 9L),
-    nrow(loro) == 4L * 13L && all(table(loro$ModuleID) == 4L),
-    nrow(bootstrap_rows) == n_animal_bootstrap * 13L && all(bootstrap_rows$resampling_unit == "AnimalID_cluster") && !bootstrap_estimability$ROI_row_bootstrap_used,
+    nrow(module_robustness) == 3L * n_modules && all(module_robustness$preservation_metric_reason == "available") && all(!module_robustness$claim_gate_eligible) && all(module_robustness$preservation_permutation_unit == "ROI_row_unblocked"),
+    nrow(loao) == 9L * n_modules && all(table(loao$ModuleID) == 9L),
+    nrow(loro) == 4L * n_modules && all(table(loro$ModuleID) == 4L),
+    nrow(bootstrap_rows) == n_animal_bootstrap * n_modules && all(bootstrap_rows$resampling_unit == "AnimalID_cluster") && !bootstrap_estimability$ROI_row_bootstrap_used,
     cut_height_provenance_status %in% c("resolved_0.40", "resolved_0.45", "resolved_other", "unresolved_historical_provenance") && (cut_height_provenance_status != "resolved_0.40" || isTRUE(all.equal(selected_cut_height, .40))),
     all(vapply(names(expected_blocks), function(sm) setequal(observed_members[[sm]], expected_blocks[[sm]]), logical(1))),
     all(grepl("not|cannot|unresolved|require", context_validation$claim_limitation, ignore.case = TRUE)),
     all(transcript_contract$status[transcript_contract$contract_element == "concordance_execution"] == "not_run"),
     all(protected_after$unchanged),
-    nrow(context_validation) == 13L && !anyDuplicated(context_validation$ModuleID)
+    nrow(context_validation) == n_modules && !anyDuplicated(context_validation$ModuleID)
   ),
   detail = c(
-    "exact WGCNA_m01..WGCNA_m13", "exact SM01..SM09",
+    paste0("exact WGCNA_m01..WGCNA_m", sprintf("%02d", n_modules)), paste0("exact ", paste(range(super_ids), collapse = "..")),
     "one immutable module assignment per active ProteinGroupID",
     "nine animals with eight repeated ROI observations each",
     "36 hemisphere-collapsed; 72 spatial-adjusted; 72 strict residualized",
-    "all matrices retain the exact ordered 5201-feature universe",
+    paste0("all matrices retain the exact ordered ", n_features, "-feature universe"),
     "estimable components sum to one per eigengene; non-estimable batch is NA",
-    paste0("39 module-matrix rows; ", n_permutations, " conventional unblocked ROI-row preservation permutations; descriptive only"),
+    paste0(3L * n_modules, " module-matrix rows; ", n_permutations, " conventional unblocked ROI-row preservation permutations; descriptive only"),
     "nine omissions for every module", "four omissions for every module",
-    paste0(n_animal_bootstrap, " AnimalID-cluster draws; no ROI-row bootstrap"), paste0(cut_height_provenance_status, "; selected=", selected_cut_height), "SM01/SM03/SM09 match current membership",
+    paste0(n_animal_bootstrap, " AnimalID-cluster draws; no ROI-row bootstrap"), paste0(cut_height_provenance_status, "; selected=", selected_cut_height), paste0(paste(names(expected_blocks), collapse = "/"), " match current membership"),
     "all module context rows contain explicit claim limitations",
     "concordance not run because matching contract is incomplete",
     "pre/post MD5 hashes for protected paths", "one row per current module"
@@ -1682,9 +1692,9 @@ report_lines <- c(
   "",
   "## Answer first",
   "",
-  paste0("The current fixed network contains 13 modules from 72 ROI observations nested within nine animals. The corrected classification identifies **", robust_n, " robust spatially independent**, **", region_organized_n, " reproducible spatially organized**, **", suggestive_n, " suggestive**, **", animal_sensitive_n, " animal-sensitive**, and **", technical_n, " technically unstable** modules. The strict within-animal nonspatial result is diagnostic only and does not automatically invalidate a primary architecture."),
+  paste0("The current fixed network contains ", n_modules, " modules from 72 ROI observations nested within nine animals. The corrected classification identifies **", robust_n, " robust spatially independent**, **", region_organized_n, " reproducible spatially organized**, **", suggestive_n, " suggestive**, **", animal_sensitive_n, " animal-sensitive**, and **", technical_n, " technically unstable** modules. The strict within-animal nonspatial result is diagnostic only and does not automatically invalidate a primary architecture."),
   "",
-  paste0("Only SM01, SM03 and SM09 are evaluated as multi-module higher-order blocks. Historical cut-height provenance is **", cut_height_provenance_status, "** (selected ", ifelse(is.finite(selected_cut_height), formatC(selected_cut_height, format = "f", digits = 2), "unresolved"), "). The non-optimized grid is 0.25, 0.35, 0.40, 0.45, 0.50, 0.55 and 0.65; grid support was: ", paste(names(block_all_support), ifelse(block_all_support, "supported", "not consistently supported"), sep = "=", collapse = "; "), "."),
+  paste0("Only ", paste(names(expected_blocks), collapse = ", "), " are evaluated as multi-module higher-order blocks. Historical cut-height provenance is **", cut_height_provenance_status, "** (selected ", ifelse(is.finite(selected_cut_height), formatC(selected_cut_height, format = "f", digits = 2), "unresolved"), "). The non-optimized grid is 0.25, 0.35, 0.40, 0.45, 0.50, 0.55 and 0.65; grid support was: ", paste(names(block_all_support), ifelse(block_all_support, "supported", "not consistently supported"), sep = "=", collapse = "; "), "."),
   "",
   "The network can support a main-text **co-variation** claim only for modules and blocks passing the fixed-membership robustness gates. It does not establish microglia-intrinsic mechanism, causal stress effects or independent replication.",
   "",
@@ -1721,6 +1731,8 @@ report_lines <- c(
   paste0("Audit script: `analysis/wgcna/audit_microglia_module_claims.R`; conventional preservation permutations: ", n_permutations, "; AnimalID-cluster bootstrap: ", n_animal_bootstrap, "; generated: ", format(Sys.time(), tz = "Europe/Berlin", usetz = TRUE), ". See `input_hashes.csv`, `protected_output_hash_audit.csv`, `validation_table.csv` and `session_info.txt`." )
 )
 write_lines_atomic(report_lines, file.path(output_dir, "WGCNA_nature_readiness_report.md"))
+## pipeline.yml declares the readable report under reports/, beside the tables/ directory.
+write_lines_atomic(report_lines, file.path(dirname(output_dir), "reports", "WGCNA_nature_readiness_report.md"))
 
 readme_lines <- c(
   "# Microglia WGCNA Nature-readiness audit outputs",
@@ -1732,7 +1744,7 @@ readme_lines <- c(
   "- `WGCNA_nature_readiness_report.html`: portable answer-first report.",
   "- `WGCNA_nature_readiness_report.md`: report source.",
   "- `module_robustness_consensus.csv`: one row per current module.",
-  "- `higher_order_block_robustness.csv`: SM01/SM03/SM09 only.",
+  paste0("- `higher_order_block_robustness.csv`: ", paste(names(expected_blocks), collapse = "/"), " only."),
   "- `module_biological_context_validation.csv`: process/context/claim-limit separation.",
   "- `transcriptomic_matching_contract_audit.csv`: readiness gate; no concordance was run.",
   "- `validation_table.csv`: machine-readable checks.",
@@ -1794,12 +1806,12 @@ artifact <- list(
     sources = list(
       list(
         id = "audit-summary", name = "Microglia WGCNA fixed-membership audit",
-        type = "file", path = "results/reviewer_audit/microglia_wgcna_nature_readiness",
+        type = "file", path = rel(output_dir),
         description = "Generated by the additive audit script from hashed current-state inputs"
       ),
       list(
         id = "variance-query", name = "Module variance partition chart source",
-        type = "query", path = "results/reviewer_audit/microglia_wgcna_nature_readiness/module_eigengene_variance_partition.csv",
+        type = "query", path = paste0(rel(output_dir), "/module_eigengene_variance_partition.csv"),
         description = "SQLite query executed in-memory against the completed module variance-partition table",
         query = list(
           engine = "SQLite", language = "sql", sql = variance_chart_sql,

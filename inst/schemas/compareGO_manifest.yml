@@ -50,3 +50,7 @@ columns:
   term_comparison_file: {type: character}
   term_gene_provenance_output_file: {type: character}
   analysis_status_summary_file: {type: character}
+  output_table_declared: {type: character}
+  collapsed_gene_input_file_declared: {type: character}
+  term_gene_provenance_file_declared: {type: character}
+  input_gene_file_declared: {type: character}

@@ -465,6 +465,16 @@ validate_known_pipeline_output <- function(path, dataset = NULL) {
 
   messages <- character()
   required <- specs[[filename]]$required_columns
+  # The reviewed microglia lookup uses the canonical label-contract schema, not the legacy 18-column one.
+  if (identical(filename, "WGCNA_final_label_lookup.csv") && "canonical_short_label" %in% names(df)) {
+    required <- c(
+      "dataset", "level", "entity_id", "parent_entity_id", "canonical_biological_label",
+      "canonical_short_label", "canonical_plot_label", "biological_label_confidence",
+      "manual_review_required", "structural_status", "n_member_modules", "member_ModuleIDs",
+      "member_modules_fingerprint", "label_contract_version", "label_source", "label_rationale",
+      "unsafe_interpretation", "final_plot_label"
+    )
+  }
   missing <- setdiff(required, names(df))
   if (length(missing)) messages <- c(messages, paste0("Missing required column(s): ", paste(missing, collapse = ", ")))
   recommended <- specs[[filename]]$recommended_columns %||% character()

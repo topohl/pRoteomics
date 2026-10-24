@@ -627,16 +627,24 @@ wgcna_group_effect_consumer_validate_adapted <- function(data) {
 
   expected <- .wgcna_group_effect_consumer_expected_adapter_columns(data)
   for (column in added) {
-    if (!identical(typeof(data[[column]]), typeof(expected[[column]]))) {
+    observed <- data[[column]]
+    # A CSV round trip reads integer columns back as double (or all-NA as logical); such columns are
+    # compared as integers, and the exact source-field match below still applies.
+    if (identical(typeof(expected[[column]]), "integer") &&
+        ((is.double(observed) && all(is.na(observed) | observed == round(observed))) ||
+         (is.logical(observed) && all(is.na(observed))))) {
+      observed <- as.integer(observed)
+    }
+    if (!identical(typeof(observed), typeof(expected[[column]]))) {
       stop(
         "Adapted Stage 05 column ", column,
-        " has type ", typeof(data[[column]]),
+        " has type ", typeof(observed),
         "; expected ", typeof(expected[[column]]), ".",
         call. = FALSE
       )
     }
     matches <- .wgcna_group_effect_consumer_exact_matches(
-      data[[column]], expected[[column]]
+      observed, expected[[column]]
     )
     if (any(!matches)) {
       .wgcna_group_effect_consumer_stop_rows(

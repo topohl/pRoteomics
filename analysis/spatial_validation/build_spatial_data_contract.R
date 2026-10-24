@@ -82,6 +82,7 @@ if (isTRUE(cli$dry_run)) {
 
 message("Building hemisphere-resolved levels")
 levels_by_dataset <- list()
+canonical_by_dataset <- list()
 for (ds in DATASETS) {
   inputs <- resolve_dataset_inputs(ds, purpose = "wgcna", script = SCRIPT_ID,
                                    stage = "networks")

@@ -19,6 +19,8 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) {
   file.path("..", "R", "paths.R")
 }
 source(paths_file)
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("tools/generate_publication_freeze_manifest.R")  # waits for the normalisation decision (config/normalisation.yml)
 source(repo_path("R", "publication_freeze_utils.R"))
 
 args <- commandArgs(trailingOnly = TRUE)

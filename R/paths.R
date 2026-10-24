@@ -1110,6 +1110,16 @@ write_config_snapshot <- function(config, path) {
   invisible(path)
 }
 
+# Sample centring of the analysis version (config/normalisation.yml) and the version stamped in the working tree;
+# recorded in every run and result manifest so outputs of the two versions cannot be mixed unnoticed.
+normalisation_provenance_safe <- function() {
+  f <- tryCatch(repo_path("R", "normalisation_contract.R"), error = function(e) "")
+  if (!nzchar(f) || !file.exists(f)) return(NULL)
+  env <- new.env(parent = environment(repo_path))
+  tryCatch({ sys.source(f, envir = env); env$normalisation_provenance() },
+           error = function(e) list(error = conditionMessage(e)))
+}
+
 # Provenance for one canonical result family, written into its manifests/
 # child: config/output_layout.yml section 9.
 #
@@ -1157,6 +1167,7 @@ write_result_manifest <- function(domain, analysis_id, scope = "global",
     upstream_inputs = hash_map(inputs),
     outputs = hash_map(outputs),
     parameters = parameters,
+    normalisation = normalisation_provenance_safe(),
     statistical_contract = "docs/MANUSCRIPT_STATISTICAL_CONTRACT.md",
     notes = notes
   )
@@ -1169,10 +1180,16 @@ write_result_manifest <- function(domain, analysis_id, scope = "global",
 write_run_manifest <- function(path, inputs = list(), outputs = list(), parameters = list(), notes = NULL) {
   dir_create(dirname(path))
 
+  # Keep role names so input_hashes can be matched by role (WGCNA cache check).
+  # Unnamed inputs stay a plain list; gaps get the file name, duplicates a suffix.
   flatten_paths <- function(x) {
     vals <- unlist(x, recursive = TRUE, use.names = TRUE)
     vals <- vals[!is.na(vals) & nzchar(as.character(vals))]
-    as.character(vals)
+    vals <- stats::setNames(as.character(vals), names(vals))
+    roles <- names(vals)
+    if (!any(nzchar(roles))) return(unname(vals))
+    roles[!nzchar(roles)] <- basename(vals[!nzchar(roles)])
+    stats::setNames(vals, make.unique(roles))
   }
 
   input_paths <- flatten_paths(inputs)
@@ -1193,6 +1210,7 @@ write_run_manifest <- function(path, inputs = list(), outputs = list(), paramete
     input_hashes = input_hashes,
     outputs = outputs,
     parameters = parameters,
+    normalisation = normalisation_provenance_safe(),
     notes = notes,
     session_info = relative_to(session_path)
   )

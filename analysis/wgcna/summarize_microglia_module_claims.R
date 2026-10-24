@@ -14,10 +14,11 @@ arg_value <- function(flag, default) {
   hit <- match(flag, args)
   if (!is.na(hit) && hit < length(args)) args[[hit + 1L]] else default
 }
-repo_root <- normalizePath(arg_value("--repo-root", getwd()), winslash = "/", mustWork = TRUE)
+## A drive root (P:/ under subst) keeps its trailing slash, which would shift the substring() offset used for the manifest below.
+repo_root <- sub("/+$", "", normalizePath(arg_value("--repo-root", getwd()), winslash = "/", mustWork = TRUE))
 output_dir <- file.path(
   repo_root,
-  arg_value("--output-dir", "results/reviewer_audit/microglia_wgcna_nature_readiness")
+  arg_value("--output-dir", "results/wgcna/audit_microglia_module_claims/global/tables")
 )
 if (!dir.exists(output_dir)) stop("Audit output directory does not exist: ", output_dir)
 
@@ -59,7 +60,7 @@ required <- c(
   "validation_table.csv",
   "protected_output_hash_audit.csv",
   "WGCNA_nature_readiness_report_artifact.json",
-  "WGCNA_nature_readiness_report.html",
+  ## WGCNA_nature_readiness_report.html is rendered outside this repository (no script here writes it); not required.
   "WGCNA_nature_readiness_report.md",
   "session_info.txt",
   "input_hashes.csv",
@@ -75,6 +76,10 @@ blocks <- utils::read.csv(file.path(output_dir, "higher_order_block_robustness.c
 context <- utils::read.csv(file.path(output_dir, "module_biological_context_validation.csv"), check.names = FALSE)
 protected <- utils::read.csv(file.path(output_dir, "protected_output_hash_audit.csv"), check.names = FALSE)
 artifact <- jsonlite::read_json(file.path(output_dir, "WGCNA_nature_readiness_report_artifact.json"), simplifyVector = FALSE)
+## Expected counts follow the current network: modules from the consensus table, multi-module blocks from the block readiness table.
+n_modules <- nrow(utils::read.csv(file.path(output_dir, "module_robustness_consensus.csv"), check.names = FALSE))
+n_blocks <- nrow(utils::read.csv(file.path(output_dir, "higher_order_block_readiness_summary.csv"), check.names = FALSE))
+n_iterations <- length(unique(bootstrap$bootstrap_iteration))
 
 checks <- data.frame(
   check_id = c(
@@ -87,33 +92,35 @@ checks <- data.frame(
     all(file.exists(required_paths)),
     all(file.exists(required_paths)) && all(file.info(required_paths)$size > 0),
     !any(grepl("\\.tmp-|\\.part$|\\.incomplete$", list.files(output_dir, all.files = TRUE))),
-    nrow(robustness) == 39L && !anyDuplicated(robustness[c("sensitivity_id", "ModuleID")]),
-    nrow(loao) == 117L && !anyDuplicated(loao[c("omitted_AnimalID", "ModuleID")]),
-    nrow(loro) == 52L && !anyDuplicated(loro[c("omitted_region", "ModuleID")]),
-    nrow(bootstrap) == 6500L && all(bootstrap$resampling_unit == "AnimalID_cluster") && length(unique(bootstrap$ModuleID)) == 13L && length(unique(bootstrap$bootstrap_iteration)) == 500L,
-    nrow(blocks) == 12L && !anyDuplicated(blocks[c("sensitivity_id", "SupermoduleID")]),
-    nrow(context) == 13L && !anyDuplicated(context$ModuleID),
+    nrow(robustness) == 3L * n_modules && !anyDuplicated(robustness[c("sensitivity_id", "ModuleID")]),
+    nrow(loao) == 9L * n_modules && !anyDuplicated(loao[c("omitted_AnimalID", "ModuleID")]),
+    nrow(loro) == 4L * n_modules && !anyDuplicated(loro[c("omitted_region", "ModuleID")]),
+    nrow(bootstrap) == n_iterations * n_modules && all(bootstrap$resampling_unit == "AnimalID_cluster") && length(unique(bootstrap$ModuleID)) == n_modules && n_iterations == 500L,
+    nrow(blocks) == 4L * n_blocks && !anyDuplicated(blocks[c("sensitivity_id", "SupermoduleID")]),
+    nrow(context) == n_modules && !anyDuplicated(context$ModuleID),
     identical(artifact$surface, "report") && identical(artifact$manifest$version, 1L) && identical(artifact$snapshot$version, 1L),
-    file.exists(file.path(output_dir, "WGCNA_nature_readiness_report.html")) && file.info(file.path(output_dir, "WGCNA_nature_readiness_report.html"))$size > 100000,
+    !file.exists(file.path(output_dir, "WGCNA_nature_readiness_report.html")) || file.info(file.path(output_dir, "WGCNA_nature_readiness_report.html"))$size > 100000,
     all(protected$unchanged)
   ),
   detail = c(
     paste(required, collapse = ";"),
     "all required audit artifacts have nonzero size",
     "no .tmp, .part or .incomplete files",
-    "3 sensitivity matrices x 13 stable modules",
-    "9 animals x 13 stable modules",
-    "4 regions x 13 stable modules",
-    "500 AnimalID-cluster iterations x 13 stable modules; no ROI-row bootstrap",
-    "4 matrices x 3 multi-module blocks",
+    paste0("3 sensitivity matrices x ", n_modules, " stable modules"),
+    paste0("9 animals x ", n_modules, " stable modules"),
+    paste0("4 regions x ", n_modules, " stable modules"),
+    paste0("500 AnimalID-cluster iterations x ", n_modules, " stable modules; no ROI-row bootstrap"),
+    paste0("4 matrices x ", n_blocks, " multi-module blocks"),
     "one context row per stable module",
     "surface=report; manifest.version=1; snapshot.version=1",
-    "canonical portable builder output exceeds 100 KB",
+    "portable HTML, when present, exceeds 100 KB",
     "primary state, Stage 05, registry and current publication figures retain pre-run MD5 hashes"
   ),
   stringsAsFactors = FALSE
 )
-atomic_write_csv(checks, file.path(output_dir, "finalization_validation.csv"))
+final_dir <- file.path(repo_root, "results/wgcna/summarize_microglia_module_claims/global/tables")
+dir.create(final_dir, recursive = TRUE, showWarnings = FALSE)
+atomic_write_csv(checks, file.path(final_dir, "finalization_validation.csv"))
 if (!all(checks$passed)) stop("Finalization checks failed: ", paste(checks$check_id[!checks$passed], collapse = ", "))
 
 files <- list.files(output_dir, recursive = TRUE, full.names = TRUE, all.files = TRUE)

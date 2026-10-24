@@ -20,6 +20,8 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "dataset_inputs.R"))
 source(repo_path("R", "module_contracts.R"))
 source(repo_path("R", "wgcna_paths.R"))
+source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
+source(repo_path("R", "enrichment_io.R"))  # read_canonical_clusterprofiler_manifest(): runtime paths, long-path staging
 
 packages <- c("dplyr", "tidyr", "readr", "stringr", "tibble", "purrr")
 missing_packages <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -52,11 +54,9 @@ write_overlap_xlsx <- function(sheets, path) {
   invisible(path)
 }
 
-tokenize_proteins <- function(x) {
-  x <- normalize_module_identifier(x)
-  x <- unlist(strsplit(x, "[;/,|[:space:]]+"))
-  unique(x[nzchar(x) & !is.na(x)])
-}
+# Both sides are compared as dataset-scoped ProteinGroupIDs over the WGCNA universe.
+de_set_rule <- "DA table significant (padj < 0.05)"
+leading_edge_set_rule <- "core_enrichment_member of p.adjust < 0.05 terms, via term_gene_provenance"
 
 # Enrichment manifests record ABSOLUTE paths from the machine that produced them
 # (a drive letter followed by the processed-data path). On any other machine
@@ -74,22 +74,62 @@ resolve_manifest_path <- function(path) {
   NA_character_
 }
 
-read_protein_set <- function(path) {
-  path <- resolve_manifest_path(path)
-  if (is.na(path) || !file.exists(path)) return(character())
-  df <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
-  if (is.null(df) || !nrow(df)) return(character())
-  preferred <- intersect(c("UniProt", "ProteinID", "GeneSymbol", "Gene", "gene", "SYMBOL", "symbol"), names(df))
-  col <- if (length(preferred)) preferred[[1]] else names(df)[[1]]
-  tokenize_proteins(df[[col]])
+# A declared file that cannot be read, or lacks the contract columns, fails loudly
+# instead of reading as an empty set.
+read_contract_columns <- function(path, columns, optional = character()) {
+  if (length(path) != 1L || is.na(path) || !nzchar(path)) return(NULL)
+  resolved <- resolve_manifest_path(path)
+  if (is.na(resolved)) stop("Declared enrichment input is not readable: ", path, call. = FALSE)
+  df <- readr::read_csv(
+    resolved, col_select = dplyr::any_of(c(columns, optional)),
+    show_col_types = FALSE, progress = FALSE
+  )
+  missing <- setdiff(columns, names(df))
+  if (length(missing)) {
+    stop("Declared enrichment input ", resolved, " is missing column(s): ",
+         paste(missing, collapse = ", "), call. = FALSE)
+  }
+  df
 }
 
-read_leading_edge_set <- function(path) {
-  path <- resolve_manifest_path(path)
-  if (is.na(path) || !file.exists(path)) return(character())
-  df <- tryCatch(readr::read_csv(path, show_col_types = FALSE), error = function(e) NULL)
-  if (is.null(df) || !"core_enrichment" %in% names(df)) return(character())
-  tokenize_proteins(df$core_enrichment)
+# DE set: ProteinGroupIDs the per-contrast DA table flags significant.
+read_de_set <- function(path) {
+  df <- read_contract_columns(path, c("ProteinGroupID", "significant"))
+  if (is.null(df)) return(character())
+  unique(as.character(df$ProteinGroupID[as.logical(df$significant) %in% TRUE]))
+}
+
+# Leading edge: core members of this comparison's p.adjust < 0.05 terms. The producer's
+# term-gene provenance bridges official symbols (KEGG: Entrez) to ProteinGroupIDs; same
+# rule as build_go_program_atlas.R.
+read_leading_edge_set <- function(term_path, provenance_path, comparison) {
+  terms <- read_contract_columns(term_path, c("ID", "p.adjust"), optional = "comparison")
+  provenance <- read_contract_columns(provenance_path, c(
+    "comparison", "term_id", "ProteinGroupID", "core_enrichment_member", "gene_level_claim_allowed"
+  ))
+  if (is.null(terms) || is.null(provenance)) return(character())
+  # The compareGO term table pools all comparisons.
+  if ("comparison" %in% names(terms)) terms <- terms[terms$comparison %in% comparison, , drop = FALSE]
+  significant <- terms$ID[is.finite(terms$p.adjust) & terms$p.adjust < 0.05]
+  keep <- provenance$comparison %in% comparison & provenance$term_id %in% significant &
+    provenance$core_enrichment_member %in% TRUE & provenance$gene_level_claim_allowed %in% TRUE
+  unique(as.character(provenance$ProteinGroupID[keep]))
+}
+
+# Exact, namespace-checked identity through the GSEA-WGCNA concordance token map; a
+# ProteinGroupID from another dataset fails closed there.
+map_to_wgcna_universe <- function(ids, bundle, dataset) {
+  ids <- unique(ids[!is.na(ids) & nzchar(ids)])
+  if (!length(ids)) return(character())
+  if (all(gww_is_protein_group_id(ids, dataset)) && !any(ids %in% bundle$universe$ProteinGroupID)) {
+    return(character())
+  }
+  evidence <- data.frame(
+    dataset = dataset, gsea_evidence_id = "set",
+    leading_edge_accessions = paste(ids, collapse = ";"),
+    leading_edge_token_type = "protein_group_id", stringsAsFactors = FALSE
+  )
+  gww_split_proteins(gww_map_leading_edges(evidence, bundle$token_map)$leading_edge_proteins)
 }
 
 empty_overlap_status <- function(dataset, reason) {
@@ -101,7 +141,7 @@ empty_overlap_status <- function(dataset, reason) {
   )
 }
 
-overlap_stats <- function(module_set, signature_set, universe) {
+overlap_stats <- function(module_set, signature_set, universe, labels = NULL) {
   module_set <- intersect(unique(module_set), universe)
   signature_set <- intersect(unique(signature_set), universe)
   overlap <- intersect(module_set, signature_set)
@@ -113,12 +153,14 @@ overlap_stats <- function(module_set, signature_set, universe) {
     d <- max(length(universe) - a - b - c, 0)
     p <- stats::fisher.test(matrix(c(a, b, c, d), nrow = 2), alternative = "greater")$p.value
   }
+  top <- utils::head(overlap, 25)
   list(
     n_signature = length(signature_set),
     n_overlap = length(overlap),
     jaccard = if (length(union(module_set, signature_set))) length(overlap) / length(union(module_set, signature_set)) else NA_real_,
     fisher_p = p,
-    overlap_proteins = paste(utils::head(overlap, 25), collapse = ";")
+    overlap_proteins = paste(top, collapse = ";"),
+    overlap_genes = paste(if (is.null(labels)) top else dplyr::coalesce(unname(labels[top]), top), collapse = ";")
   )
 }
 
@@ -133,14 +175,9 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   definitions_file <- wgcna_modules_artifact("WGCNA_module_definitions_for_downstream.csv", dataset, child = "tables", "modules")
   universe_file <- wgcna_modules_artifact("WGCNA_feature_universe.csv", dataset, child = "tables", "modules")
   priority_file <- wgcna_modules_artifact("WGCNA_module_priority_summary.csv", dataset, child = "tables", "modules")
-  cluster_manifest <- find_latest(
-    path_results("reports", "04_differential_expression_enrichment", "clusterProfiler", dataset),
-    "^clusterProfiler_manifest.*\\.csv$"
-  )
-  compare_manifest <- first_existing_path(c(
-    path_processed("04_differential_expression_enrichment", "compareGO", dataset, "compareGO_input_manifest.csv"),
-    find_latest(path_processed("04_differential_expression_enrichment", "compareGO", dataset), "^compareGO_input_manifest.*\\.csv$")
-  ))
+  # The current enrichment producers' manifests; the historical 04_* copies are older runs.
+  cluster_manifest <- path_results("differential_abundance", "run_clusterprofiler_enrichment", dataset, "models", "clusterProfiler_manifest.csv")
+  compare_manifest <- path_results("differential_abundance", "compare_go_enrichment", dataset, "models", "compareGO_input_manifest.csv")
 
   if (isTRUE(dry_run)) {
     dry_run_line("Script", "analysis/wgcna/compare_module_enrichment_overlap.R")
@@ -175,17 +212,17 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
 
   modules_raw <- readr::read_csv(definitions_file, show_col_types = FALSE)
   validate_wgcna_module_definitions(modules_raw, "WGCNA downstream definitions")
-  # Accept both the pre- and post-protein-group-migration identifier schemas.
-  modules_raw <- wgcna_normalize_protein_identifier_columns(modules_raw)
-  universe_raw <- readr::read_csv(universe_file, show_col_types = FALSE)
-  universe_raw <- wgcna_normalize_protein_identifier_columns(universe_raw)
-  require_module_contract_columns(universe_raw, c("ProteinID", "UniProt", "GeneSymbol", "included_in_wgcna"), "WGCNA feature universe")
-  universe <- unique(c(
-    tokenize_proteins(universe_raw$ProteinID),
-    tokenize_proteins(universe_raw$UniProt),
-    tokenize_proteins(universe_raw$GeneSymbol)
-  ))
-  universe <- universe[nzchar(universe)]
+  universe_raw <- readr::read_csv(
+    universe_file,
+    col_select = dplyr::any_of(c(
+      "ProteinGroupID", "included_in_wgcna", "ModuleID", "member_accessions", "RepresentativeUniProt",
+      "MemberUniProts", "representative_accession", "official_gene_symbol"
+    )),
+    show_col_types = FALSE
+  )
+  # The ProteinGroupID universe and token map the GSEA-WGCNA concordance uses.
+  bundle <- gww_build_universe_bundle(universe_raw, dataset)
+  universe <- bundle$universe$ProteinGroupID
   if (!length(universe)) {
     status <- empty_overlap_status(dataset, paste("WGCNA feature universe was empty:", universe_file))
     readr::write_csv(status, status_csv, na = "")
@@ -193,30 +230,37 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
     write_overlap_xlsx(list(status = status), out_xlsx)
     return(invisible(status))
   }
-  for (needed_col in c("UniProt", "ProteinID", "GeneSymbol")) {
-    if (!needed_col %in% names(modules_raw)) modules_raw[[needed_col]] <- NA_character_
+  gene_labels <- if ("official_gene_symbol" %in% names(universe_raw)) {
+    stats::setNames(as.character(universe_raw$official_gene_symbol), as.character(universe_raw$ProteinGroupID))
   }
   modules <- modules_raw %>%
     dplyr::mutate(
       ModuleID = as.character(.data$ModuleID),
       ModuleColor = as.character(.data$ModuleColor),
-      protein_token = dplyr::coalesce(.data$UniProt, .data$ProteinID, .data$GeneSymbol)
+      ProteinGroupID = as.character(.data$ProteinGroupID)
     ) %>%
-    dplyr::filter(!is.na(.data$protein_token), nzchar(.data$protein_token)) %>%
+    dplyr::filter(!is.na(.data$ProteinGroupID), nzchar(.data$ProteinGroupID)) %>%
     dplyr::group_by(.data$ModuleID, .data$ModuleColor) %>%
-    dplyr::summarise(module_proteins = list(unique(tokenize_proteins(.data$protein_token))), .groups = "drop")
+    dplyr::summarise(module_proteins = list(unique(.data$ProteinGroupID)), .groups = "drop")
 
   manifests <- list()
   if (file.exists(cluster_manifest)) {
-    manifests$clusterProfiler <- readr::read_csv(cluster_manifest, show_col_types = FALSE) %>%
+    manifests$clusterProfiler <- tibble::as_tibble(read_canonical_clusterprofiler_manifest(cluster_manifest, dataset)) %>%
       dplyr::mutate(route = "clusterProfiler")
   }
   if (file.exists(compare_manifest)) {
     manifests$compareGO <- readr::read_csv(compare_manifest, show_col_types = FALSE) %>%
       dplyr::mutate(route = "compareGO")
   }
+  # compareGO re-collates the clusterProfiler GSEA_GO runs under the same analysis_id; read it
+  # only for runs clusterProfiler lacks, so no test enters the BH family twice.
+  if (length(manifests) == 2L && all(vapply(manifests, function(x) "analysis_id" %in% names(x), logical(1)))) {
+    manifests$compareGO <- dplyr::filter(manifests$compareGO, !.data$analysis_id %in% manifests$clusterProfiler$analysis_id)
+  }
   manifest <- dplyr::bind_rows(manifests)
   if ("dataset" %in% names(manifest)) manifest <- dplyr::filter(manifest, .data$dataset == !!dataset)
+  # A failed enrichment run declares outputs it never wrote.
+  if ("analysis_status" %in% names(manifest)) manifest <- dplyr::filter(manifest, !.data$analysis_status %in% "failed")
   if (!"input_gene_file" %in% names(manifest)) manifest$input_gene_file <- NA_character_
   if (!"output_table" %in% names(manifest)) manifest$output_table <- NA_character_
   if (!"contrast" %in% names(manifest)) {
@@ -224,6 +268,15 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
     manifest$contrast <- if (length(contrast_candidates)) as.character(manifest[[contrast_candidates[[1]]]]) else NA_character_
   }
   if (!"route_category" %in% names(manifest)) manifest$route_category <- NA_character_
+  if (!"comparison" %in% names(manifest)) manifest$comparison <- manifest$contrast
+  for (column in c("result_type", "term_gene_provenance_file", "term_gene_provenance_output_file")) {
+    if (!column %in% names(manifest)) manifest[[column]] <- NA_character_
+  }
+  # A compareGO row pairs its pooled term table with the pooled provenance it declares.
+  manifest$provenance_file <- dplyr::coalesce(
+    as.character(manifest$term_gene_provenance_output_file),
+    as.character(manifest$term_gene_provenance_file)
+  )
   if (!nrow(manifest)) {
     status <- empty_overlap_status(dataset, "Manifests were found but no rows matched the requested dataset.")
     readr::write_csv(status, status_csv, na = "")
@@ -233,10 +286,11 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   }
 
   rows <- purrr::pmap_dfr(
-    list(manifest$contrast, manifest$route, manifest$route_category, manifest$input_gene_file, manifest$output_table),
-    function(contrast, route, route_category, input_gene_file, output_table) {
-      de_set <- read_protein_set(input_gene_file)
-      le_set <- read_leading_edge_set(output_table)
+    list(manifest$contrast, manifest$comparison, manifest$route, manifest$route_category, manifest$result_type,
+         manifest$input_gene_file, manifest$output_table, manifest$provenance_file),
+    function(contrast, comparison, route, route_category, result_type, input_gene_file, output_table, provenance_file) {
+      de_set <- map_to_wgcna_universe(read_de_set(input_gene_file), bundle, dataset)
+      le_set <- map_to_wgcna_universe(read_leading_edge_set(output_table, provenance_file, comparison), bundle, dataset)
       if (!length(de_set) && !length(le_set)) return(tibble::tibble())
       purrr::pmap_dfr(list(modules$ModuleID, modules$ModuleColor, modules$module_proteins), function(ModuleID, ModuleColor, module_set) {
         module_set <- intersect(module_set, universe)
@@ -245,7 +299,7 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
         union_set <- union(de_set, le_set)
         de <- overlap_stats(module_set, de_set, universe)
         le <- overlap_stats(module_set, le_set, universe)
-        both <- overlap_stats(module_set, union_set, universe)
+        both <- overlap_stats(module_set, union_set, universe, labels = gene_labels)
         tibble::tibble(
           dataset = dataset,
           ModuleID = ModuleID,
@@ -253,7 +307,10 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
           contrast = as.character(contrast),
           route = as.character(route),
           route_category = as.character(route_category),
+          result_type = as.character(result_type),
           universe_type = "WGCNA_feature_universe",
+          DE_set_rule = de_set_rule,
+          leading_edge_set_rule = leading_edge_set_rule,
           n_universe = length(universe),
           n_module_in_universe = length(module_set),
           n_signature_in_universe = length(union_set),
@@ -280,14 +337,15 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
           top_DE_overlap_proteins = de$overlap_proteins,
           top_leading_edge_overlap_proteins = le$overlap_proteins,
           top_union_overlap_proteins = both$overlap_proteins,
-          top_overlap_proteins = both$overlap_proteins
+          top_overlap_proteins = both$overlap_proteins,
+          top_overlap_genes = both$overlap_genes
         )
       })
     }
   )
 
   if (!nrow(rows)) {
-    status <- empty_overlap_status(dataset, "No readable DE/GSEA protein sets were available from manifests.")
+    status <- empty_overlap_status(dataset, "No manifest entry had a significant DE protein or a significant-term leading edge in the WGCNA universe.")
     readr::write_csv(status, status_csv, na = "")
     readr::write_csv(status, out_csv, na = "")
     write_overlap_xlsx(list(status = status), out_xlsx)
@@ -314,6 +372,7 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
       ModuleColor,
       strongest_DE_GSEA_contrast = .data$contrast,
       strongest_DE_GSEA_route = .data$route,
+      strongest_DE_GSEA_result_type = .data$result_type,
       input_status,
       n_DE_overlap,
       n_leading_edge_overlap,
@@ -330,19 +389,27 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
       fisher_p,
       fisher_fdr,
       best_overlap_fdr,
-      top_overlap_proteins
+      top_overlap_proteins,
+      top_overlap_genes
     )
 
   readr::write_csv(rows, out_csv, na = "")
   write_overlap_xlsx(list(overlap_long = rows, strongest_overlap_per_module = summary), out_xlsx)
   availability <- rows %>%
-    dplyr::distinct(.data$contrast, .data$route, .data$route_category, .data$input_status) %>%
+    dplyr::distinct(.data$contrast, .data$route, .data$route_category, .data$result_type, .data$input_status) %>%
     dplyr::count(.data$input_status, name = "n_manifest_entries")
+  n_without_sets <- nrow(manifest) - sum(availability$n_manifest_entries)
   status <- empty_overlap_status(dataset, "completed") %>%
     dplyr::mutate(
       status = "completed",
-      input_availability = paste(paste0(availability$input_status, "=", availability$n_manifest_entries), collapse = ";"),
-      test_semantics = "Separate Fisher enrichment tests for DE, GSEA leading edge, and union(DE, leading edge); alternative='greater'."
+      input_availability = paste(c(
+        paste0(availability$input_status, "=", availability$n_manifest_entries),
+        paste0("no_significant_set=", n_without_sets)
+      ), collapse = ";"),
+      test_semantics = paste0(
+        "Separate Fisher enrichment tests for DE, GSEA leading edge, and union(DE, leading edge); alternative='greater'. ",
+        "ProteinGroupID identity over the WGCNA universe; DE = ", de_set_rule, "; leading edge = ", leading_edge_set_rule, "."
+      )
     )
   readr::write_csv(status, status_csv, na = "")
 

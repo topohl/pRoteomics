@@ -244,6 +244,19 @@ sus_res_attach_gene_mapping <- function(normalized_df) {
   list(data = normalized_df, gene_inputs = gene_inputs)
 }
 
+# GO term-size limits shared with the main clusterProfiler GSEA/ORA.
+sus_res_go_size_limits <- function(config_path = repo_path("config", "clusterProfiler_config.yml")) {
+  analysis <- yaml::read_yaml(config_path)$analysis
+  limits <- list(min_gs_size = analysis$min_gs_size, max_gs_size = analysis$max_gs_size)
+  valid <- vapply(limits, function(x) {
+    length(x) == 1L && is.numeric(x) && is.finite(x) && x >= 1 && x == floor(x)
+  }, logical(1))
+  if (!all(valid) || limits$min_gs_size > limits$max_gs_size) {
+    stop(config_path, " must set analysis$min_gs_size <= analysis$max_gs_size as positive whole numbers.", call. = FALSE)
+  }
+  lapply(limits, as.integer)
+}
+
 sus_res_count_summary <- function(membership, min_ora_genes = MIN_ORA_DAP_GENES) {
   units <- unique(membership[, c("dataset", "dataset_label", "comparison", "route_category", "route_unit", "spatial_unit"), drop = FALSE])
   rows <- lapply(seq_len(nrow(units)), function(i) {

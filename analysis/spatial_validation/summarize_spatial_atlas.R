@@ -142,16 +142,24 @@ add("da_joined_not_recomputed", TRUE,
     if (!is.null(pa) && "da_provenance" %in% names(pa) &&
         all(grepl("no differential statistic recomputed", pa$da_provenance))) "PASS" else "FAIL",
     "every DA statistic carries a provenance string naming its canonical source")
-add("all_37_fdr_proteins_present_once", TRUE,
+# Expected = FDR-supported rows of every canonical within-unit SUS-RES contrast (37 before the
+# 2026-10-19 re-normalisation), counted from the canonical mapped DA tables.
+source(repo_path("R", "preprocessing_paths.R"))
+n_sus_res_fdr <- sum(vapply(valid_datasets(), function(ds) {
+  fs <- list.files(preprocessing_mapped_contrast_dir(ds, "forward"), pattern = "sus_.*res[.]csv$", full.names = TRUE)
+  sum(vapply(fs, function(f) sum(readr::read_csv(f, show_col_types = FALSE, progress = FALSE,
+                                                col_select = "padj")$padj < 0.05, na.rm = TRUE), numeric(1)))
+}, numeric(1)))
+add("all_canonical_sus_res_fdr_proteins_present_once", TRUE,
     {
       s <- sheets$SUS_RES_37
       if (is.null(s)) "FAIL" else
-        if (nrow(s) == 37L &&
+        if (nrow(s) == n_sus_res_fdr &&
             !anyDuplicated(paste(s$dataset, s$ProteinGroupID))) "PASS" else "FAIL"
     },
     paste0(if (is.null(sheets$SUS_RES_37)) "missing" else
-      paste0(nrow(sheets$SUS_RES_37),
-             " FDR-supported rows, unique per dataset x ProteinGroupID")))
+      paste0(nrow(sheets$SUS_RES_37), " of ", n_sus_res_fdr,
+             " canonical FDR-supported SUS-RES rows, unique per dataset x ProteinGroupID")))
 add("spatial_units_canonical", TRUE,
     if (!is.null(ma) && !any(grepl("[A-Z]", ma$peak_unit))) "PASS" else "FAIL",
     "peak units use the canonical lowercase spatial-unit vocabulary")

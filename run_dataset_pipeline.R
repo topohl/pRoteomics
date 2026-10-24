@@ -105,6 +105,19 @@ if (!nrow(steps)) {
   stop("No scripts selected after applying exclusions.", call. = FALSE)
 }
 
+# One analysis version per working tree (config/normalisation.yml): no stage runs against analysis inputs written under
+# another sample centring, or against inputs that do not match the stamp. A dry run reports the problem and plans on.
+source(repo_path("R", "normalisation_contract.R"))
+normalisation <- tryCatch({
+  if (isTRUE(dry_run)) tryCatch(assert_normalisation_consistent("pipeline launcher"), error = function(e) message("[WARN] ", conditionMessage(e)))
+  else assert_normalisation_consistent("pipeline launcher")
+  normalisation_setting()
+}, error = function(e) {
+  if (!isTRUE(dry_run)) stop(e)
+  message("[WARN] ", conditionMessage(e))
+  list(sample_centring = NA_character_, source = NA_character_, decision = NA_character_)
+})
+
 manifest_dir <- path_results("logs", "pipeline")
 dir_create(manifest_dir)
 selected_label <- paste(selected_stages, collapse = "+")
@@ -186,6 +199,10 @@ make_result <- function(step, status, exit_code, started_at, finished_at, missin
     started_at = fmt_time(started_at),
     finished_at = fmt_time(finished_at),
     git_commit = context$git_commit,
+    normalisation_sample_centring = normalisation$sample_centring,
+    normalisation_setting_source = normalisation$source,
+    normalisation_decision = normalisation$decision,
+    normalisation_working_tree_stamp = tryCatch(read_normalisation_stamp()$sample_centring %||% NA_character_, error = function(e) NA_character_),
     r_version = context$r_version,
     platform = context$platform,
     env_PROTEOMICS_DATASET = Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_),
@@ -208,6 +225,7 @@ cat("Dry run / plan:", dry_run, "\n")
 cat("Strict input policy:", strict_inputs, "\n")
 cat("Strict expected-output policy:", strict_outputs, "\n")
 cat("Project root:", repo_root(), "\n")
+cat("Sample centring:", normalisation$sample_centring, "(", normalisation$source, "; decision", normalisation$decision, ")\n")
 cat("Registry:", repo_path("pipeline.yml"), "\n")
 cat("Manifest:", manifest_path, "\n\n")
 
@@ -243,6 +261,14 @@ for (i in seq_len(nrow(steps))) {
     res <- make_result(step, status, 0L, started_at, Sys.time(), missing_required, missing_optional, missing_outputs_before, produced_before, produced_before)
     results <- rbind(results, res)
     if (identical(status, "missing_required_input")) break
+    next
+  }
+
+  # The export stage waits for the normalisation decision (config/normalisation.yml); skipped, not failed.
+  if (identical(step$stage, "export") && !identical(normalisation$decision, "approved")) {
+    cat("[SKIP] ", step$script, " | export waits for the normalisation decision\n", sep = "")
+    res <- make_result(step, "skipped_pending_normalisation_decision", 0L, started_at, Sys.time(), missing_required, missing_optional, missing_outputs_before, produced_before, produced_before)
+    results <- rbind(results, res)
     next
   }
 

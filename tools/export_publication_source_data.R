@@ -29,6 +29,8 @@
 # docs/OUTPUT_LAYOUT.md.
 
 source(file.path("R", "paths.R"))
+source(repo_path("R", "normalisation_contract.R"))
+assert_normalisation_decided("tools/export_publication_source_data.R")  # waits for the normalisation decision (config/normalisation.yml)
 
 SOURCE_ROOT <- path_results("source_data", "manuscript")
 FIGURE_ROOT <- path_results("figures", "manuscript")
@@ -84,6 +86,8 @@ for (i in seq_len(nrow(canonical))) {
   dir_create(dst_dir)
 
   files <- list.files(src_dir, recursive = TRUE, full.names = FALSE)
+  # Sources older than the analysis version in the working tree belong to the previous version: refuse them.
+  assert_sources_current(file.path(src_dir, files), "tools/export_publication_source_data.R")
   for (f in files) {
     from <- file.path(src_dir, f)
     to <- file.path(dst_dir, f)
@@ -118,6 +122,7 @@ for (i in seq_len(nrow(canonical))) {
   ## manuscript repository can prove byte equivalence of the rendered figure.
   assembled <- file.path(FIGURE_ROOT, pid, "assembled", paste0(pid, ".svg"))
   if (file.exists(assembled)) {
+    assert_sources_current(assembled, "tools/export_publication_source_data.R")
     to <- file.path(dst_dir, "assembled", paste0(pid, ".svg"))
     dir_create(dirname(to))
     file.copy(assembled, to, overwrite = TRUE, copy.date = TRUE)
@@ -140,6 +145,12 @@ for (i in seq_len(nrow(canonical))) {
 manifest <- do.call(rbind, rows)
 dir_create(BUNDLE_ROOT)
 utils::write.csv(manifest, file.path(BUNDLE_ROOT, "manifest.csv"), row.names = FALSE)
+# The sample centring of the exported version, kept beside the 10-column manifest that other tools append to.
+prov <- normalisation_provenance()
+utils::write.csv(data.frame(sample_centring = prov$stamp_sample_centring %||% NA_character_, decision = prov$decision %||% NA_character_,
+                            stamp_written_at = prov$stamp_written_at %||% NA_character_, exported_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+                            source_commit = source_commit),
+                 file.path(BUNDLE_ROOT, "normalisation_provenance.csv"), row.names = FALSE)
 
 cat("files exported   :", copied, "\n")
 cat("manifest rows    :", nrow(manifest), "\n")

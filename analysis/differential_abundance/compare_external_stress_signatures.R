@@ -30,7 +30,7 @@ signature_files <- Sys.glob(file.path(signature_dir, "*.csv"))
 
 inputs <- c(signature_dir = signature_dir)
 for (ds in valid_datasets()) {
-  inputs[[paste0("program_summary_", ds)]] <- path_results("tables", "04_differential_expression_enrichment", "biological_program_summary", ds, "program_summary.csv")
+  inputs[[paste0("program_summary_", ds)]] <- path_results("differential_abundance", "summarize_biological_programs", ds, "tables", "program_summary.csv")
 }
 
 if (is_dry_run()) {
@@ -44,7 +44,7 @@ read_signatures <- function(files) {
     dataset = "global", evidence_domain = "external_signature", input_type = "stress_disease_signature_dir",
     path = normalizePath(signature_dir, winslash = "/", mustWork = FALSE), required = FALSE,
     status = "missing_optional", message = "No cached external signatures found; no live downloads attempted.",
-    n_rows = 0L, stringsAsFactors = FALSE
+    n_rows = 0L, addressability = INPUT_STATUS_ABSENT, stringsAsFactors = FALSE
   )))
   rows <- list()
   status <- empty_status()

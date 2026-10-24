@@ -44,17 +44,16 @@ if (length(missing_packages)) {
        ".", call. = FALSE)
 }
 
+# The current GO-program atlas output; the historical results/source_data copy is an older run.
 gsea_terms_file <- path_results(
-  "source_data", "04_differential_expression_enrichment",
-  "compareGO_spatial_atlas", "spatial_atlas_enrichment_long.csv"
+  "differential_abundance", "build_go_program_atlas", "global",
+  "tables", "source_data", "spatial_atlas_enrichment_long.csv"
 )
 legacy_program_mapping_file <- repo_path(
   "config", "gsea_wgcna_program_module_mapping.csv"
 )
 theme_registry_file <- repo_path("config", "manuscript_go_theme_registry.tsv")
-theme_mapping_file <- repo_path(
-  "config", "gsea_wgcna_theme_module_mapping.csv"
-)
+theme_mapping_file <- gww_theme_mapping_path()
 
 dataset_inputs <- lapply(datasets, function(dataset) {
   list(
@@ -67,14 +66,8 @@ names(dataset_inputs) <- datasets
 
 microglia_inputs <- list(
   claim_readiness = wgcna_claim_readiness_artifact("WGCNA_entity_claim_readiness.csv"),
-  module_robustness = path_results(
-    "reviewer_audit", "microglia_wgcna_nature_readiness",
-    "module_robustness_consensus.csv"
-  ),
-  block_readiness = path_results(
-    "reviewer_audit", "microglia_wgcna_nature_readiness",
-    "higher_order_block_readiness_summary.csv"
-  ),
+  module_robustness = wgcna_readiness_artifact("module_robustness_consensus.csv"),
+  block_readiness = wgcna_readiness_artifact("higher_order_block_readiness_summary.csv"),
   legacy_overlap = wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", "microglia")
 )
 
@@ -498,8 +491,11 @@ matched_evidence <- gsea_evidence |>
     by = c("dataset", "biological_program"),
     relationship = "many-to-many"
   )
-if (any(matched_evidence$theme_role == "qc_review", na.rm = TRUE) ||
-    any(!matched_evidence$approved_for_manuscript_interpretation %in% TRUE)) {
+# Provisional (lineage-carried, unreviewed) mappings enter only in provisional label mode; they are
+# never manuscript-eligible and keep mapping_status = provisional_supported in every output.
+unapproved <- !matched_evidence$approved_for_manuscript_interpretation %in% TRUE &
+  !(matched_evidence$mapping_status %in% "provisional_supported" & gww_provisional_mode())
+if (any(matched_evidence$theme_role == "qc_review", na.rm = TRUE) || any(unapproved)) {
   stop("QC or unapproved ontology themes entered concordance matching.",
        call. = FALSE)
 }

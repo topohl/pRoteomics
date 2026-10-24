@@ -18,9 +18,12 @@
 # Run with DRY=1 to preview.
 
 source(file.path("R", "paths.R"))
+source(repo_path("R", "normalisation_contract.R"))
 suppressMessages(library(yaml))
 
 DRY <- nzchar(Sys.getenv("DRY"))
+# waits for the normalisation decision (config/normalisation.yml); the DRY=1 preview copies nothing
+assert_normalisation_decided("tools/migrate_publication_export_bundle.R", dry_run_capable = TRUE, dry = DRY)
 SRC <- "results/publication_source_data"
 DST <- "exports/publication_source_data"
 
