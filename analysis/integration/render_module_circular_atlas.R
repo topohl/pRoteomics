@@ -502,7 +502,8 @@ discover_candidate_paths <- function(filename, dataset = "neuron_neuropil") {
 }
 
 claim_status_table <- function() {
-  path <- path_results("tables", "biological_claims_table.csv")
+  # written by analysis/publication_source_data/build_biological_claims_table.R (the results/tables copy is stale)
+  path <- path_results("publication_source_data", "build_biological_claims_table", "global", "tables", "biological_claims_table.csv")
   claims <- if (file.exists(path)) {
     readr::read_csv(
       path,
@@ -4797,7 +4798,7 @@ write_run_manifest(
   out_run_manifest,
   inputs = list(
     wgcna_tables_root = path_results("tables", "06_modules_WGCNA"),
-    biological_claims_table = path_results("tables", "biological_claims_table.csv"),
+    biological_claims_table = path_results("publication_source_data", "build_biological_claims_table", "global", "tables", "biological_claims_table.csv"),
     microglia_wgcna_claim_readiness = microglia_wgcna_claim_readiness_path()
   ),
   outputs = list(
