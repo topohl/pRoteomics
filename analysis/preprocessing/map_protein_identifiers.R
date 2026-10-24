@@ -492,7 +492,9 @@ process_file <- function(data_path) {
 # Distribute file-level mapping across available processor cores
 n_files <- length(csv_files)
 available_cores <- parallel::detectCores(logical = FALSE)
-workers <- max(1, min(available_cores - 1, n_files))
+max_workers <- suppressWarnings(as.integer(Sys.getenv("PROTEOMICS_MAPPING_WORKERS", unset = "4")))
+if (is.na(max_workers) || max_workers < 1L) max_workers <- 4L
+workers <- max(1, min(max_workers, available_cores - 1, n_files))
 
 cat("Setting up parallel processing backend using", workers, "out of", available_cores, "available cores...\n")
 cl <- parallel::makeCluster(workers)
