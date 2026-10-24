@@ -257,7 +257,8 @@ run_wgcna_de_gsea_overlap <- function(dataset = current_dataset(), dry_run = is_
   if (length(manifests) == 2L && all(vapply(manifests, function(x) "analysis_id" %in% names(x), logical(1)))) {
     manifests$compareGO <- dplyr::filter(manifests$compareGO, !.data$analysis_id %in% manifests$clusterProfiler$analysis_id)
   }
-  manifest <- dplyr::bind_rows(manifests)
+  # bound as text: an all-empty column reads as logical in one manifest and as character in the other
+  manifest <- dplyr::bind_rows(lapply(manifests, function(m) dplyr::mutate(m, dplyr::across(dplyr::everything(), as.character))))
   if ("dataset" %in% names(manifest)) manifest <- dplyr::filter(manifest, .data$dataset == !!dataset)
   # A failed enrichment run declares outputs it never wrote.
   if ("analysis_status" %in% names(manifest)) manifest <- dplyr::filter(manifest, !.data$analysis_status %in% "failed")
