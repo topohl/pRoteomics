@@ -27,6 +27,8 @@
 # complete-case centring its sensitivity analysis. Not yet approved here: this working tree still holds the
 # complete-case outputs, and the original must first be regenerated with the corrected pipeline in a separate
 # worktree (config/normalisation_versions.yml, 'Regenerating a version').
-sample_centring: complete_case_median
+# Regeneration worktree (branch original-centring-2026-10-24): the original centring, rebuilt with the
+# corrected pipeline of 8819a00. The decision stays pending.
+sample_centring: all_observed_median
 decision: pending
 approved_sample_centring: ""
