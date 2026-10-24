@@ -26,7 +26,7 @@
 # Script: analysis/spatial_validation/quantify_empirical_compartments.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv; optional results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv
+# Consumes: required results/qc/discover_empirical_roi_markers/global/tables/neuron_neuropil/canonical_feature_table.csv; results/qc/discover_empirical_roi_markers/global/tables/neuron_soma/canonical_feature_table.csv; results/qc/discover_empirical_roi_markers/global/tables/microglia/canonical_feature_table.csv; optional results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv; results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv
 # Produces: results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_protein_level.csv; results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_summary.csv; results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_marker_transfer.csv
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Cross-hemisphere validation of empirical compartment identity.
@@ -62,10 +62,12 @@ TRANSFER_SIZES <- c(25L, 50L, 100L)   # pre-specified, not tuned
 OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
-crosswalk_path <- function() {
-  qc_find("empirical_roi_protein_identity_crosswalk_proposed.csv",
-          owner = "discover_empirical_roi_markers",
-          legacy_substep = "05_empirical_roi_marker_discovery")
+# The protein identity crosswalk is rebuilt from the canonical feature tables
+# discover_empirical_roi_markers writes; it saves the crosswalk itself only in
+# its --proposed-only branch. Normalized location only, no legacy fallback.
+feature_table_path <- function(ds) {
+  canonical_result_path("qc", "discover_empirical_roi_markers", "global", "tables",
+                        ds, "canonical_feature_table.csv")
 }
 marker_sets_path <- function() {
   qc_find("empirical_roi_marker_sets.csv",
@@ -73,11 +75,14 @@ marker_sets_path <- function() {
           legacy_substep = "05_empirical_roi_marker_discovery")
 }
 DATASETS <- valid_datasets()
+FEATURE_DATASETS <- empirical_roi_dataset_levels()
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Cross-hemisphere empirical compartment validation.\n")
-  dry_run_inputs(SCRIPT_ID, list(protein_identity_crosswalk = crosswalk_path(),
-                                 empirical_marker_sets = marker_sets_path()))
+  dry_run_inputs(SCRIPT_ID, c(
+    stats::setNames(lapply(FEATURE_DATASETS, feature_table_path),
+                    paste0("canonical_feature_table_", FEATURE_DATASETS)),
+    list(empirical_marker_sets = marker_sets_path())))
   cat("[DRY-RUN] Design reused verbatim: ~ AnimalID + dataset (phenotype absorbed).\n")
   cat("[DRY-RUN] Pre-specified transfer sizes: ",
       paste(TRANSFER_SIZES, collapse = ", "), "\n", sep = "")
@@ -89,8 +94,16 @@ if (!requireNamespace("limma", quietly = TRUE)) {
 
 # ----------------------------------------------- cross-dataset alignment
 
-cw <- as.data.frame(readr::read_csv(crosswalk_path(), show_col_types = FALSE,
-                                    progress = FALSE, guess_max = Inf))
+read_feature_table <- function(ds) {
+  p <- feature_table_path(ds)
+  if (!file.exists(p)) stop("missing_required_input: ", p, call. = FALSE)
+  readr::read_csv(p, col_select = dplyr::any_of(c("ProteinGroupID", "member_accessions",
+                                                  "mapping_status")),
+                  col_types = readr::cols(.default = readr::col_character()),
+                  show_col_types = FALSE, progress = FALSE)
+}
+cw <- as.data.frame(build_empirical_roi_protein_index(
+  stats::setNames(lapply(FEATURE_DATASETS, read_feature_table), FEATURE_DATASETS)))
 cw <- cw[cw$cross_dataset_model_eligible %in% TRUE, , drop = FALSE]
 key_by_ds <- split(cw, cw$dataset)
 common_keys <- Reduce(intersect, lapply(key_by_ds, function(z) unique(z$empirical_protein_group_key)))

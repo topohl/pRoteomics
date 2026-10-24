@@ -267,7 +267,10 @@ rk <- function(v, col, decreasing = FALSE) {
   r[ctx$spatial_unit == "ca2_slm"]
 }
 verdict <- list(
-  P1_smaller_SE = ca2$median_model_SE < stats::median(oth$median_model_SE, na.rm = TRUE),
+  # SEs are equal by construction; compare at 8 significant digits so
+  # floating-point noise (~1e-15) cannot decide P1
+  P1_smaller_SE = signif(ca2$median_model_SE, 8) <
+    stats::median(signif(oth$median_model_SE, 8), na.rm = TRUE),
   P2_better_detectability = ca2$missing_fraction_preimputation <
     stats::median(oth$missing_fraction_preimputation, na.rm = TRUE),
   P3_batch_confound = ca2$n_batches < stats::median(oth$n_batches, na.rm = TRUE),
@@ -285,9 +288,9 @@ for (i in seq_len(nrow(ctx))) {
 }
 cat("\n--- CA2_slm ranks among 10 units (1 = most extreme in the artefact direction) ---\n")
 cat(sprintf("  model SE (1 = smallest)          : %d of %d\n",
-            rank(ctx$median_model_SE)[ctx$spatial_unit == "ca2_slm"], nrow(ctx)))
+            rk(signif(ctx$median_model_SE, 8)), nrow(ctx)))
 cat(sprintf("  missingness (1 = least missing)  : %d of %d\n",
-            rank(ctx$missing_fraction_preimputation)[ctx$spatial_unit == "ca2_slm"], nrow(ctx)))
+            rk(ctx$missing_fraction_preimputation), nrow(ctx)))
 cat(sprintf("  baseline |SUS-RES| missing diff  : %.4f (other units median %.4f)\n",
             abs(ca2$differential_missingness_SUS_minus_RES),
             stats::median(abs(oth$differential_missingness_SUS_minus_RES), na.rm = TRUE)))

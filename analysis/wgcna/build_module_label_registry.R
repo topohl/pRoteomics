@@ -22,8 +22,8 @@
 # Script: analysis/wgcna/build_module_label_registry.R
 # Stage: networks
 # Scope: per_dataset
-# Consumes: required results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv; results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv; optional results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv; results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv; results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv
-# Produces: results/reviewer_audit/wgcna_label_approval/WGCNA_final_label_approval_table.csv; results/reviewer_audit/wgcna_label_approval/WGCNA_canonical_display_label_resolution.csv; results/reviewer_audit/wgcna_label_approval/WGCNA_label_activation_rules.csv; +2 more
+# Consumes: required results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_adjudication.csv; results/wgcna/adjudicate_module_labels/global/tables/WGCNA_supermodule_adjudication.csv; results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_top25_hubs.csv; optional results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv; results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv; results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv; +4 more
+# Produces: results/wgcna/build_module_label_registry/global/tables/WGCNA_final_label_approval_table.csv; results/wgcna/build_module_label_registry/global/tables/WGCNA_canonical_display_label_resolution.csv; results/wgcna/build_module_label_registry/global/tables/WGCNA_label_activation_rules.csv; +2 more
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Final manual-adjudication support: the human approval table.
 

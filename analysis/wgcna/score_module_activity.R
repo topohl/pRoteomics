@@ -897,7 +897,14 @@ if (nrow(low_coverage_modules)) {
 }
 
 if (identical(module_definition_source, "wgcna")) {
-  overlap_defs_file <- resolve_module_definitions_file("overlap", required = FALSE)  # optional comparison
+  # Optional comparison: only from the normalized producer output or an explicit
+  # PROTEOMICS_MODULE_DEFINITIONS_FILE, never from the historical fallback copy.
+  overlap_canonical_file <- canonical_result_path("wgcna", "build_curated_overlap_programs", "global", "tables", "curated_overlap_programs.xlsx")
+  overlap_defs_file <- if (nzchar(Sys.getenv("PROTEOMICS_MODULE_DEFINITIONS_FILE", unset = "")) || file.exists(overlap_canonical_file)) {
+    resolve_module_definitions_file("overlap", required = FALSE)
+  } else {
+    NA_character_
+  }
   if (!is.na(overlap_defs_file) && file.exists(overlap_defs_file)) {
     overlap_raw <- readxl::read_excel(overlap_defs_file, sheet = "Modules_long") %>% as_tibble()
     overlap_standard <- standardize_module_definitions(overlap_raw, "overlap")

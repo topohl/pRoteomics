@@ -4,7 +4,7 @@
 # Scope: dataset_specific
 # Consumes: required data/processed/02_id_mapping/mapped/neuron-phenotypeWithinUnit/; optional results/tables/07_spatial_networks/.
 # Produces: results/spatial_networks/render_network_chord_diagram/<dataset>/plots; results/spatial_networks/render_network_chord_diagram/<dataset>/manifests.
-# Dataset behavior: runs for neuron_neuropil,neuron_soma according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Dataset behavior: runs for neuron_neuropil according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Chord diagrams from mapped phenotype-within-unit edge/protein tables.
 
 # =========================================================

@@ -13,7 +13,7 @@
 # Stage: networks
 # Scope: global
 # Consumes: required results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv; results/tables/11_spatial_systems/ca2_slm_robustness/CA2_SLM_DAP_robustness.csv; data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; optional results/tables/11_spatial_systems/ca2_slm_robustness/; results/tables/08_behavior_physio_coupling/animal_id_integrity/; results/tables/08_behavior_physio_coupling/network_behavior_coupling/; +1 more
-# Produces: results/spatial_validation/summarize_ca2_slm_robustness/global/reports/CA2_SLM_robustness_audit.xlsx; results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_robustness_validation.csv; results/spatial_validation/summarize_ca2_slm_robustness/global/plots
+# Produces: results/spatial_validation/summarize_ca2_slm_robustness/global/reports/CA2_SLM_robustness_audit.xlsx; results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_robustness_validation.csv; results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_claim_status_summary.csv; +1 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: CA2-SLM robustness: candidate figures, reviewer workbook and the validation contract.
 #  
@@ -42,6 +42,8 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 ROB <- function(f) spatial_systems_find(f, "ca2_slm_robustness")
+# ROB() resolves reads; this analysis writes only to its own tables.
+OUT <- function(f) file.path(CANONICAL_PATHS$tables, f)
 AID <- function(...) path_results("integration", "audit_animal_id_integrity", "global", "tables", ...)
 COUP <- function(...) path_results("integration", "test_network_behaviour_coupling", "global", "tables", ...)
 FIG <- function(...) {
@@ -228,7 +230,7 @@ claim_status <- data.frame(
     paste0("NOT permitted unless explicitly scoped to the robustness-qualified subset: ",
            paste(CA2_RESTRICTED_PHRASES, collapse = "; "))),
   stringsAsFactors = FALSE)
-write_csv_safe(claim_status, ROB("CA2_SLM_claim_status_summary.csv"))
+write_csv_safe(claim_status, OUT("CA2_SLM_claim_status_summary.csv"))
 
 # =============================================== PART 21: validation
 
@@ -384,14 +386,19 @@ add("network_layer_unchanged", TRUE,
 
 # Part 18: the restricted wording must not appear unscoped in any generated
 # table or in the robustness scripts themselves.
+scan_dirs <- c(
+  canonical_result_path("spatial_validation", "audit_ca2_slm_robustness", "global", "tables"),
+  canonical_result_path("spatial_validation", "audit_stress_identity_robustness", "global", "tables"),
+  CANONICAL_PATHS$tables)
 scan_files <- c(
-  list.files(dirname(ROB("x")), pattern = "[.]csv$", full.names = TRUE),
+  list.files(scan_dirs, pattern = "[.]csv$", full.names = TRUE),
   repo_path("analysis/spatial_validation", "audit_ca2_slm_robustness.R"),
   repo_path("analysis/spatial_validation", "audit_stress_identity_robustness.R"))
 offending <- character()
 for (f in scan_files) {
   if (!file.exists(f)) next
   if (basename(f) == "CA2_SLM_claim_status_summary.csv") next   # declares them
+  if (basename(f) == "CA2_SLM_robustness_validation.csv") next  # stale self-report
   txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
   for (ph in CA2_RESTRICTED_PHRASES) {
     if (grepl(ph, txt, fixed = TRUE)) offending <- c(offending, paste0(basename(f), ":", ph))
@@ -404,7 +411,7 @@ add("restricted_CA2_language_absent", TRUE,
       paste0("none of the ", length(CA2_RESTRICTED_PHRASES),
              " restricted phrases appears unscoped in any generated table"))
 add("claim_status_summary_generated", TRUE,
-    if (file.exists(ROB("CA2_SLM_claim_status_summary.csv"))) "PASS" else "FAIL",
+    if (file.exists(OUT("CA2_SLM_claim_status_summary.csv"))) "PASS" else "FAIL",
     "a claim-status summary with approved wording is generated automatically")
 
 add("figures_have_source_data", FALSE,
@@ -412,7 +419,7 @@ add("figures_have_source_data", FALSE,
     paste0(length(made), " candidate figures, each with a source-data CSV"))
 
 validation <- dplyr::bind_rows(checks)
-write_csv_safe(validation, ROB("CA2_SLM_robustness_validation.csv"))
+write_csv_safe(validation, OUT("CA2_SLM_robustness_validation.csv"))
 
 # ================================================= PART 20: workbook
 

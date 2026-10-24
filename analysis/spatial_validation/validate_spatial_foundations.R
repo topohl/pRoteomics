@@ -126,7 +126,8 @@ pheno_cols <- c("StressGroup", "ExpGroup", "Group", "SUS", "RES", "CON")
 leak <- !is.null(comp_pl) && any(pheno_cols %in% names(comp_pl))
 add("compartment_validation_phenotype_independent", TRUE,
     if (!is.null(comp) && !leak) "PASS" else "FAIL",
-    "design is ~ AnimalID + dataset; AnimalID is nested within StressGroup so group membership is fully absorbed, and no phenotype column reaches the output")
+    if (is.null(comp)) "bilateral_empirical_compartment_summary.csv missing (quantify_empirical_compartments)" else
+      "design is ~ AnimalID + dataset; AnimalID is nested within StressGroup so group membership is fully absorbed, and no phenotype column reaches the output")
 
 # ---- 8. Stage-05 WGCNA L/R consumed, not recomputed -----------------------
 wb <- read_if(T_("bilateral", "WGCNA_module_bilateral_reproducibility.csv"))

@@ -98,7 +98,7 @@ make_dataset <- function(ds) {
       est_b <- first_col(behavior, c("estimate", "effect_size_NES"))
       top_behavior <- behavior[order(num_or_na(behavior[[fdr_b]]), decreasing = FALSE, na.last = TRUE), , drop = FALSE]
       top_behavior <- utils::head(top_behavior, 10)
-      module_rows <- utils::head(modules, 200)
+      module_rows <- modules  # every module row, no cap
       out <- standardize_evidence(data.frame(
         dataset = ds,
         evidence_domain = "module_behavior_coupling",

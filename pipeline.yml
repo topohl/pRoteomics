@@ -107,7 +107,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global"
         scope: "global"
-        produces: ["results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"]
+        produces: ["results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv", "results/qc/discover_empirical_roi_markers/global/tables/neuron_neuropil/canonical_feature_table.csv", "results/qc/discover_empirical_roi_markers/global/tables/neuron_soma/canonical_feature_table.csv", "results/qc/discover_empirical_roi_markers/global/tables/microglia/canonical_feature_table.csv"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_soma_*_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_microglia_*_missing70pct.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx"]
         consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
         recomputes_core_state: false
@@ -427,7 +427,7 @@ stages:
         notes: "Curated overlap programs are global biological program sets and are distinct from WGCNA module construction."
       - script: "analysis/wgcna/score_module_activity.R"
         required: false
-        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        datasets: ["neuron_soma", "microglia"]
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces: ["results/wgcna/score_module_activity/<dataset>/tables"]
@@ -435,7 +435,7 @@ stages:
         consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Module scoring layer: scores existing module definitions against dataset matrices; does not rebuild WGCNA modules. Dataset fallback is overlap for neuron_neuropil and WGCNA for neuron_soma/microglia."
+        notes: "Module scoring layer: scores existing WGCNA module definitions against dataset matrices; does not rebuild WGCNA modules. neuron_neuropil is scored only by the WGCNA-source row below; its curated-overlap default is not registered because build_curated_overlap_programs.R has no producer for its compareGO input."
       - script: "analysis/wgcna/score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil"]
@@ -448,7 +448,7 @@ stages:
         consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Additional neuron_neuropil WGCNA-source module-score pass. Keeps the default curated-overlap score run and adds data-driven WGCNA module-score effect-size plots."
+        notes: "The neuron_neuropil module-score run, from the WGCNA modules; the curated-overlap score run is not registered (see the row above)."
       - script: "analysis/wgcna/compare_module_enrichment_overlap.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -799,14 +799,17 @@ stages:
           - "results/wgcna/build_module_label_registry/global/tables/WGCNA_ambiguous_module_comparison.csv"
           - "results/wgcna/build_module_label_registry/global/tables/WGCNA_final_label_approval.xlsx"
         consumes_required:
-          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
-          - "results/wgcna/build_module_identity_contract/<dataset>/tables/WGCNA_module_supermodule_membership_contract.csv"
-          - "results/tables/06_modules_WGCNA/identity_contract/<dataset>/WGCNA_module_supermodule_membership_contract.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_adjudication.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_supermodule_adjudication.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_top25_hubs.csv"
         consumes_optional:
+          - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_adjudication.csv"
           - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_supermodule_adjudication.csv"
           - "results/reviewer_audit/wgcna_label_adjudication/WGCNA_module_top25_hubs.csv"
+          - "results/wgcna/adjudicate_module_labels/global/tables/WGCNA_module_theme_evidence.csv"
           - "results/wgcna/summarize_module_interpretation/<dataset>/tables/WGCNA_final_label_lookup.csv"
           - "results/tables/06_modules_WGCNA/interpretable_summary/<dataset>/WGCNA_final_label_lookup.csv"
+          - "config/wgcna_labels/<dataset>.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "MANUAL-ADJUDICATION SUPPORT. Reads the frozen Stage-15 evidence packet (no scoring is rerun) and emits one approval row per module and supermodule with proposed_final_label, two alternatives, confidence, rationale, a label-hierarchy redundancy warning and recommended_for_activation. proposal_prepared_by=automated_evidence_audit, reviewer=NA, human_decision=NA - approval is a human act performed outside this pipeline. Activates nothing."
@@ -867,7 +870,7 @@ stages:
         notes: "Figure layer after bootstrap differential network stability."
       - script: "analysis/spatial_networks/render_network_chord_diagram.R"
         required: false
-        datasets: ["neuron_neuropil", "neuron_soma"]
+        datasets: ["neuron_neuropil"]
         stage: "networks"
         scope: "dataset_specific"
         produces: ["results/spatial_networks/render_network_chord_diagram/<dataset>/plots", "results/spatial_networks/render_network_chord_diagram/<dataset>/manifests"]
@@ -921,7 +924,9 @@ stages:
           - "results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_compartment_summary.csv"
           - "results/spatial_validation/quantify_empirical_compartments/global/tables/bilateral_empirical_marker_transfer.csv"
         consumes_required:
-          - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_protein_identity_crosswalk_proposed.csv"
+          - "results/qc/discover_empirical_roi_markers/global/tables/neuron_neuropil/canonical_feature_table.csv"
+          - "results/qc/discover_empirical_roi_markers/global/tables/neuron_soma/canonical_feature_table.csv"
+          - "results/qc/discover_empirical_roi_markers/global/tables/microglia/canonical_feature_table.csv"
         consumes_optional:
           - "results/qc/discover_empirical_roi_markers/global/tables/empirical_roi_marker_sets.csv"
           - "results/tables/03_qc_exploration/05_empirical_roi_marker_discovery/empirical_roi_marker_sets.csv"
@@ -1244,6 +1249,7 @@ stages:
         produces:
           - "results/spatial_validation/summarize_ca2_slm_robustness/global/reports/CA2_SLM_robustness_audit.xlsx"
           - "results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_robustness_validation.csv"
+          - "results/spatial_validation/summarize_ca2_slm_robustness/global/tables/CA2_SLM_claim_status_summary.csv"
           - "results/spatial_validation/summarize_ca2_slm_robustness/global/plots"
         consumes_required:
           - "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv"

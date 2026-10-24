@@ -42,6 +42,7 @@ cli <- integration_cli(default_dataset = "all")
 NET <- function(f) spatial_systems_find(f, "networks")
 NET_OUT <- function(...) { d <- CANONICAL_PATHS$tables; dir_create(d); file.path(d, ...) }
 LEG <- function(...) path_results("tables", "07_spatial_networks", ...)
+LEGACY_TREE <- dir.exists(LEG())
 FIG <- function() {
   d <- CANONICAL_PATHS$plots; dir_create(d); d
 }
@@ -75,7 +76,8 @@ module_net_ctx <- rd(spatial_systems_find("WGCNA_module_network_context.csv",
 
 # ==================================== PART 17: legacy comparison
 
-message("Comparing against the legacy 07_spatial_networks pipeline")
+message(if (LEGACY_TREE) "Comparing against the legacy 07_spatial_networks pipeline" else
+  "Legacy 07_spatial_networks tree absent; the comparison table will be empty")
 leg_rows <- list()
 old_perm <- rd(LEG("bootstrap_differential_network_stability",
                    "edge_bootstrap_permutation_validation_summary.csv"))
@@ -122,6 +124,16 @@ if (!is.null(old_perm)) {
   }
 }
 legacy <- dplyr::bind_rows(leg_rows)
+# no legacy rows: keep the fixed schema so the declared output always exists
+if (!nrow(legacy)) {
+  legacy <- data.frame(
+    legacy_file = character(), legacy_edge = character(),
+    legacy_estimate = numeric(), legacy_permutation_p = numeric(),
+    legacy_fdr = numeric(), new_animal_level_estimate = numeric(),
+    comparable = logical(), legacy_inference_status = character(),
+    legacy_defect = character(), interpretation = character(),
+    stringsAsFactors = FALSE)
+}
 if (nrow(legacy)) {
   legacy$interpretation[!legacy$comparable] <- paste0(
     "not_comparable: the legacy neuropil network was built on a corrupted layer ",
@@ -260,8 +272,9 @@ add("bootstrap_resamples_animals", TRUE,
 add("legacy_marked_noncanonical", TRUE,
     if (nrow(legacy) == 0L || all(legacy$legacy_inference_status ==
                                   "legacy_noncanonical_inference")) "PASS" else "FAIL",
-    paste0(nrow(legacy), " legacy rows labelled legacy_noncanonical_inference; ",
-           "historical files were read, never modified"))
+    if (!LEGACY_TREE) "legacy 07_spatial_networks tree absent; empty comparison table written" else
+      paste0(nrow(legacy), " legacy rows labelled legacy_noncanonical_inference; ",
+             "historical files were read, never modified"))
 git_changed <- tryCatch(system2("git", c("status", "--porcelain"), stdout = TRUE,
                                 stderr = FALSE), error = function(e) character())
 add("no_da_or_wgcna_changes", TRUE,
@@ -284,7 +297,7 @@ add("atlas_context_is_node_level", TRUE,
 
 validation <- dplyr::bind_rows(checks)
 write_csv_safe(validation, NET_OUT("spatial_network_validation_status.csv"))
-if (nrow(legacy)) write_csv_safe(legacy, NET_OUT("legacy_spatial_network_comparison.csv"))
+write_csv_safe(legacy, NET_OUT("legacy_spatial_network_comparison.csv"))
 if (nrow(behaviour)) write_csv_safe(behaviour, NET_OUT("network_behavior_coupling_audit.csv"))
 
 # ------------------------------------------------------------- figures
