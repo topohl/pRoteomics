@@ -164,7 +164,7 @@ resolve_supermodule_annotation_file <- function() {
   )
 }
 
-resolve_module_definitions_file <- function(source = module_definition_source) {
+resolve_module_definitions_file <- function(source = module_definition_source, required = TRUE) {
   source <- tolower(source)
   override <- Sys.getenv("PROTEOMICS_MODULE_DEFINITIONS_FILE", unset = "")
 
@@ -182,7 +182,7 @@ resolve_module_definitions_file <- function(source = module_definition_source) {
       ## file the two named candidates above had already failed to locate.
       latest_roots = wgcna_curated_overlap_dir(),
       latest_pattern = "^curated_overlap_programs\\.xlsx$|^Overlap_based_neuropil_modules_classified\\.xlsx$",
-      required = TRUE,
+      required = required,
       script = SCRIPT_ID,
       dataset = dataset_profile,
       stage = "modules_downstream",
@@ -897,7 +897,7 @@ if (nrow(low_coverage_modules)) {
 }
 
 if (identical(module_definition_source, "wgcna")) {
-  overlap_defs_file <- resolve_module_definitions_file("overlap")
+  overlap_defs_file <- resolve_module_definitions_file("overlap", required = FALSE)  # optional comparison
   if (!is.na(overlap_defs_file) && file.exists(overlap_defs_file)) {
     overlap_raw <- readxl::read_excel(overlap_defs_file, sheet = "Modules_long") %>% as_tibble()
     overlap_standard <- standardize_module_definitions(overlap_raw, "overlap")
