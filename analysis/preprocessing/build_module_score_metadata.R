@@ -35,7 +35,7 @@ arg_value <- function(flag, default = "") {
 dataset_cli <- arg_value("--dataset", default = "")
 if (nzchar(dataset_cli)) Sys.setenv(PROTEOMICS_DATASET = validate_dataset(dataset_cli, source = "--dataset"))
 dataset_profile <- current_dataset()
-dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score")
+dataset_inputs <- resolve_dataset_inputs(dataset_profile, purpose = "module_score", require_metadata = FALSE)  # it writes the metadata
 
 # ------------------------------------------------
 # 1) PATHS

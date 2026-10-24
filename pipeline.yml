@@ -47,8 +47,8 @@ stages:
         stage: "core"
         scope: "dataset_specific"
         produces: ["results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/summaries/*.csv"]
-        consumes_required: ["results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv", "data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv", "data/external/MOUSE_10090_idmapping.dat"]
-        consumes_optional: ["data/metadata/manual_mapping.xlsx"]
+        consumes_required: ["results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv", "data/external/MOUSE_10090_idmapping.dat"]
+        consumes_optional: ["data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv", "data/metadata/manual_mapping.xlsx"]
         recomputes_core_state: true
         safe_downstream_rerun: false
         notes: "Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment and WGCNA consume these mapped files."

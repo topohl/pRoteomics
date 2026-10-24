@@ -128,6 +128,17 @@ manifest_path <- file.path(
 
 fmt_time <- function(x) format(x, "%Y-%m-%d %H:%M:%S %Z")
 
+# Several steps still declare pre-restructure locations (numbered results/ and data/processed/ trees) as required
+# next to the current ones; in the main tree stale files there satisfy the check. For a fresh tree (a regeneration
+# worktree) PROTEOMICS_PIPELINE_LEGACY_INPUTS_OPTIONAL=true reports missing paths under these roots as missing
+# optional inputs instead of blocking the step; the scripts' own input resolvers still stop on a real gap.
+legacy_inputs_optional <- tolower(Sys.getenv("PROTEOMICS_PIPELINE_LEGACY_INPUTS_OPTIONAL", unset = "false")) %in% c("1", "true", "yes")
+legacy_input_root <- paste0(
+  "^(results/(tables|source_data|logs|figures)/|data/processed/(0[2-9]_|01_preprocessing/",
+  "(gct_extractR|joint_compartment_qc|06_merged_metadata_module_score)/)|",
+  "results/reviewer_audit/microglia_wgcna_nature_readiness/|pride_submission/)"
+)
+
 path_status <- function(paths, dataset) {
   paths <- split_registry_paths(paths)
   if (!length(paths)) return(data.frame(path = character(), exists = logical()))
@@ -240,6 +251,11 @@ for (i in seq_len(nrow(steps))) {
   output_status_before <- path_status(step$produces, step$dataset)
   missing_required <- required_status$path[!is.na(required_status$exists) & !required_status$exists]
   missing_optional <- optional_status$path[!is.na(optional_status$exists) & !optional_status$exists]
+  if (legacy_inputs_optional) {
+    missing_legacy <- missing_required[grepl(legacy_input_root, missing_required)]
+    missing_required <- setdiff(missing_required, missing_legacy)
+    missing_optional <- c(missing_optional, missing_legacy)
+  }
   produced_before <- output_status_before$path[!is.na(output_status_before$exists) & output_status_before$exists]
   missing_outputs_before <- output_status_before$path[!is.na(output_status_before$exists) & !output_status_before$exists]
 

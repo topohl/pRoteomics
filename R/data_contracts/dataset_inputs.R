@@ -69,8 +69,10 @@ resolve_dataset_inputs <- function(
   purpose = c("wgcna", "module_score", "protigy_input"),
   script = Sys.getenv("PROTEOMICS_SCRIPT_ID", unset = NA_character_),
   stage = NA_character_,
-  record_resolution = TRUE
+  record_resolution = TRUE,
+  require_metadata = TRUE
 ) {
+  # require_metadata = FALSE for the producer of the module-score metadata, which reads only the expression workbook
   purpose <- match.arg(purpose)
   dataset <- validate_dataset(dataset)
   filter_contract <- dataset_filter_contract(dataset)
@@ -153,7 +155,7 @@ resolve_dataset_inputs <- function(
         legacy_dataset_candidates,
         if (isTRUE(allow_global_metadata_fallback)) path_results("module_scores", "sample_metadata_merged_clean_for_module_scores.xlsx") else character()
       ),
-      required = TRUE,
+      required = isTRUE(require_metadata),
       script = script,
       dataset = dataset,
       stage = stage,
