@@ -98,9 +98,13 @@ testthat::test_that("current optional and superseded blind-spot scripts are clas
   legacy <- vapply(
     registry$legacy, function(x) as.character(x$script), character(1)
   )
-  testthat::expect_true(
+  testthat::expect_false(
     "analysis/integration/export_module_protein_zoom_source_data.R" %in%
       active
+  )
+  testthat::expect_true(
+    "analysis/integration/export_module_protein_zoom_source_data.R" %in%
+      legacy
   )
   testthat::expect_false(
     "archive/08_integration/01_compartment_fidelity_summary.R" %in%

@@ -20,7 +20,6 @@ source(repo_path("R", "migration_gate_utils.R"))
 WRITERS <- c("audit_animal_id_integrity", "build_candidate_protein_shortlist",
              "build_cross_compartment_atlas", "build_evidence_priority_matrix",
              "build_immunostaining_candidates",
-             "export_module_protein_zoom_source_data",
              "quantify_candidate_network_position",
              "render_module_circular_atlas", "screen_immunostaining_panel",
              "screen_immunostaining_separation",

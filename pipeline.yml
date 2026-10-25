@@ -1592,17 +1592,6 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Read-only compact WGCNA/supermodule overview across datasets; uses the Stage 07 inferential handoff, existing labels, and claim gates without recomputing WGCNA."
-      - script: "analysis/integration/export_module_protein_zoom_source_data.R"
-        required: false
-        datasets: ["global"]
-        stage: "integration"
-        scope: "global"
-        produces: ["results/integration/export_module_protein_zoom_source_data/global/plots/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/source_data/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/figure_3", "results/integration/export_module_protein_zoom_source_data/global/reports/figure_3", "results/integration/export_module_protein_zoom_source_data/global/tables/manuscript_panel_inventory.csv"]
-        consumes_required: ["results/wgcna/summarize_module_interpretation/neuron_neuropil/tables/source_data/module_group_effects_main_heatmap_source.csv", "results/source_data/06_modules_WGCNA/interpretable_summary/neuron_neuropil/module_group_effects_main_heatmap_source.csv", "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_modules_long.csv", "results/tables/06_modules_WGCNA/01_WGCNA/neuron_neuropil/modules/WGCNA_modules_long.csv", "results/differential_abundance/run_clusterprofiler_enrichment/neuron_neuropil/models/clusterProfiler_manifest.csv", "data/processed/04_differential_expression_enrichment/clusterProfiler/neuron_neuropil/clusterProfiler_manifest.csv", "results/integration/test_enrichment_module_concordance/global/tables/program_specific_leading_edge_module_overlap.csv", "results/tables/10_biological_integration/gsea_wgcna_concordance/global/program_specific_leading_edge_module_overlap.csv", "results/wgcna/render_module_go_heatmaps/neuron_neuropil/tables/WGCNA_module_GO_heatmap_source_BP.csv", "results/tables/06_modules_WGCNA/01b_module_supermodule_GO_heatmaps/neuron_neuropil/WGCNA_module_GO_heatmap_source_BP.csv"]
-        consumes_optional: []
-        recomputes_core_state: false
-        safe_downstream_rerun: true
-        notes: "Render-only manuscript Figure 3 integration from existing Stage 07 WGCNA, canonical module membership, manifest-selected protein DA, concordance, and GO sources; fits no new model."
   export:
     description: "Export layer for PRIDE, manuscript tables, reviewer materials, source data, methods summaries, and validation reports."
     scripts:
@@ -1752,3 +1741,6 @@ legacy:
   - script: "audits/wgcna/proteomics_wgcna_downstream_audit.R"
     replacement: "repository audit utility"
     status: "root-level read-only audit utility; explicitly excluded from analysis-script discovery and canonical pipeline execution"
+  - script: "analysis/integration/export_module_protein_zoom_source_data.R"
+    replacement: "tools/export_figure_03_adaptation_source.R"
+    status: "retired 2026-10-25: it sources R/manuscript_figure3_utils.R, which moved to Exp9_manuscript in 472fc70 (2026-09-17), so it could not run; no Exp9_manuscript figure reads its outputs; excluded from canonical integration execution"

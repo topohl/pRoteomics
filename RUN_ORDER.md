@@ -150,15 +150,14 @@ Do not hand-edit this block; run `Rscript tools/generate_pipeline_docs.R`.
 98. `analysis/integration/screen_immunostaining_separation.R` - stage `integration`; scope `global`
 99. `analysis/integration/render_module_circular_atlas.R` - stage `integration`; scope `global`
 100. `analysis/integration/summarize_module_cross_compartment.R` - stage `integration`; scope `global`
-101. `analysis/integration/export_module_protein_zoom_source_data.R` - stage `integration`; scope `global`
-102. `analysis/publication_source_data/build_sample_metadata.R` - stage `export`; scope `global`
-103. `analysis/publication_source_data/export_processed_matrices.R` - stage `export`; scope `global`
-104. `analysis/publication_source_data/build_supplementary_tables.R` - stage `export`; scope `global`
-105. `analysis/publication_source_data/build_pride_manifest.R` - stage `export`; scope `global`
-106. `analysis/publication_source_data/build_methods_summary.R` - stage `export`; scope `global`
-107. `analysis/publication_source_data/08_export_manuscript_figures.R` - stage `export`; scope `global`
-108. `analysis/publication_source_data/09_export_source_data.R` - stage `export`; scope `global`
-109. `analysis/publication_source_data/validate_pride_submission.R` - stage `export`; scope `global`
+101. `analysis/publication_source_data/build_sample_metadata.R` - stage `export`; scope `global`
+102. `analysis/publication_source_data/export_processed_matrices.R` - stage `export`; scope `global`
+103. `analysis/publication_source_data/build_supplementary_tables.R` - stage `export`; scope `global`
+104. `analysis/publication_source_data/build_pride_manifest.R` - stage `export`; scope `global`
+105. `analysis/publication_source_data/build_methods_summary.R` - stage `export`; scope `global`
+106. `analysis/publication_source_data/08_export_manuscript_figures.R` - stage `export`; scope `global`
+107. `analysis/publication_source_data/09_export_source_data.R` - stage `export`; scope `global`
+108. `analysis/publication_source_data/validate_pride_submission.R` - stage `export`; scope `global`
 
 <!-- END GENERATED PIPELINE REGISTRY INDEX -->
 
