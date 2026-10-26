@@ -76,8 +76,8 @@ requires support in every member module; medium requires at least two and at
 least half. Other multi-module clusters remain mixed/unresolved, while
 singletons are explicitly labelled `singleton`. Singleton structural status
 does not lower the reviewed biological-label confidence inherited from the
-member module. The full cut-height sensitivity grid is
-`0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
+member module. The Stage 01 cut-height sensitivity grid is
+`0.25, 0.35, 0.45, 0.50, 0.55, 0.65`; the microglia readiness audit adds `0.40`.
 
 Run:
 
@@ -439,13 +439,14 @@ replicate-unit, and exact Stage 05 source-artifact/source-key provenance.
 Claim status uses the handoff `claim_gate`; reviewer-sensitivity FDR fields are
 not claim gates.
 
-Configured future-network defaults and historical selected values are separate
-parameter concepts. The intended defaults remain neuron neuropil `0.55`,
-neuron soma `0.35`, and microglia `0.45`. The frozen current microglia network
-was generated with an explicit historical `0.40` override, so its saved
-memberships and provenance remain associated with `0.40`. Stage 12 resolves
-that selected value from the saved state, Stage 01 manifest, and clustering
-sensitivity record rather than substituting the future `0.45` default.
+Supermodule cut heights (since 2026-10-26): neuron neuropil `0.55`, neuron
+soma `0.55`, microglia `0.45`, the same in both analyses and without an
+environment override. Each is the middle of the widest gap between merge
+heights of the compartment's primary-analysis eigengene dendrogram within
+0.35-0.65, rounded to 0.05; the rule uses the dendrogram only. Earlier builds
+used soma `0.35` and an undocumented microglia override `0.40`, which sat 0.004
+below a merge. Stage 12 still resolves the selected value from the saved state,
+Stage 01 manifest and clustering sensitivity record.
 
 ```powershell
 Rscript .\06_modules_WGCNA\audit_microglia_module_claims.R --animal-bootstrap 500

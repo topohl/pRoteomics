@@ -253,12 +253,10 @@ least two and at least half. Other multi-module clusters are conservatively
 mixed/unresolved; singletons are explicitly `singleton`. That structural status
 does not lower the reviewed biological-label confidence inherited from the
 member module.
-Future-network dataset defaults are `0.55` for neuron neuropil, `0.35` for
-neuron soma, and `0.45` for microglia. These defaults are distinct from the
-selected value recorded for a saved network. The frozen current microglia
-network was generated using a historical explicit `0.40` override; its
-memberships remain tied to `0.40`. The sensitivity grid is
-`0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
+Cut heights are `0.55` for neuron neuropil, `0.55` for neuron soma and `0.45`
+for microglia (rule in docs/WGCNA_WORKFLOW.md); the selected value is recorded
+for each saved network. The Stage 01 sensitivity grid is
+`0.25, 0.35, 0.45, 0.50, 0.55, 0.65`.
 
 Manual labels absent from the active dataset are retained for audit but marked
 with `present_in_dataset = FALSE`, `annotation_scope =

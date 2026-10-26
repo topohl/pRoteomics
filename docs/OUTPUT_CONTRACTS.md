@@ -219,7 +219,7 @@ singletons. Reviewed singleton biological confidence is inherited from the
 member module and is not lowered automatically. Biological-coherence exports report signed minimum/mean/median
 pairwise eigengene correlation, region/layer-adjusted correlations when
 estimable, PC1 variance explained, module/protein counts, and stability over
-cut heights `0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
+cut heights `0.25, 0.35, 0.45, 0.50, 0.55, 0.65`; PC1 variance alone is not
 shared-pathway evidence.
 
 WGCNA biological annotation and interpretable summaries keep raw GO,
@@ -262,12 +262,10 @@ group-effect provenance is the exact Stage 05 `SUS - RES` /
 `group_effect_FDR` remains an exact compatibility alias for
 `group_effect_FDR_global`.
 
-Cut-height provenance separates the configured future default from the value
-selected to generate a saved network. Dataset defaults are neuron neuropil
-`0.55`, neuron soma `0.35`, and microglia `0.45`. The current frozen microglia
-network records a historical explicit `0.40` override and memberships generated
-at `0.40`; neither concept overwrites the other. The readiness sensitivity grid
-is `0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
+Cut-height provenance separates the configured default from the value
+selected to generate a saved network. Defaults (docs/WGCNA_WORKFLOW.md) are
+neuron neuropil `0.55`, neuron soma `0.55`, and microglia `0.45`. The readiness
+sensitivity grid is `0.25, 0.35, 0.40, 0.45, 0.50, 0.55, 0.65`.
 | WGCNA module complex/organelle architecture | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_complex_architecture/<dataset>/module_complex_architecture.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_complex_architecture/<dataset>/` |
 | WGCNA module robustness/sensitivity | standard integration evidence contract | `results/tables/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/module_robustness_sensitivity.csv`; mirrored under `results/source_data/06_modules_WGCNA/module_robustness_sensitivity/<dataset>/` |
 | microglia WGCNA Stage 13 claim readiness | `wgcna_entity_claim_readiness.yml` and strict shared loader | `results/tables/06_modules_WGCNA/claim_readiness/microglia/WGCNA_entity_claim_readiness.csv` |

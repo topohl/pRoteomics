@@ -227,14 +227,14 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
   env$validate_dataset <- function(dataset, source = NULL) match.arg(dataset, c("neuron_neuropil", "neuron_soma", "microglia"))
   eval(expressions[[which(is_default_function)]], envir = env)
   testthat::expect_equal(env$supermodule_merge_cut_height("neuron_neuropil"), 0.55)
-  testthat::expect_equal(env$supermodule_merge_cut_height("neuron_soma"), 0.35)
+  testthat::expect_equal(env$supermodule_merge_cut_height("neuron_soma"), 0.55)
   testthat::expect_equal(env$supermodule_merge_cut_height("microglia"), 0.45)
 
   state_path <- file.path(root, "data", "processed", "06_modules_WGCNA", "01_WGCNA", "microglia", "wgcna_final_model_state.rds")
   if (file.exists(state_path)) {
     state <- readRDS(state_path)
     testthat::expect_equal(
-      as.numeric(state$parameters$supermodule_merge_cut_height), 0.40
+      as.numeric(state$parameters$supermodule_merge_cut_height), 0.45
     )
   } else {
     testthat::succeed("Frozen microglia state is unavailable.")

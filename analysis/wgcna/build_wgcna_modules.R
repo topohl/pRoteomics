@@ -694,11 +694,14 @@ classify_supermodule_label_confidence <- function(n_modules, go_support_class = 
   "low"
 }
 
+# Supermodule cut heights (2026-10-26): the middle of the widest gap between merge heights of each compartment's
+# primary-analysis eigengene dendrogram within 0.35-0.65, rounded to 0.05; the same height is used in the sensitivity
+# analysis. The rule uses the dendrogram only (results/reviewer_audit/normalisation_choice_2026-10-21/supermodule_cut_heights/).
 supermodule_merge_cut_height <- function(dataset) {
   dataset <- validate_dataset(dataset, source = "supermodule cut-height dataset")
   switch(as.character(dataset),
     neuron_neuropil = 0.55,
-    neuron_soma = 0.35,
+    neuron_soma = 0.55,
     microglia = 0.45,
     0.40
   )

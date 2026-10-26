@@ -6,8 +6,8 @@
 #
 # Regenerating a version: a separate working tree at the same code, the setting below, then
 # archive/01_preprocessing/01_impute.r, 02_excel_convert.r, analysis/preprocessing/build_animal_level_protigy_input.R
-# and the pipeline (scripted limma replaces ProTigy; identical to 1e-13). Environment the label consumers need:
-# PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT=0.40 for microglia (neuropil 0.55 and soma 0.35 are defaults), and either
+# and the pipeline (scripted limma replaces ProTigy; identical to 1e-13). Supermodule cut heights are the code defaults
+# (no PROTEOMICS_WGCNA_SUPERMODULE_CUT_HEIGHT override since 2026-10-26). Environment the label consumers need: either
 # reviewed labels (config/wgcna_labels/<dataset>.csv) or, for an unreviewed network, PROTEOMICS_WGCNA_LABEL_MODE=provisional
 # with PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY and PROTEOMICS_GSEA_WGCNA_THEME_MAPPING.
 
