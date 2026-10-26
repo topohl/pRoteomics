@@ -53,6 +53,11 @@ suppressPackageStartupMessages({ library(dplyr); library(readr); library(tidyr) 
 source(file.path("R", "paths.R"))
 ARCHIVE <- if (dir.exists("Q:/data")) "Q:" else
   "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pre_renormalisation_2026-10-19"
+# The original network: the original-centring regeneration on the corrected code (2026-10-24/25; worktree
+# Analysis/proteomics_original, subst R:). Its membership equals the archive; module GO uses the same annotation
+# and term-size limits as the complete-case network.
+ORIG <- Sys.getenv("PROTEOMICS_ORIGINAL_ROOT", unset = if (dir.exists("R:/results")) "R:" else
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics_original")
 REV <- path_results("reviewer_audit", "normalisation_choice_2026-10-21")
 OUT <- file.path(REV, "annotation_review", "rule_based"); dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
 BUILDS <- file.path(REV, "validation", "wgcna_builds")
@@ -62,8 +67,8 @@ RULES <- list(q = 0.05, top_terms = 40L, overlap = 0.5, min_proteins = 10L, min_
               term_jaccard = 0.3, carry_share = 0.5, stable_jaccard = 0.5, rebuild_ari = 0.99)
 VERSIONS <- list(
   original = list(estimator = "original_all_observed",
-                  state = function(ds) file.path(ARCHIVE, "data", "processed", "06_modules_WGCNA", "01_WGCNA", ds, "wgcna_final_model_state.rds"),
-                  sm = function(ds) file.path(ARCHIVE, "results", "tables", "06_modules_WGCNA", "module_annotation", ds, "WGCNA_supermodule_biological_annotation.csv")),
+                  state = function(ds) file.path(ORIG, "results", "wgcna", "build_wgcna_modules", ds, "models", "wgcna_final_model_state.rds"),
+                  sm = function(ds) file.path(ORIG, "results", "wgcna", "annotate_module_microenvironment", ds, "tables", "WGCNA_supermodule_biological_annotation.csv")),
   new = list(estimator = "new_complete_case",
              state = function(ds) file.path("results", "wgcna", "build_wgcna_modules", ds, "models", "wgcna_final_model_state.rds"),
              sm = function(ds) file.path("results", "wgcna", "annotate_module_microenvironment", ds, "tables", "WGCNA_supermodule_biological_annotation.csv")))

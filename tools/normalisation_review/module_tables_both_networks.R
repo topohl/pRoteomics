@@ -19,6 +19,11 @@ suppressPackageStartupMessages({ library(dplyr); library(readr); library(tidyr);
 source(file.path("R", "paths.R")); source(repo_path("R", "manuscript_go_theme_utils.R"))
 ARCHIVE <- if (dir.exists("Q:/data")) "Q:" else
   "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pre_renormalisation_2026-10-19"
+# The original network: the original-centring regeneration on the corrected code (2026-10-24/25; worktree
+# Analysis/proteomics_original, subst R:). Its membership equals the archive; module GO uses the same annotation
+# and term-size limits as the complete-case network.
+ORIG <- Sys.getenv("PROTEOMICS_ORIGINAL_ROOT", unset = if (dir.exists("R:/results")) "R:" else
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics_original")
 REV <- file.path("results", "reviewer_audit", "normalisation_choice_2026-10-21")
 RB <- file.path(REV, "annotation_review", "rule_based"); OUT <- file.path(REV, "original_assessment")
 DATASETS <- c("neuron_neuropil", "neuron_soma", "microglia")
@@ -32,12 +37,12 @@ PATHS <- list(
              cpl = function(ds) file.path("results", "integration", "test_module_behaviour_coupling", ds, "tables", "module_behavior_coupling.csv"),
              gsea = function(ds) file.path("results", "differential_abundance", "run_clusterprofiler_enrichment", ds, "models", "clusterProfiler_manifest.csv"),
              root = "P:/"),
-  original = list(state = function(ds) file.path(ARCHIVE, "data", "processed", "06_modules_WGCNA", "01_WGCNA", ds, "wgcna_final_model_state.rds"),
-                  mge = function(ds) file.path(ARCHIVE, "results", "tables", "06_modules_WGCNA", "group_effects", ds, "module_group_effects.csv"),
-                  sge = function(ds) file.path(ARCHIVE, "results", "tables", "06_modules_WGCNA", "group_effects", ds, "all_supermodule_eigengene_group_significance.csv"),
-                  cpl = function(ds) file.path(ARCHIVE, "results", "tables", "08_behavior_physio_coupling", "module_behavior_coupling", ds, "module_behavior_coupling.csv"),
-                  gsea = function(ds) file.path(ARCHIVE, "data", "processed", "04_differential_expression_enrichment", "clusterProfiler", ds, "clusterProfiler_manifest.csv"),
-                  root = paste0(ARCHIVE, "/")))
+  original = list(state = function(ds) file.path(ORIG, "results", "wgcna", "build_wgcna_modules", ds, "models", "wgcna_final_model_state.rds"),
+                  mge = function(ds) file.path(ORIG, "results", "wgcna", "test_module_phenotypes", ds, "tables", "module_group_effects.csv"),
+                  sge = function(ds) file.path(ORIG, "results", "wgcna", "test_module_phenotypes", ds, "tables", "supermodule_group_effects.csv"),
+                  cpl = function(ds) file.path(ORIG, "results", "integration", "test_module_behaviour_coupling", ds, "tables", "module_behavior_coupling.csv"),
+                  gsea = function(ds) file.path(ORIG, "results", "differential_abundance", "run_clusterprofiler_enrichment", ds, "models", "clusterProfiler_manifest.csv"),
+                  root = paste0(ORIG, "/")))
 fix_path <- function(p, root) sub("^[A-Za-z]:/+", root, gsub("\\\\", "/", p))
 min_or_na <- function(x) if (length(x) && any(!is.na(x))) min(x, na.rm = TRUE) else NA_real_
 # gene annotation and module GO limits of a WGCNA state (states built before 2026-10-23 used the legacy annotation and 10-500)
