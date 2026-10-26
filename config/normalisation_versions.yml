@@ -11,8 +11,25 @@
 # reviewed labels (config/wgcna_labels/<dataset>.csv) or, for an unreviewed network, PROTEOMICS_WGCNA_LABEL_MODE=provisional
 # with PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY and PROTEOMICS_GSEA_WGCNA_THEME_MAPPING.
 
+# Decision (Tobias, 2026-10-26): all_observed_median is the primary analysis, complete_case_median its sensitivity
+# analysis (config/normalisation.yml). Both were rebuilt on the same corrected code (branch renormalisation-2026-10-19 at
+# 15ff621 and its worktree branch original-centring-2026-10-24); the entries below are the preserved earlier builds.
+current:
+  decided_on: 2026-10-26
+  primary:
+    sample_centring: all_observed_median
+    tree: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics_original
+    branch: original-centring-2026-10-24
+    built: 2026-10-24/25; imputed workbooks value-identical to the preserved original, WGCNA membership and eigengenes identical
+  sensitivity:
+    sample_centring: complete_case_median
+    tree: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics
+    branch: renormalisation-2026-10-19
+    built: 2026-10-25/26; WGCNA membership and eigengenes identical to the preserved 2026-10-19 build
+
 versions:
   - sample_centring: all_observed_median
+    role: primary (preserved earlier build)
     status: preserved
     root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pre_renormalisation_2026-10-19
     manifest: SHA256_MANIFEST.csv
@@ -37,6 +54,7 @@ versions:
       files: 1309 (1309 match)
       preserved_on: 2026-10-21
   - sample_centring: complete_case_median
+    role: sensitivity (preserved earlier build)
     status: preserved
     root: S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_complete_case_2026-10-21
     manifest: SHA256_MANIFEST.csv
