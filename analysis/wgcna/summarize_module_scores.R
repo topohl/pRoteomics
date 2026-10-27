@@ -175,9 +175,9 @@ canonical_supermodule_labels <- function(lookup) {
 # Supermodules labelled from a reviewed registry: the label is a decision, even when the decision is
 # 'Mixed / unresolved', so the fallback-label check does not apply to them.
 reviewed_supermodule_ids <- function(lookup) {
-  if (!"label_source" %in% names(lookup)) return(character())
+  if (!"label_contract_version" %in% names(lookup)) return(character())
   lookup$entity_id[lookup$level == "supermodule" &
-                     grepl("config/wgcna_labels/", dplyr::coalesce(lookup$label_source, ""), fixed = TRUE)]
+                     dplyr::coalesce(lookup$label_contract_version, "") == paste0(lookup$dataset, "_wgcna_reviewed_labels_v1")]
 }
 
 canonical_module_labels <- function(lookup) {

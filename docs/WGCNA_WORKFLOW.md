@@ -276,8 +276,8 @@ underlying rationale.
 
 Automatic proposals remain centralized in `R/statistics/wgcna_labeling_utils.R`. For the
 current microglia network, Stage 07 additionally loads
-`config/wgcna_labels/microglia.csv`, validates exactly 13 modules and 9
-supermodules against current Stage 01 membership, and makes reviewed labels
+`config/wgcna_labels/microglia.csv`, validates that it names exactly the modules
+and supermodules of the current Stage 01 membership, and makes reviewed labels
 authoritative by `dataset + level + entity_id`. Biological process,
 subcellular context, and ROI context remain separate. Automatic proposals and
 GO evidence remain provenance and are fingerprinted. `final_plot_label` is an

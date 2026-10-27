@@ -324,7 +324,9 @@ testthat::test_that("the claimability annotation is one row per audited protein"
 testthat::test_that("an atlas written after the annotation carries it for every audited protein", {
   # An empty overlay reads as not audited everywhere (the atlas once looked for the
   # annotation in its own folder). The first pass legitimately precedes the annotation.
-  pa <- ATL("protein_spatial_cell_affinity.csv"); pc <- ATL("protein_claimability_annotation.csv")
+  pa <- ATL("protein_spatial_cell_affinity.csv")
+  pc <- path_results("spatial_validation", "audit_stress_identity_robustness", "global", "tables",
+                     "protein_claimability_annotation.csv")   # the copy the atlas reads
   testthat::skip_if_not(have(pa) && have(pc), "atlas or annotation not generated")
   testthat::skip_if(file.mtime(pa) < file.mtime(pc), "atlas predates the annotation (first pass)")
   a <- rd(pa); c1 <- rd(pc)

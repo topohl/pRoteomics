@@ -643,7 +643,8 @@ dec <- tibble(
   `Decision needed` = c("original | new (complete-case anchor median) | neither conclusively favoured",
                         "keep the anchor median, or adopt the median ratio on the same anchors",
                         "report with a sensitivity analysis without A755 L (and A764 R), restrict claims, or use a missingness-aware model",
-                        "accept / edit / reject each row of Proteomics_WGCNA_annotation_decisions.xlsx (both networks)",
+                        if (ids_moved) "review the current labels in Proteomics_WGCNA_module_labels.xlsx (supermodule IDs of 2026-10-22 are mapped in annotation_review/label_changes_2026-10-23.csv)" else
+                          "accept / edit / reject each row of Proteomics_WGCNA_annotation_decisions.xlsx (both networks)",
                         "keep the exemplar-aligned modules (neuropil m04 with m10 context, soma m01, microglia m09/SM06), or choose other exemplars",
                         "retire, or keep as a predefined descriptive analysis labelled as defined on the original results",
                         "measured-proteome background as primary (the archived reference-transcriptome tables would then be historical), or keep the reference-transcriptome background",
