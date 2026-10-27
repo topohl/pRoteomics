@@ -14,7 +14,7 @@
 #   unannotated  several unlabelled members: 'unannotated (weak X (mA) and Y (mB) associations)'; plain unannotated
 #                members are listed by ID after a semicolon; without any weak member 'unannotated (mA, mB)'
 # Also applies the module corrections listed in MODULE_FIXES, then those of REGENERATION_FIXES (both networks rebuilt
-# with the official gene mapping and GO term sizes 10-800, 2026-10-25/26). Rewrites annotation_review/rule_based/labels.tsv and the
+# with the official gene mapping and GO term sizes 10-800, 2026-10-24/26). Rewrites annotation_review/rule_based/labels.tsv and the
 # change log annotation_review/label_changes_2026-10-23.csv (all changes against the labels preserved in the review
 # archive of 2026-10-22, with a short reason each; supermodules are matched by their members, since the cut-height rule of
 # 2026-10-26 merged and renumbered some). Run check_rule_labels.R afterwards.
@@ -56,7 +56,7 @@ SUMMARY <- tribble(~version, ~dataset, ~entity_id, ~summary,
   "new", "neuron_neuropil", "WGCNA_m01", "The third signal's leading and largest term is intracellular protein transport (49 proteins), not its 15-protein sub-term.",
   "new", "neuron_neuropil", "WGCNA_m03", "As in original neuropil m12: cytoplasmic translation (71 proteins) is in the same signal as RNA processing.")
 SUMMARY <- bind_rows(SUMMARY, MODULE_FIXES |> filter(!is.na(summary)) |> select(version, dataset, entity_id, summary))
-# module labels after the regeneration of both networks on the corrected code (2026-10-25/26; applied after MODULE_FIXES)
+# module labels after the regeneration of both networks on the corrected code (2026-10-24/26; applied after MODULE_FIXES)
 REGENERATION_FIXES <- tribble(~version, ~dataset, ~entity_id, ~label, ~summary,
   "original", "neuron_neuropil", "WGCNA_m02", "Cellular respiration/organic acid metabolism-enriched", "Regeneration (official gene mapping, GO term sizes 10-800): respiration and organic acid metabolism form one signal whose leading and largest term is the broad parent small molecule metabolic process (405 proteins); named after its specific terms cellular respiration and organic acid metabolic process.",
   "original", "neuron_neuropil", "WGCNA_m03", "Endosome to lysosome/ER to Golgi transport- and chromosome segregation-associated", "Wording (rule 7, label check 2026-10-26): named with GO's own words: leading term endosome to lysosome transport (12 proteins) with endoplasmic reticulum to Golgi vesicle-mediated transport (15) in the same signal; 'endolysosomal' is not a GO word and no hyphens are added.",
@@ -150,7 +150,7 @@ sm_label <- function(r) {
 gen <- sms |> rowwise() |> mutate(generated = sm_label(pick(everything()))) |> ungroup() |> select(version, dataset, entity_id = SupermoduleID, generated)
 # supermodule rows are the current supermodules: their IDs follow the dendrogram leaf order, so a new cut height renumbers them
 lab <- bind_rows(lab |> filter(level == "module"), gen |> transmute(version, dataset, level = "supermodule", entity_id, label = generated)) |>
-  arrange(match(version, unique(prev$version)), match(dataset, unique(prev$dataset)), match(level, c("module", "supermodule")), entity_id)
+  arrange(match(version, unique(prev$version)), match(level, c("module", "supermodule")), match(dataset, unique(prev$dataset)), entity_id)   # order of 2026-10-22
 key <- function(d) sort(paste(d$version, d$dataset, d$entity_id)[d$level == "module"])
 stopifnot(!anyNA(lab$label), identical(key(lab), key(prev)))
 write_tsv(lab, file.path(RB, "labels.tsv"), na = "", escape = "none")
@@ -162,6 +162,8 @@ members <- sms |> transmute(version, dataset, entity_id = SupermoduleID, rule_cl
 prev_sm <- read_csv(file.path(dirname(PREV), "supermodule_rule_classes.csv"), show_col_types = FALSE) |>
   transmute(version, dataset, old_id = SupermoduleID, old_members = member_modules) |>
   left_join(prev |> filter(level == "supermodule") |> select(version, dataset, old_id = entity_id, old_label = label), by = c("version", "dataset", "old_id"))
+stopifnot(!anyNA(prev_sm$old_label))   # every supermodule of 2026-10-22 had a label; a missing one would drop its change-log row
+regen <- paste(REGENERATION_FIXES$version, REGENERATION_FIXES$dataset, REGENERATION_FIXES$entity_id)   # dated 2026-10-26 in the log
 sm_before <- function(v, d, mm) {   # the supermodule with the same members before, or the earlier supermodules it joins
   p <- prev_sm[prev_sm$version == v & prev_sm$dataset == d, ]
   if (sum(p$old_members == mm) == 1) return(c(p$old_id[p$old_members == mm], p$old_label[p$old_members == mm], "same members"))
@@ -182,6 +184,7 @@ chg <- bind_rows(chg_mod, chg_sm) |> filter(previous_label != new_label | previo
   mutate(member_changed = mapply(function(v, d, mm) { if (is.na(mm)) return(FALSE); ids <- strsplit(mm, ";", fixed = TRUE)[[1]]
            any(prev$label[prev$version == v & prev$dataset == d & prev$entity_id %in% ids] != lab$label[lab$version == v & lab$dataset == d & lab$entity_id %in% ids]) },
            version, dataset, member_modules),
+         member_regen = mapply(function(v, d, mm) !is.na(mm) && any(paste(v, d, strsplit(mm, ";", fixed = TRUE)[[1]]) %in% regen), version, dataset, member_modules),
          label_reason = case_when(!is.na(summary) ~ summary,
                                   previous_label == new_label ~ NA_character_,
                                   level == "supermodule" & !grepl(";", member_modules, fixed = TRUE) ~ "Follows its member's corrected label.",
@@ -194,7 +197,7 @@ chg <- bind_rows(chg_mod, chg_sm) |> filter(previous_label != new_label | previo
                                                                           previous_entity_id, cut_before, cut_now),
                                 TRUE ~ NA_character_),
          reason = ifelse(match == "merged", cut_reason, trimws(paste(coalesce(label_reason, ""), coalesce(cut_reason, "")))),
-         changed_on = ifelse(is.na(cut_reason), "2026-10-23", "2026-10-26")) |>
+         changed_on = ifelse(!is.na(cut_reason) | paste(version, dataset, entity_id) %in% regen | member_regen, "2026-10-26", "2026-10-23")) |>
   select(version, dataset, level, entity_id, previous_entity_id, previous_label, new_label, reason, changed_on)
 stopifnot(!anyNA(chg$reason), all(nzchar(chg$reason)), !any(grepl(" NA ", chg$reason, fixed = TRUE)))
 write_csv(chg, file.path(ANN, "label_changes_2026-10-23.csv"), na = "")
