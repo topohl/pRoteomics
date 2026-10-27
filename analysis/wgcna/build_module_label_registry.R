@@ -132,6 +132,21 @@ if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewe
   curated_mod <- curated_mod[0, , drop = FALSE]
   curated_sup <- curated_sup[0, , drop = FALSE]
 }
+# A curated supermodule row applies only while its supermodule has the members it was adjudicated for
+# (supermodule IDs follow the dendrogram order, so a new cut height renumbers them).
+if (nrow(curated_sup)) {
+  now_members <- mod %>%
+    group_by(.data$dataset, entity_id = .data$SupermoduleID) %>%
+    summarise(current_members = paste(sort(.data$ModuleID), collapse = ";"), .groups = "drop")
+  moved <- curated_sup %>%
+    left_join(now_members, by = c("dataset", "entity_id")) %>%
+    filter(is.na(.data$current_members) | .data$current_members != .data$members)
+  if (nrow(moved)) {
+    stop("Curated supermodule adjudication made for other members: ",
+         paste(moved$dataset, moved$entity_id, collapse = ", "), call. = FALSE)
+  }
+}
+curated_sup <- curated_sup %>% select(-"members")
 
 hub_compact <- hubs %>%
   filter(.data$rank <= 8L) %>%

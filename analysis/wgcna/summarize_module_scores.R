@@ -172,6 +172,14 @@ canonical_supermodule_labels <- function(lookup) {
     )
 }
 
+# Supermodules labelled from a reviewed registry: the label is a decision, even when the decision is
+# 'Mixed / unresolved', so the fallback-label check does not apply to them.
+reviewed_supermodule_ids <- function(lookup) {
+  if (!"label_source" %in% names(lookup)) return(character())
+  lookup$entity_id[lookup$level == "supermodule" &
+                     grepl("config/wgcna_labels/", dplyr::coalesce(lookup$label_source, ""), fixed = TRUE)]
+}
+
 canonical_module_labels <- function(lookup) {
   if (!"canonical_plot_label" %in% names(lookup)) {
     return(lookup |>
@@ -448,6 +456,7 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
   corr_raw <- read_csv_required(paths$correlation_structure, "supermodule score correlation structure")
   final_label_lookup <- canonical_final_label_lookup(dataset)
   labels <- canonical_supermodule_labels(final_label_lookup)
+  reviewed_ids <- reviewed_supermodule_ids(final_label_lookup)
   module_labels <- canonical_module_labels(final_label_lookup)
   validate_render_ids_in_lookup(effects_raw$Module, labels, "supermodule_id", "effect")
   validate_render_ids_in_lookup(consistency_raw$Module, labels, "supermodule_id", "consistency")
@@ -493,7 +502,8 @@ run_one_dataset <- function(dataset, module_source = "wgcna") {
     corr |> dplyr::distinct(plot_type = "correlation_module2", supermodule_id = .data$module2, final_plot_label = .data$module2_label, raw_label = .data$module2, cleaned_label_available = !is_nonfinal_fallback_label(.data$module2_label))
   ) |>
     dplyr::mutate(
-      fallback_visible_with_clean_label = .data$cleaned_label_available & is_nonfinal_fallback_label(.data$final_plot_label),
+      fallback_visible_with_clean_label = .data$cleaned_label_available & is_nonfinal_fallback_label(.data$final_plot_label) &
+        !(.data$supermodule_id %in% reviewed_ids),
       final_label_matches_lookup = .data$final_plot_label %in% labels$final_plot_label
     )
 

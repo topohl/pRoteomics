@@ -369,14 +369,21 @@ wal_curated_supermodule_adjudications <- function() {
     c("neuron_soma", "SM03", "nuclear gene expression - chromatin remodelling and RNA processing",
       "high",
       "Singleton supermodule inheriting its only member, m02, whose evidence is the strongest in the soma network (core CC nuclear protein-containing complex p=5.6e-167). Parent and member necessarily share a name here; the redundancy check correctly exempts singletons."),
-    c("neuron_soma", "SM04", "proteostasis / ubiquitin-proteasome", "low",
-      "Singleton inheriting m01, and downgraded with it from moderate to LOW. The proteasome signal is peripheral and absent from the hub centre. This is also the least stable entity in the soma packet (cut-height stability 0.333 versus 0.833-1.0 for every other supermodule), which is an independent reason not to activate its name."),
-    c("neuron_soma", "SM05", "mixed / unresolved", "low",
-      "Singleton inheriting m03, corrected with it from alpha-amino acid metabolic process to mixed. The member's three protein sets disagree and nothing exceeds p~5e-03.")
+    c("neuron_soma", "SM04", "mixed / unresolved", "low",
+      "Formed when the soma supermodule cut height moved from 0.35 to 0.55 (stated rule, 2026-10-26): joins m01 (proteostasis / ubiquitin-proteasome, low confidence, peripheral proteasome signal) and m03 (mixed / unresolved), the former singletons SM04 and SM05. One weak and one unresolved member cannot name a supermodule, so no supermodule biology is claimed; pending review.")
   )
   out <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
   names(out) <- c("dataset", "entity_id", "proposed_final_label", "confidence",
                   "rationale")
+  # the members each adjudication was made for; a new cut height renumbers supermodules, so the
+  # label registry applies a row only while its supermodule still has exactly these members
+  members <- c(
+    "neuron_neuropil/SM02" = "WGCNA_m01;WGCNA_m09;WGCNA_m10", "neuron_neuropil/SM03" = "WGCNA_m02;WGCNA_m07",
+    "neuron_neuropil/SM06" = "WGCNA_m03;WGCNA_m06", "neuron_neuropil/SM07" = "WGCNA_m04;WGCNA_m05;WGCNA_m08;WGCNA_m13;WGCNA_m14",
+    "neuron_soma/SM01" = "WGCNA_m04;WGCNA_m06", "neuron_soma/SM02" = "WGCNA_m05;WGCNA_m07", "neuron_soma/SM03" = "WGCNA_m02",
+    "neuron_soma/SM04" = "WGCNA_m01;WGCNA_m03")
+  out$members <- unname(members[paste(out$dataset, out$entity_id, sep = "/")])
+  stopifnot(!anyNA(out$members))
   out$level <- "supermodule"
   out$alternative_label_1 <- NA_character_
   out$alternative_label_2 <- NA_character_

@@ -515,7 +515,34 @@ build_qc_flags <- function(claims) {
     dplyr::distinct()
 }
 
-build_bundle_readme <- function() {
+# The README's sentences on the Stage 13 identities are counted from the readiness table itself: identities
+# and IDs follow the network that was built (a new supermodule cut height renumbers supermodules).
+readiness_readme_text <- function(readiness = NULL) {
+  if (is.null(readiness) || !nrow(readiness) || !"claim_entity_role" %in% names(readiness)) {
+    return(c(desc = "Authoritative microglia WGCNA Stage 13 handoff preserving all technical identities; aliases are compatibility-only and architecture eligibility is distinct from FDR-supported stress-effect eligibility.",
+             note = "All Stage 13 identities are retained for audit; claim_entity_role and separate_manuscript_claim_allowed give each identity's role."))
+  }
+  role <- as.character(readiness$claim_entity_role)
+  allowed <- as.logical(as.character(readiness$separate_manuscript_claim_allowed)) %in% TRUE
+  eligible <- sort(readiness$entity_id[role == "higher_order_block" & allowed])
+  descriptive <- sort(readiness$entity_id[role == "higher_order_block" & !allowed])
+  n_alias <- sum(role == "compatibility_alias")
+  alias_txt <- sprintf("%d singleton supermodule%s %s", n_alias, if (n_alias == 1L) "" else "s",
+                       if (n_alias == 1L) "is a compatibility alias" else "are compatibility aliases")
+  desc_txt <- if (!length(descriptive)) "no block is descriptive only" else
+    paste(paste(descriptive, collapse = "/"), if (length(descriptive) == 1L) "is a descriptive block only" else "are descriptive blocks only")
+  elig_txt <- if (!length(eligible)) "no higher-order block is independently eligible" else if (length(eligible) == 1L)
+    paste(eligible, "is the only independently eligible higher-order block") else
+    paste(paste(eligible, collapse = "/"), "are the independently eligible higher-order blocks")
+  fdr_txt <- if (any(readiness$group_effect_status == "FDR_supported", na.rm = TRUE))
+    "group_effect_status marks the identities with an FDR-supported Stage 13 stress effect" else
+    "none has an FDR-supported Stage 13 stress effect"
+  c(desc = sprintf("Authoritative microglia WGCNA Stage 13 handoff preserving all %d technical identities; aliases are compatibility-only and architecture eligibility is distinct from FDR-supported stress-effect eligibility.", nrow(readiness)),
+    note = sprintf("All %d Stage 13 identities are retained for audit. %s, %s, and %s; %s.", nrow(readiness), alias_txt, desc_txt, elig_txt, fdr_txt))
+}
+
+build_bundle_readme <- function(readiness = NULL) {
+  rt <- readiness_readme_text(readiness)
   data.frame(
     sheet = c(
       "README", "input_status", "reviewer_audit_manifest", "final_validation", "manuscript_program_summary", "evidence_priority_matrix",
@@ -550,7 +577,7 @@ build_bundle_readme <- function() {
       "Long evidence atlas across enrichment, WGCNA, microenvironment, robustness, behavior, and QC streams.",
       "Module-level WGCNA rows selected for manuscript inspection; includes targeted-signature driver columns when available.",
       "Supermodule-level WGCNA rows selected for manuscript inspection; includes original annotation and plotting labels.",
-      "Authoritative microglia WGCNA Stage 13 handoff preserving all 22 technical identities; aliases are compatibility-only and architecture eligibility is distinct from FDR-supported stress-effect eligibility.",
+      rt[["desc"]],
       "Microglia ROI/local microenvironment targeted-signature summary; curated single-protein or neuropil-shared evidence is cautionary, not purified microglia evidence.",
       "Sensitivity model comparing microglia group effects before and after matched region-level neuron_neuropil covariate adjustment.",
       "Dataset-level QC and confounding flags propagated from the claims table.",
@@ -582,7 +609,7 @@ build_bundle_readme <- function() {
       "This is an evidence index, not a causal model.",
       "Microglia/immune wording should be used only where explicit immune-state evidence supports it.",
       "Both broad plot labels and full annotation labels are retained.",
-      "All 22 Stage 13 identities are retained for audit. Six singleton supermodules are compatibility aliases, SM01/SM03 are descriptive blocks only, and SM09 is the only independently eligible higher-order block; none has an FDR-supported Stage 13 stress effect.",
+      rt[["note"]],
       "Neuropil-shared and curated-program evidence should not be described as purified microglial activation.",
       "Adjustment is a sensitivity analysis, not causal subtraction of neuropil signal.",
       "QC flags are conservative and should be reviewed before strong wording.",
@@ -640,8 +667,9 @@ write_final_evidence_bundle <- function(reason = "integration") {
     claims$marker_contamination_or_roi_mixture_flag <- claims$marker_contamination_risk
   }
 
+  readiness <- build_microglia_wgcna_claim_readiness()
   sheets <- list(
-    README = build_bundle_readme(),
+    README = build_bundle_readme(readiness),
     input_status = bundle_input_status(inputs),
     reviewer_audit_manifest = reviewer_audit_manifest,
     final_validation = final_validation,
@@ -650,7 +678,7 @@ write_final_evidence_bundle <- function(reason = "integration") {
     cross_compartment_program_atlas = atlas,
     wgcna_key_modules = build_wgcna_key_modules(),
     wgcna_key_supermodules = build_wgcna_key_supermodules(),
-    microglia_wgcna_claim_readiness = build_microglia_wgcna_claim_readiness(),
+    microglia_wgcna_claim_readiness = readiness,
     microglia_roi_signature_drivers = build_microglia_roi_signature_drivers(),
     microglia_neuropil_independence = build_microglia_neuropil_independence(),
     qc_flags = build_qc_flags(claims),

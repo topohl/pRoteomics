@@ -42,7 +42,7 @@ arg <- function(flag, default) { i <- match(flag, args); if (is.na(i) || i == le
 DATASETS <- { d <- arg("--dataset", "all"); if (identical(d, "all")) c("neuron_neuropil", "neuron_soma", "microglia") else d }
 OLD_ROOT <- arg("--old-root", "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_pre_renormalisation_2026-10-19")
 REVIEWED_REFERENCE <- repo_path("config", "wgcna_labels", "reference_pre_renormalisation_2026-10-19")
-OLD_THEME_MAPPING <- repo_path("config", "gsea_wgcna_theme_module_mapping.csv")
+OLD_THEME_MAPPING <- file.path(REVIEWED_REFERENCE, "gsea_wgcna_theme_module_mapping.csv")   # frozen with the old network
 THEME_REGISTRY <- repo_path("config", "manuscript_go_theme_registry.tsv")
 FDR <- 0.05; TOP_N <- 10L
 

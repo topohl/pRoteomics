@@ -2242,7 +2242,7 @@ make_dataset_summary <- function(ds) {
       supermodule_annotation = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", ds),
       de_gsea_overlap = wgcna_gsea_overlap_artifact("WGCNA_vs_DE_GSEA_overlap.csv", ds),
       supermodule_composition = wgcna_group_effects_artifact("supermodule_composition.csv", ds),
-      module_to_supermodule_map = wgcna_group_effects_artifact("module_to_supermodule_map_with_annotations.csv", ds)
+      module_to_supermodule_map = resolve_wgcna_files(ds)$supermodule_annotation   # the map actually read (current network)
     ),
     outputs = list(
       tables = paths$tables,

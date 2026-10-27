@@ -252,8 +252,8 @@ not an overall validity gate. `WGCNA_entity_claim_readiness.csv` is the
 non-circular Stage 13 handoff for manuscript integration.
 
 `WGCNA_entity_claim_readiness.csv` and its canonical source-data mirror retain
-13 module and 9 supermodule technical rows. `canonical_claim_entity_id` and
-`claim_entity_role` prevent the six singleton compatibility identities from
+one technical row per module and supermodule. `canonical_claim_entity_id` and
+`claim_entity_role` prevent the singleton compatibility identities from
 duplicating their member modules as biological claims. Compatibility aliases
 map to exactly one current module, have `separate_manuscript_claim_allowed =
 FALSE`, and use `manuscript_placement = compatibility_only`. Stage 13
@@ -334,7 +334,7 @@ are recorded in `WGCNA_group_effect_legacy_output_staleness_audit.csv`.
 
 `results/reviewer_audit/wgcna_robustness_claim_gate.csv` records module/supermodule robustness eligibility with preservation, sensitivity, direction-stability, and confounding status. The biological claims table consumes this audit without loosening the strict claim gate.
 
-In `biological_claims_table.csv`, `WGCNA_module_group_effect` and `WGCNA_supermodule_group_effect` rows are direct group-effect model rows and retain their Stage 05 statistics. `WGCNA_module` rows from `WGCNA_module_evidence_rank.csv` are architecture candidates, not group-effect tests. For microglia, all WGCNA claim rows use exact Stage 13 `dataset + level + entity_id` joins: aliases never create claim rows, SM01/SM03 are not independent entities, SM09 is the sole higher-order architecture candidate, and `group_effect_status = not_FDR_supported` blocks stress-effect claims without blocking architecture context.
+In `biological_claims_table.csv`, `WGCNA_module_group_effect` and `WGCNA_supermodule_group_effect` rows are direct group-effect model rows and retain their Stage 05 statistics. `WGCNA_module` rows from `WGCNA_module_evidence_rank.csv` are architecture candidates, not group-effect tests. For microglia, all WGCNA claim rows use exact Stage 13 `dataset + level + entity_id` joins: aliases never create claim rows, only higher-order blocks that Stage 13 marks separately claimable are architecture candidates (docs/WGCNA_WORKFLOW.md), and `group_effect_status = not_FDR_supported` blocks stress-effect claims without blocking architecture context.
 
 `results/reviewer_audit/wgcna_label_completeness_audit.csv` scans `biological_program`, `safe_program_label`, and `safe_interpretation` for incomplete WGCNA reviewer-facing labels such as `shared ROI: mostly` or trailing `mixed:`. Expected reviewer-ready exports have zero rows in this audit; unrepaired incomplete labels are downgraded to annotation-only wording.
 

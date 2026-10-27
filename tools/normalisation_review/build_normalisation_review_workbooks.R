@@ -322,6 +322,13 @@ saveWorkbook(wb, file.path(OUT, "Proteomics_normalisation_comparison.xlsx"), ove
 # only the wording of each label is written by hand (annotation_review/rule_based/labels.tsv, checked by check_rule_labels.R).
 RB <- file.path(ANN, "rule_based")
 rmod <- rd(RB, "module_rule_classes.csv"); rsm <- rd(RB, "supermodule_rule_classes.csv"); rsig <- rd(RB, "module_signals.csv")
+# This workbook joins tables of the 2026-10-22 review by supermodule ID. The cut-height rule of 2026-10-26 merged and
+# renumbered supermodules, so the workbook is not rewritten while the IDs differ (current labels and the ID map:
+# Proteomics_WGCNA_module_labels.xlsx and annotation_review/label_changes_2026-10-23.csv).
+sm22 <- read_csv(file.path("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/_archive_proteomics_review_2026-10-22",
+                           "results/reviewer_audit/normalisation_choice_2026-10-21/annotation_review/rule_based/supermodule_rule_classes.csv"), show_col_types = FALSE)
+sm_key <- function(d) sort(paste(d$version, d$dataset, d$SupermoduleID, d$member_modules))
+ids_moved <- !identical(sm_key(rsm), sm_key(sm22))
 rlab <- read_tsv(file.path(RB, "labels.tsv"), show_col_types = FALSE, quote = ""); rchk <- rd(RB, "label_form_check.csv")
 rules <- yaml::read_yaml(file.path(RB, "rules.yml"))
 disp <- rd(ANN, "displayed_labels.csv") |> select(dataset, entity_id, displayed_label)
@@ -545,7 +552,8 @@ addStyle(wb, "Zoom choices", WRAP, rows = 2:4, cols = 1:8, gridExpand = TRUE, st
 put(wb, "Zoom previous choices", rd(ANN, "zoom_previous_choices.csv"), left_cols = 1:3, widths = c(14, 10, 80, 24, 10, 12, 10))
 put(wb, "Zoom leading edge", sig3(zl |> mutate(dataset = lab_cmp(dataset))), widths = c(12, 14, 22, 12, 12, 30, 14, 9, 11, 10, 12, 12, 12, 12, 12))
 put(wb, "Zoom term by module", sig3(zt |> mutate(dataset = lab_cmp(dataset))), widths = c(12, 14, 12, 12, 12, 12, 12, 12, 30))
-saveWorkbook(wb, file.path(OUT, "Proteomics_WGCNA_annotation_decisions.xlsx"), overwrite = TRUE)
+if (ids_moved) message("Proteomics_WGCNA_annotation_decisions.xlsx not rewritten: supermodule IDs differ from those of 2026-10-22") else
+  saveWorkbook(wb, file.path(OUT, "Proteomics_WGCNA_annotation_decisions.xlsx"), overwrite = TRUE)
 
 # =================================================================================== 3. provenance inventory
 inv <- rd(INV, "normalisation_dependence_inventory.csv"); fam <- rd(INV, "analysis_families.csv"); cov <- rd(INV, "ledger_coverage.csv")

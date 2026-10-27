@@ -1362,7 +1362,9 @@ validate_final_evidence_bundle <- function(bundle_dir, artifact = "final biologi
     ),
     paste(artifact, "microglia_wgcna_claim_readiness sheet")
   )
-  if (nrow(readiness) != 22L) stop(artifact, " Stage 13 readiness sheet must contain exactly 22 rows.", call. = FALSE)
+  if (!nrow(readiness) || anyDuplicated(readiness[c("dataset", "level", "entity_id")]) > 0L) {   # counts follow the built network
+    stop(artifact, " Stage 13 readiness sheet must hold each identity exactly once.", call. = FALSE)
+  }
 
   drivers <- read_sheet("microglia_roi_signature_drivers")
   drivers_unavailable <- all(c("status", "message") %in% names(drivers)) &&

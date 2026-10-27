@@ -310,7 +310,7 @@ This script reads the Stage 07 canonical lookup and reuses Stage 05 raw
 eigengenes, estimates, confidence intervals, FDR values, model diagnostics,
 sample/animal counts, and PC1 loadings. It does not fit models or alter WGCNA.
 It produces architecture, 3 x 3 global eigengenes, SUS-RES forest, SUS-RES
-spatial heatmap, multi-supermodule loadings (SM01, SM03, SM09 only), and the
+spatial heatmap, multi-supermodule loadings (multi-module supermodules only), and the
 supplementary all-contrast matrix as SVG/PDF plus one source CSV per figure.
 
 Run:
@@ -428,10 +428,13 @@ marker names are candidate/provenance evidence only. Singleton compatibility
 identities inherit the one member’s biological label and confidence, while
 biological-process and ROI-context confidence remain distinct.
 
-Stage 13 retains 22 technical rows for stable downstream joins. The six
-singleton supermodule rows are `compatibility_alias` identities targeting
-their one current module and are never independently manuscript-claimable.
-SM01, SM03 and SM09 are the only higher-order-block claim identities. Stage 13
+Stage 13 retains one technical row per module and supermodule for stable
+downstream joins. Singleton supermodule rows are `compatibility_alias`
+identities targeting their one current module and are never independently
+manuscript-claimable; multi-module supermodules are the higher-order-block
+claim identities, and which of them is separately claimable is the Stage 13
+result (primary network: only m07 + m11, SM08 at cut height 0.45; SM09
+before 2026-10-26). Stage 13
 selects exactly `SUS - RES` / `spatial_adjusted_global` /
 `global_spatial_adjusted` and carries the unchanged Stage 05 estimate, SE,
 95% CI, p-value, tier-specific FDR and multiplicity-family metadata, model,
