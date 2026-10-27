@@ -274,9 +274,10 @@ atlas$contract_version <- sat_contract_version()
 # Produced by analysis/spatial_validation/audit_stress_identity_robustness.R, which runs
 # AFTER this script. On a clean pipeline this script therefore emits the
 # not_yet_audited state on its first pass and the populated state on a rerun;
-# that ordering is recorded in pipeline.yml. The annotation sits in the audit's
-# own output folder, so it is found by name, not in this script's folder.
-claim_p <- spatial_systems_find("protein_claimability_annotation.csv", "atlas")
+# that ordering is recorded in pipeline.yml. The annotation is read from the
+# audit's own output folder; an old-layout copy is never used.
+claim_p <- path_results("spatial_validation", "audit_stress_identity_robustness", "global",
+                        "tables", "protein_claimability_annotation.csv")
 claim_cols <- c("CA2_SLM_robustness_class", "QC_claimability",
                 "imputation_dependence", "LOO_sign_stability", "fully_observed",
                 "spatial_specificity_class",

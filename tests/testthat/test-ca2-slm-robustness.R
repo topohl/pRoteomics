@@ -321,6 +321,20 @@ testthat::test_that("the claimability annotation is one row per audited protein"
   testthat::expect_true(all(nzchar(c1$robustness_reason)))
 })
 
+testthat::test_that("an atlas written after the annotation carries it for every audited protein", {
+  # An empty overlay reads as not audited everywhere (the atlas once looked for the
+  # annotation in its own folder). The first pass legitimately precedes the annotation.
+  pa <- ATL("protein_spatial_cell_affinity.csv"); pc <- ATL("protein_claimability_annotation.csv")
+  testthat::skip_if_not(have(pa) && have(pc), "atlas or annotation not generated")
+  testthat::skip_if(file.mtime(pa) < file.mtime(pc), "atlas predates the annotation (first pass)")
+  a <- rd(pa); c1 <- rd(pc)
+  m <- match(paste(c1$dataset, c1$ProteinGroupID), paste(a$dataset, a$ProteinGroupID))
+  testthat::expect_false(anyNA(m))
+  testthat::expect_identical(sum(a$robustness_audit_status == "audited_ca2_slm_v1", na.rm = TRUE), nrow(c1))
+  testthat::expect_identical(a$CA2_SLM_robustness_class[m], c1$CA2_SLM_robustness_class)
+  testthat::expect_identical(a$QC_claimability[m], c1$QC_claimability)
+})
+
 # =====================================================================
 # outputs, figures, validation
 # =====================================================================
