@@ -230,14 +230,19 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
   testthat::expect_equal(env$supermodule_merge_cut_height("neuron_soma"), 0.55)
   testthat::expect_equal(env$supermodule_merge_cut_height("microglia"), 0.45)
 
+  # the frozen state in the old layout was built at 0.40; the current build uses the rule's 0.45
   state_path <- file.path(root, "data", "processed", "06_modules_WGCNA", "01_WGCNA", "microglia", "wgcna_final_model_state.rds")
   if (file.exists(state_path)) {
     state <- readRDS(state_path)
     testthat::expect_equal(
-      as.numeric(state$parameters$supermodule_merge_cut_height), 0.45
+      as.numeric(state$parameters$supermodule_merge_cut_height), 0.40
     )
   } else {
     testthat::succeed("Frozen microglia state is unavailable.")
+  }
+  current_path <- file.path(root, "results", "wgcna", "build_wgcna_modules", "microglia", "models", "wgcna_final_model_state.rds")
+  if (file.exists(current_path)) {
+    testthat::expect_equal(as.numeric(readRDS(current_path)$parameters$supermodule_merge_cut_height), 0.45)
   }
   stage12_text <- paste(readLines(file.path(root, "analysis/wgcna", "audit_microglia_module_claims.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(stage12_text, "configured_default_cut_height", fixed = TRUE)

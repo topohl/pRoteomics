@@ -16,7 +16,8 @@
 # Also applies the module corrections listed in MODULE_FIXES, then those of REGENERATION_FIXES (both networks rebuilt
 # with the official gene mapping and GO term sizes 10-800, 2026-10-25/26). Rewrites annotation_review/rule_based/labels.tsv and the
 # change log annotation_review/label_changes_2026-10-23.csv (all changes against the labels preserved in the review
-# archive of 2026-10-22, with a short reason each). Run check_rule_labels.R afterwards.
+# archive of 2026-10-22, with a short reason each; supermodules are matched by their members, since the cut-height rule of
+# 2026-10-26 merged and renumbered some). Run check_rule_labels.R afterwards.
 # USAGE  Rscript tools/normalisation_review/derive_supermodule_labels.R      (working directory: repo root)
 
 suppressPackageStartupMessages({ library(dplyr); library(readr) })
@@ -147,26 +148,55 @@ sm_label <- function(r) {
     stop("unknown class ", r$rule_class))
 }
 gen <- sms |> rowwise() |> mutate(generated = sm_label(pick(everything()))) |> ungroup() |> select(version, dataset, entity_id = SupermoduleID, generated)
-lab <- lab |> left_join(gen, by = c("version", "dataset", "entity_id")) |>
-  mutate(label = ifelse(level == "supermodule" & !is.na(generated), generated, label)) |> select(-generated)
-stopifnot(!anyNA(lab$label), nrow(lab) == nrow(prev))
+# supermodule rows are the current supermodules: their IDs follow the dendrogram leaf order, so a new cut height renumbers them
+lab <- bind_rows(lab |> filter(level == "module"), gen |> transmute(version, dataset, level = "supermodule", entity_id, label = generated)) |>
+  arrange(match(version, unique(prev$version)), match(dataset, unique(prev$dataset)), match(level, c("module", "supermodule")), entity_id)
+key <- function(d) sort(paste(d$version, d$dataset, d$entity_id)[d$level == "module"])
+stopifnot(!anyNA(lab$label), identical(key(lab), key(prev)))
 write_tsv(lab, file.path(RB, "labels.tsv"), na = "", escape = "none")
 
-# change log: everything that differs from the labels preserved on 2026-10-22, with a reason
+# change log: everything that differs from the labels preserved on 2026-10-22, with a reason. Modules are matched by ID,
+# supermodules by their members: the cut-height rule of 2026-10-26 merged some supermodules and renumbered others.
+CUT_CHANGE <- tibble(dataset = c("neuron_soma", "microglia"), cut_before = c(0.35, 0.40), cut_now = c(0.55, 0.45))
 members <- sms |> transmute(version, dataset, entity_id = SupermoduleID, rule_class, member_modules)
-chg <- prev |> rename(previous_label = label) |> inner_join(lab |> rename(new_label = label), by = c("version", "dataset", "level", "entity_id")) |>
-  filter(previous_label != new_label) |> left_join(SUMMARY, by = c("version", "dataset", "entity_id")) |> left_join(members, by = c("version", "dataset", "entity_id")) |>
+prev_sm <- read_csv(file.path(dirname(PREV), "supermodule_rule_classes.csv"), show_col_types = FALSE) |>
+  transmute(version, dataset, old_id = SupermoduleID, old_members = member_modules) |>
+  left_join(prev |> filter(level == "supermodule") |> select(version, dataset, old_id = entity_id, old_label = label), by = c("version", "dataset", "old_id"))
+sm_before <- function(v, d, mm) {   # the supermodule with the same members before, or the earlier supermodules it joins
+  p <- prev_sm[prev_sm$version == v & prev_sm$dataset == d, ]
+  if (sum(p$old_members == mm) == 1) return(c(p$old_id[p$old_members == mm], p$old_label[p$old_members == mm], "same members"))
+  ids <- strsplit(mm, ";", fixed = TRUE)[[1]]; om <- strsplit(p$old_members, ";", fixed = TRUE)
+  p <- p[vapply(om, function(x) any(x %in% ids), logical(1)), ]
+  stopifnot(nrow(p) > 1, all(unlist(strsplit(p$old_members, ";", fixed = TRUE)) %in% ids))   # a higher cut only merges
+  c(paste(p$old_id, collapse = " + "), paste(sprintf("%s: %s", p$old_id, p$old_label), collapse = " | "), "merged")
+}
+b <- t(mapply(sm_before, members$version, members$dataset, members$member_modules, USE.NAMES = FALSE))
+cur <- lab |> rename(new_label = label)
+chg_mod <- prev |> filter(level == "module") |> rename(previous_label = label) |> inner_join(cur, by = c("version", "dataset", "level", "entity_id")) |>
+  mutate(previous_entity_id = entity_id, match = "same ID")
+chg_sm <- members |> mutate(level = "supermodule", previous_entity_id = b[, 1], previous_label = b[, 2], match = b[, 3]) |>
+  inner_join(cur, by = c("version", "dataset", "level", "entity_id"))
+chg <- bind_rows(chg_mod, chg_sm) |> filter(previous_label != new_label | previous_entity_id != entity_id) |>
+  left_join(SUMMARY, by = c("version", "dataset", "entity_id")) |> select(-any_of(c("rule_class", "member_modules"))) |>
+  left_join(members, by = c("version", "dataset", "entity_id")) |> left_join(CUT_CHANGE, by = "dataset") |>
   mutate(member_changed = mapply(function(v, d, mm) { if (is.na(mm)) return(FALSE); ids <- strsplit(mm, ";", fixed = TRUE)[[1]]
            any(prev$label[prev$version == v & prev$dataset == d & prev$entity_id %in% ids] != lab$label[lab$version == v & lab$dataset == d & lab$entity_id %in% ids]) },
            version, dataset, member_modules),
-         reason = case_when(!is.na(summary) ~ summary,
-                            level == "supermodule" & !grepl(";", member_modules, fixed = TRUE) ~ "Follows its member's corrected label.",
-                            level == "supermodule" & member_changed ~ "Generated from the members' current labels with the supermodule template (rule 9, sheet 'How labels are formed'); a member's label was corrected.",
-                            level == "supermodule" ~ "Generated from the members' current labels with the supermodule template (rule 9, sheet 'How labels are formed'): members' own wording, 'and' between a member's two signals, no shortening.",
-                            TRUE ~ NA_character_),
-         changed_on = "2026-10-23") |>
-  select(version, dataset, level, entity_id, previous_label, new_label, reason, changed_on)
-stopifnot(!anyNA(chg$reason))
+         label_reason = case_when(!is.na(summary) ~ summary,
+                                  previous_label == new_label ~ NA_character_,
+                                  level == "supermodule" & !grepl(";", member_modules, fixed = TRUE) ~ "Follows its member's corrected label.",
+                                  level == "supermodule" & member_changed ~ "Generated from the members' current labels with the supermodule template (rule 9, sheet 'How labels are formed'); a member's label was corrected.",
+                                  level == "supermodule" ~ "Generated from the members' current labels with the supermodule template (rule 9, sheet 'How labels are formed'): members' own wording, 'and' between a member's two signals, no shortening.",
+                                  TRUE ~ NA_character_),
+         cut_reason = case_when(match == "merged" ~ sprintf("Formed when the supermodule cut height moved from %.2f to %.2f (stated rule, 2026-10-26): joins the members of %s; labelled from its members' current labels with the supermodule template (rule 9).",
+                                                            cut_before, cut_now, vapply(strsplit(previous_entity_id, " + ", fixed = TRUE), and_list, "")),
+                                previous_entity_id != entity_id ~ sprintf("Same members as %s at cut height %.2f; renumbered at %.2f (stated rule, 2026-10-26), as supermodule IDs follow the dendrogram order.",
+                                                                          previous_entity_id, cut_before, cut_now),
+                                TRUE ~ NA_character_),
+         reason = ifelse(match == "merged", cut_reason, trimws(paste(coalesce(label_reason, ""), coalesce(cut_reason, "")))),
+         changed_on = ifelse(is.na(cut_reason), "2026-10-23", "2026-10-26")) |>
+  select(version, dataset, level, entity_id, previous_entity_id, previous_label, new_label, reason, changed_on)
+stopifnot(!anyNA(chg$reason), all(nzchar(chg$reason)), !any(grepl(" NA ", chg$reason, fixed = TRUE)))
 write_csv(chg, file.path(ANN, "label_changes_2026-10-23.csv"), na = "")
 cat(sprintf("labels: %d changed against 2026-10-22 (%d modules, %d supermodules)\n", nrow(chg), sum(chg$level == "module"), sum(chg$level == "supermodule")))
-print(as.data.frame(chg |> filter(level == "supermodule") |> transmute(version, dataset = substr(dataset, 1, 9), entity_id, new_label = substr(new_label, 1, 150))), right = FALSE)
+print(as.data.frame(chg |> filter(level == "supermodule") |> transmute(version, dataset = substr(dataset, 1, 9), entity_id, previous_entity_id, new_label = substr(new_label, 1, 120))), right = FALSE)

@@ -783,9 +783,10 @@ saveWorkbook(wb, f, overwrite = TRUE)
 # internal: the label history (not for the supplement)
 wh <- createWorkbook()
 add_readme(wh, "WGCNA label history (internal; not part of the supplement)", list(list(heading = "What this file is", lines = c(
-  "Every label that differs from the labels of 2026-10-22, with the previous and the current wording and the reason: corrections after the check of all labels against their evidence (2026-10-23), the regeneration on the official gene mapping with GO term sizes 10-800 (2026-10-24/26) and the label check of 2026-10-26. Source: annotation_review/label_changes_2026-10-23.csv, written by derive_supermodule_labels.R."))))
+  "Every label that differs from the labels of 2026-10-22, with the previous and the current wording and the reason: corrections after the check of all labels against their evidence (2026-10-23), the regeneration on the official gene mapping with GO term sizes 10-800 (2026-10-24/26), the label check of 2026-10-26 and the supermodule cut-height rule of 2026-10-26 (supermodules matched by their members; merged ones list the earlier supermodules they join). Source: annotation_review/label_changes_2026-10-23.csv, written by derive_supermodule_labels.R."))))
 put_table(wh, "Label history", chg |> ord() |> transmute(Analysis = lab_c(version), Compartment = lab_ds(dataset), Level = level, ID = short(entity_id),
-  `Label until 2026-10-22` = previous_label, `Current label` = new_label, Why = reason), widths = c(30, 18, 12, 9, 50, 50, 90), freeze_col = 5, left_cols = 1:7)
+  `ID until 2026-10-22` = short(previous_entity_id), `Label until 2026-10-22` = previous_label, `Current label` = new_label, Why = reason),
+  widths = c(30, 18, 12, 9, 14, 50, 50, 90), freeze_col = 6, left_cols = 1:8)
 saveWorkbook(wh, file.path(OUT, "Proteomics_WGCNA_label_history.xlsx"), overwrite = TRUE)
 cat("written:", f, "| labels", nrow(labels_sheet), "| modules", nrow(modules), "| supermodules", nrow(supermodules), "| signals", nrow(signals), "| GO rows", nrow(go_tab),
     "| proteins", nrow(proteins), "| stability", nrow(stability), "| column guide", nrow(guide), "| history", nrow(chg), "\n")
