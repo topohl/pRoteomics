@@ -2,7 +2,7 @@
 #
 #
 # Inhibitory presynaptic share of every neuropil lamina (Figure 2l,
-# 2026-10-28; 2026-10-29: carry-over rule shared with j and k, animals named in
+# 2026-10-28; later that day: carry-over rule shared with j and k, animals named in
 # the outputs), control animals; stressed animals as replication.
 #
 # INHIBITORY SHARE: in every neuropil acquisition, the mean log2 abundance of

@@ -1,5 +1,5 @@
 # Shared by the neuropil-lamina analyses of Figure 2j-l (map_input_territories, map_afferent_sources,
-# compare_lamina_synapses; 2026-10-29). Each analysis applies the same carry-over rule to the joint
+# compare_lamina_synapses; 2026-10-28). Each analysis applies the same carry-over rule to the joint
 # bundle itself, so none depends on another script's table.
 
 # Somatic carry-over into the DG polymorphic layer. DG po borders the granule cell layer. Soma-only

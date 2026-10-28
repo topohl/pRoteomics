@@ -5,7 +5,7 @@
 # (Figure 2k, 2026-10-28; classes revised the same day after an independent
 # review: the afferent class was dominated by a 22-cell locus coeruleus type,
 # the control class held proteins hippocampal cells make, classes overlapped.
-# 2026-10-29: carry-over rule shared with j and l, pinned reference hash,
+# Later on 2026-10-28: carry-over rule shared with j and l, pinned reference hash,
 # animals named in the outputs)
 #
 # USAGE (from the repository root)

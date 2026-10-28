@@ -3,7 +3,7 @@
 #
 # Input territories of the hippocampal neuropil: are laminae that share an
 # input territory alike across subfields, and is that likeness carried by
-# presynaptic proteins? (Figure 2j, 2026-10-28. 2026-10-29: the Allen trimmed
+# presynaptic proteins? (Figure 2j, 2026-10-28; revised the same evening: the Allen trimmed
 # means are read on their own log2 scale - they were log-transformed twice
 # before, which loosened the glial filter -; carry-over rule shared with k and
 # l; post hoc sensitivity analyses)
@@ -80,7 +80,7 @@
 # (R/spatial/neuropil_lamina_utils.R; the same rule in k and l). An animal
 # without a retained acquisition of every lamina is left out.
 #
-# SENSITIVITY (post hoc, 2026-10-29; input_territory_sensitivity.csv; separate
+# SENSITIVITY (post hoc, 2026-10-28; input_territory_sensitivity.csv; separate
 # random stream, so the primary results are unchanged): (1) lamina-label
 # permutation - 20,000 relabellings of the ten laminae, the same for every
 # animal of a set: is the excess specific to the declared pairs? (statistic: d
@@ -394,7 +394,7 @@ scores$null_q975_excess <- scores$null_q975_d - scores$null_median_d
 classes$used_in_animals <- vapply(classes$gene_symbol, function(g)
   sum(vapply(profiles, function(A) g %in% rownames(A), logical(1))), integer(1))
 
-# ---- sensitivity analyses (post hoc, 2026-10-29) ----------------------------------
+# ---- sensitivity analyses (post hoc, 2026-10-28) ----------------------------------
 # A separate random stream, so the primary draws above are reproduced exactly. Every
 # analysis keeps the classes, the per-animal statistic and the excess definition of
 # the primary analysis and changes one thing (SENSITIVITY in the header).
@@ -567,7 +567,7 @@ for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
 }
 sens_tests <- rbind(sens_tests, do.call(rbind, perm_rows))
 rownames(sens_tests) <- NULL
-sens_tests$role <- "sensitivity (post hoc, 2026-10-29); the primary statistics are in input_territory_tests.csv"
+sens_tests$role <- "sensitivity (post hoc); the primary statistics are in input_territory_tests.csv"
 sens_tests$ci_note <- ifelse(is.na(sens_tests$ci_low), "no interval: a permutation P for the observed statistic", "")
 sens_tests$method <- ifelse(
   sens_tests$analysis == "lamina-label permutation",
