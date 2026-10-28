@@ -25,10 +25,12 @@ source(repo_path("R", "migration_gate_utils.R"))
 WRITERS <- c("annotate_module_celltypes", "audit_ca2_slm_robustness",
              "audit_stress_identity_robustness", "build_animal_spatial_networks",
              "build_module_spatial_atlas", "build_protein_spatial_atlas",
-             "build_spatial_data_contract", "decompose_bilateral_variance",
+             "build_spatial_data_contract", "compare_lamina_synapses", "decompose_bilateral_variance",
+             "map_afferent_sources", "map_anatomical_programmes", "map_input_territories",
              "quantify_bilateral_spatial_identity", "quantify_empirical_compartments",
              "quantify_module_bilateral_identity", "quantify_neuropil_detection_context",
-             "quantify_neuropil_precision", "summarize_ca2_slm_robustness",
+             "quantify_neuropil_precision", "score_compartment_markers",
+             "summarize_ca2_slm_robustness",
              "summarize_spatial_atlas", "test_network_group_organization",
              "validate_network_workbook", "validate_spatial_foundations")
 LEGACY_NS <- "11_spatial_systems"
@@ -84,7 +86,7 @@ syms <- function(e) {
 
 # --- section 17: registry == code == normalized, for every writer ----------
 
-testthat::test_that("all eighteen writers agree: registry, code and normalized path", {
+testthat::test_that("every writer agrees: registry, code and normalized path", {
   s <- registry_steps()
   checked <- 0L
   for (aid in WRITERS) {

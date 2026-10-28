@@ -914,6 +914,112 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "CON-only bilateral validation of anatomical identity. Runs the SAME contrast definitions, from the single registry in R/control_spatial_identity_utils.R, on left-only, right-only and bilateral data. Reports effect reproducibility; the both-sides-significant fraction is a sensitivity descriptor only. Does not replace the canonical Stage-09 analysis."
+      - script: "analysis/spatial_validation/map_anatomical_programmes.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/added_anatomical_protein_contrasts.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/added_anatomical_go_bp_gsea.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/added_contrast_bilateral_agreement.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/method_reproduction_check.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/analysis_status.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/anatomical_programme_candidates.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/anatomical_programme_display_terms.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/pairwise_anatomical_go_bp_gsea.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/hemisphere_anatomical_go_bp_gsea.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/anatomical_gene_statistics.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/anatomical_programme_picks_report.csv"
+          - "results/spatial_validation/map_anatomical_programmes/global/plots/anatomical_programme_bubbles.svg"
+          - "results/spatial_validation/map_anatomical_programmes/global/plots/anatomical_programme_bubbles_strict.svg"
+          - "results/spatial_validation/map_anatomical_programmes/global/plots/anatomical_programme_bubbles_automatic.svg"
+          - "results/spatial_validation/map_anatomical_programmes/global/manifests/run_manifest.yml"
+        consumes_required:
+          - "results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
+          - "results/differential_abundance/validate_control_spatial_identity/global/tables/control_anatomical_go_bp_gsea.csv"
+          - "results/differential_abundance/validate_control_spatial_identity/global/tables/anatomical_protein_contrasts.csv"
+          - "results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv"
+          - "config/clusterProfiler_config.yml"
+        consumes_optional:
+          - "config/anatomical_programme_display_picks.csv"
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "CON-only GO-BP programmes of the units the 11 locked contrasts do not cover (CA2 strata, CA3 strata, microglia regions; added 2026-10-27, not prespecified), fitted and ranked exactly as validate_control_spatial_identity.R (locked contrasts are re-run and must match); direct pairwise contrasts between sibling units and one-sided (left-only, right-only) refits of the shown families; then three presentation-only selections of GO terms for Figure 2 (automatic, strict, curated from config/anatomical_programme_display_picks.csv), each with its criteria per term. Functional characterisation of the same data, not validation."
+      - script: "analysis/spatial_validation/score_compartment_markers.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/score_compartment_markers/global/tables/marker_class_scores_by_acquisition.csv"
+          - "results/spatial_validation/score_compartment_markers/global/tables/marker_class_scores_by_animal.csv"
+          - "results/spatial_validation/score_compartment_markers/global/tables/marker_class_summary.csv"
+          - "results/spatial_validation/score_compartment_markers/global/tables/marker_class_proteins.csv"
+          - "results/spatial_validation/score_compartment_markers/global/tables/marker_class_compartment_contrasts.csv"
+        consumes_required:
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_04_all_marker_canonical_mapping_provenance.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Reference marker classes (Allen cell types; GO, MGI; SynGO, as resolved by the 04e workflow) scored in every acquisition of all nine animals on the joint cross-compartment normalisation, observed values only, with the animal means; compartments compared on the CON animal means (repeated-measures linear model, BH; Figure 2d). The within-protein-centred marker comparison stays in render_compartment_abundance_figures."
+      - script: "analysis/spatial_validation/map_input_territories.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_scores_by_animal.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_tests.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_pair_similarity.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_protein_classes.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+        consumes_required:
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "data/external/reference_markers/syngo/raw/annotations.xlsx"
+          - "data/external/reference_markers/syngo/raw/ontologies.xlsx"
+          - "data/external/reference_markers/go_mgi/processed/mgi_human_mouse_homology_map.csv"
+          - "data/external/reference_markers/allen_mouse_ctx_hip_10x/allen_mouse_ctx_hip_10x_trimmed_means.csv"
+          - "data/external/reference_markers/go_mgi/raw/mgi.gaf.gz"
+          - "data/external/reference_markers/go_mgi/raw/go-basic.obo"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Input territories of the ten neuropil laminae (added 2026-10-28): per animal, Spearman similarity (Fisher z) of protein-centred laminar profiles for SynGO presynaptic vs postsynaptic proteins (glial/vascular and mitochondrial genes removed), same-input minus same-region pairs (perforant path; mossy fibre as positive control), against abundance-matched random sets; observed values only; CON animals primary (Figure 2j), stressed animals as replication; DG po acquisitions with soma carry-over excluded."
+      - script: "analysis/spatial_validation/map_afferent_sources.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/map_afferent_sources/global/tables/afferent_source_sets.csv"
+          - "results/spatial_validation/map_afferent_sources/global/tables/afferent_source_scores_by_animal.csv"
+          - "results/spatial_validation/map_afferent_sources/global/tables/afferent_source_contrasts.csv"
+        consumes_required:
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+          - "data/external/allen_abc_wmb_10x/abc_wmb_source_type_mean_log2cpm.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Laminar location of proteins by the cell type that makes them (added 2026-10-28): origin classes from the ABC whole-mouse-brain 10x reference (made outside the hippocampus by projecting neurons; by CA3, granule, CA1, CA2 cells or interneurons; glial; non-projecting control), scored on protein-centred laminar profiles against abundance-matched random sets; pre-declared within-region contrasts (perforant path, Schaffer collaterals, mossy fibres, negative and fissure controls); CON animals primary (Figure 2k), stressed animals as replication."
+      - script: "analysis/spatial_validation/compare_lamina_synapses.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_by_acquisition.csv"
+          - "results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_by_animal.csv"
+          - "results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_contrasts.csv"
+        consumes_required:
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context."
       - script: "analysis/spatial_validation/quantify_empirical_compartments.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

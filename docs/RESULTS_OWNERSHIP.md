@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **110 families**, **370 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **115 families**, **405 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -37,7 +37,6 @@ its outputs.
 | `results/integration/build_display_selection_inventories/global` | `build_display_selection_inventories.R` | 1 | 13 |
 | `results/integration/build_evidence_priority_matrix/global` | `build_evidence_priority_matrix.R` | 1 | 5 |
 | `results/integration/build_immunostaining_candidates/global` | `build_immunostaining_candidates.R` | 1 | 4 |
-| `results/integration/export_module_protein_zoom_source_data/global` | `export_module_protein_zoom_source_data.R` | 1 | 1 |
 | `results/integration/plot_display_selection_context/global` | `plot_display_selection_context.R` | 1 | 6 |
 | `results/integration/quantify_candidate_network_position/<dataset>` | `quantify_candidate_network_position.R` | 1 | 5 |
 | `results/integration/render_module_circular_atlas/global` | `render_module_circular_atlas.R` | 1 | 37 |
@@ -63,6 +62,7 @@ its outputs.
 | `results/preprocessing/build_joint_protigy_input/global` | `build_joint_protigy_input.R` | 1 | 4 |
 | `results/preprocessing/build_module_score_metadata/<dataset>` | `build_module_score_metadata.R` | 1 | 4 |
 | `results/preprocessing/extract_protigy_contrasts/<dataset>` | `extract_protigy_contrasts.R` | 1 | 4 |
+| `results/preprocessing/fit_animal_level_limma/<dataset>` | `fit_animal_level_limma.R` | 1 | 1 |
 | `results/preprocessing/map_protein_identifiers/<dataset>` | `map_protein_identifiers.R` | 1 | 2 |
 | `results/publication_source_data/build_biological_claims_table/global` | `build_biological_claims_table.R` | 1 | 4 |
 | `results/qc/assess_dataset_quality/<dataset>` | `assess_dataset_quality.R` | 1 | 2 |
@@ -72,7 +72,7 @@ its outputs.
 | `results/qc/assess_replicate_consistency/<dataset>` | `assess_replicate_consistency.R` | 1 | 1 |
 | `results/qc/assess_sample_quality/<dataset>` | `assess_sample_quality.R` | 1 | 1 |
 | `results/qc/build_reference_marker_registry/global` | `build_reference_marker_registry.R` | 1 | 0 |
-| `results/qc/discover_empirical_roi_markers/global` | `discover_empirical_roi_markers.R` | 1 | 1 |
+| `results/qc/discover_empirical_roi_markers/global` | `discover_empirical_roi_markers.R` | 1 | 4 |
 | `results/qc/export_marker_traits/<dataset>` | `export_marker_traits.R` | 1 | 0 |
 | `results/qc/partition_variance/<dataset>` | `partition_variance.R` | 1 | 0 |
 | `results/qc/render_compartment_abundance_figures/global` | `render_compartment_abundance_figures.R` | 1 | 0 |
@@ -93,13 +93,18 @@ its outputs.
 | `results/spatial_validation/build_module_spatial_atlas/global` | `build_module_spatial_atlas.R` | 1 | 10 |
 | `results/spatial_validation/build_protein_spatial_atlas/global` | `build_protein_spatial_atlas.R` | 1 | 3 |
 | `results/spatial_validation/build_spatial_data_contract/global` | `build_spatial_data_contract.R` | 1 | 3 |
+| `results/spatial_validation/compare_lamina_synapses/global` | `compare_lamina_synapses.R` | 1 | 3 |
 | `results/spatial_validation/decompose_bilateral_variance/global` | `decompose_bilateral_variance.R` | 1 | 2 |
+| `results/spatial_validation/map_afferent_sources/global` | `map_afferent_sources.R` | 1 | 3 |
+| `results/spatial_validation/map_anatomical_programmes/global` | `map_anatomical_programmes.R` | 1 | 15 |
+| `results/spatial_validation/map_input_territories/global` | `map_input_territories.R` | 1 | 5 |
 | `results/spatial_validation/quantify_bilateral_spatial_identity/global` | `quantify_bilateral_spatial_identity.R` | 1 | 2 |
 | `results/spatial_validation/quantify_empirical_compartments/global` | `quantify_empirical_compartments.R` | 1 | 3 |
 | `results/spatial_validation/quantify_module_bilateral_identity/global` | `quantify_module_bilateral_identity.R` | 1 | 3 |
 | `results/spatial_validation/quantify_neuropil_detection_context/global` | `quantify_neuropil_detection_context.R` | 1 | 1 |
 | `results/spatial_validation/quantify_neuropil_precision/global` | `quantify_neuropil_precision.R` | 1 | 2 |
-| `results/spatial_validation/summarize_ca2_slm_robustness/global` | `summarize_ca2_slm_robustness.R` | 1 | 2 |
+| `results/spatial_validation/score_compartment_markers/global` | `score_compartment_markers.R` | 1 | 5 |
+| `results/spatial_validation/summarize_ca2_slm_robustness/global` | `summarize_ca2_slm_robustness.R` | 1 | 3 |
 | `results/spatial_validation/summarize_spatial_atlas/global` | `summarize_spatial_atlas.R` | 1 | 2 |
 | `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 12 |
 | `results/spatial_validation/validate_network_workbook/global` | `validate_network_workbook.R` | 1 | 4 |

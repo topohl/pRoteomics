@@ -1,0 +1,34 @@
+family,unit,ID,Description,reason
+soma_regions,CA2,GO:0015986,proton motive force-driven ATP synthesis,"Respiratory chain complexes I, II and V higher in CA2 somata; CA2 mitochondrial specialisation reported at RNA level"
+soma_regions,CA2,GO:0007007,inner mitochondrial membrane organization,"Cristae/MICOS (Immt, Chchd3/6), Opa1 and MCU regulators; fits the larger CA2 mitochondria; protein-level regional evidence less characterised"
+soma_regions,CA2,GO:0050807,regulation of synapse organization,"Synapse-organising regulators (Srgap2/3, Kalrn, Farp1, Arhgap44) with the CA2 identity protein Amigo2; higher than in every other region; less characterised; soma-ROI composition caveat"
+soma_regions,CA3,GO:0045103,intermediate filament-based process,"Neurofilaments (Ina, Nefl, Nefm, Nefh) of the large CA3 pyramidal neurons; reported"
+soma_regions,CA3,GO:0007029,endoplasmic reticulum organization,"ER membrane protein complex and ER-shaping proteins (Emc subunits, Atl1, Rtn4, Nomo1); regional enrichment less characterised"
+soma_regions,CA3,GO:0098930,axonal transport,"Kinesins, dynein and Arl8/BORC (Kif1a, Kif5c, Kif21a, Dync1h1, Arl8a/b) with Nefl; shares 2 of 8 proteins with the neurofilament term; expected for large CA3 pyramidal neurons"
+soma_regions,DG,GO:0051276,chromosome organization,"Linker histones, Hmgb1 and cohesin: nuclear content of densely packed granule cells (high nucleus-to-cytoplasm ratio); reported"
+soma_regions,DG,GO:0048024,"regulation of mRNA splicing, via spliceosome","Neuronal splicing regulators (Nova2, Khdrbs2, Srsf10, Rbm10); DG mRNA processing reported at protein level"
+soma_regions,DG,GO:0009451,RNA modification,"m6A writer Mettl3, Adar, Fbl and tRNA modifiers higher in granule cells; less characterised; nuclear-content caveat"
+CA1_strata,SO,GO:0019226,transmission of nerve impulse,"Axon initial segment, node and conduction proteins (Cntnap2, Kcnq2/3, Scn2a, Sptbn4, Ank3, Nfasc) of axons in SO; established anatomy; used instead of neuronal ion channel clustering, which shares 3 of 7 proteins with the myelin term"
+CA1_strata,SO,GO:0007272,ensheathment of neurons,"Myelin proteins (Mbp, Plp1, Gpm6b, Omg, Cntn2, Tppp) of myelinated fibres in SO; established"
+CA1_strata,SO,GO:0007188,adenylate cyclase-modulating G protein-coupled receptor signaling pathway,"Adcy9, mGluR5/7, G-alpha q/o/i/z and Pde2a/10a: neuromodulatory cAMP signalling; laminar enrichment less characterised"
+CA1_strata,SR,GO:0099504,synaptic vesicle cycle,"Presynaptic release and recycling machinery (Snap25, Unc13a, Rph3a, Syt7/12, Bsn) of the Schaffer-collateral terminal field; established"
+CA1_strata,SR,GO:0006888,endoplasmic reticulum to Golgi vesicle-mediated transport,"COPII, COPI and TRAPP biosynthetic trafficking peaking in SR and low in SO; laminar protein evidence less characterised"
+CA1_strata,SR,GO:0006413,translational initiation,eIF3 and eIF4 subunits (23 of 51 contributing proteins) with Mtor and Paip1: translation-initiation machinery in the apical dendritic field; laminar protein evidence less characterised
+CA1_strata,SLM,GO:0006119,oxidative phosphorylation,Mitochondria-rich temporoammonic/perforant-path neuropil; established
+CA1_strata,SLM,GO:0006635,fatty acid beta-oxidation,"Mitochondrial fatty-acid oxidation enzymes (Acadl, Acadvl, Hadha/b, Etfa/b); likely astrocytic share; less characterised at layer level"
+CA1_strata,SLM,GO:0006536,glutamate metabolic process,"Glutamate-glutamine-GABA cycle enzymes (Glul, Gls, Glud1, Got2, Gad1/2) in an astrocyte-dense layer; less characterised"
+CA2_strata,SO,GO:0045161,neuronal ion channel clustering,Axon initial segment and node complex as in CA1 SO; established anatomy
+CA2_strata,SO,GO:0070509,calcium ion import,"Cav2 channels, Na/Ca exchangers and calcineurin (Cacna1e, Slc8a2, Ppp3ca); laminar enrichment less characterised"
+CA2_strata,SO,GO:1990806,ligand-gated ion channel signaling pathway,"Glutamatergic postsynaptic core (Grin1/2a/2b, Gria1-4, Dlg4) highest in SO and lowest in SR; less characterised"
+CA2_strata,SR,GO:0030705,cytoskeleton-dependent intracellular transport,Microtubule motors and transport proteins of the apical dendrites; expected anatomy
+CA2_strata,SR,GO:0071786,endoplasmic reticulum tubular network organization,"ER-shaping proteins (Rtn1/3/4, Atl1/2, Reep2, Lnpk); laminar enrichment less characterised"
+CA2_strata,SR,GO:0038202,TORC1 signaling,"Lysosomal nutrient-sensing module (Mtor, Rptor, Lamtor1-5, Rraga/c/d, GATOR2); less characterised"
+CA2_strata,SLM,GO:0006119,oxidative phosphorylation,Mitochondria-rich distal dendrites; CA2 SLM mitochondrial specialisation reported
+CA2_strata,SLM,GO:0051560,mitochondrial calcium ion homeostasis,"MCU complex (Mcu, Micu1/3, Smdt1, Letm1); protein counterpart of the reported MCU enrichment in CA2 distal dendrites"
+CA2_strata,SLM,GO:0009063,amino acid catabolic process,"Branched-chain and glutamate catabolic enzymes (Aldh6a1, Aldh4a1, Dbt, Ivd, Mccc1/2, Glud1, Got2) with Gad2; mitochondrial-matrix metabolism distinct from the respiratory chain; less characterised"
+DG_layers,MO,GO:0015986,proton motive force-driven ATP synthesis,High oxidative capacity of the perforant-path terminal field; established
+DG_layers,MO,GO:1902476,chloride transmembrane transport,"KCC2 (Slc12a5), GABA-A alpha2/4/5 and GAT-1 of granule-cell dendrites; established components, layer-level protein evidence"
+DG_layers,MO,GO:0046365,monosaccharide catabolic process,"Glycolytic enzymes (Pfkp, Ldha, Hk1, Pkm) co-enriched with OXPHOS; layer-level evidence less characterised"
+DG_layers,PO,GO:0010970,transport along microtubule,Axonal content of the hilus: granule-cell axon initial segments and mossy-fibre axons; expected anatomy
+DG_layers,PO,GO:0031340,positive regulation of vesicle fusion,"Release machinery (Syt7, Rph3a, Rimbp2, Stxbp1, Snap25, Unc13a, Cacna1b) of the mossy-fibre terminal field in the hilus; expected anatomy"
+DG_layers,PO,GO:0000398,"mRNA splicing, via spliceosome","hnRNPs, SR proteins and U2AF (Hnrnpa1/a2b1/u/k, Srsf5, U2af1, Sfpq, Ptbp2) with Rbm3/Cirbp: nuclear content of hilar mossy cells and interneurons (composition, not a dendritic programme)"
