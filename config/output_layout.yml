@@ -46,7 +46,10 @@ lifecycles:
     note: >
       An export is a copy of canonical results, frozen with a manifest that
       carries a sha256 per file. Exp9_manuscript imports from
-      exports/publication_source_data/ and from nowhere else.
+      exports/publication_source_data/, with one exception: the Figure 2d,
+      2f-i and 2j-l tables are copied from results/spatial_validation/ by
+      Exp9_manuscript tools/import_primary_inputs.R, which records each file's
+      sha256 and checks it against the producing run's manifest.
 
 # ------------------------------------------------------------ canonical shape
 # results/<domain>/<analysis_id>/<scope>/<child>/

@@ -1,0 +1,36 @@
+source_type,level,n_units,n_clusters,n_cells,n_cells_10Xv3,n_cells_10Xv2
+EC layer II - MEC stellate (ocean) cells,cluster,2,2,2045,461,1584
+EC layer II - MEC pyramidal island cells,supertype,1,4,2345,615,1730
+EC layer II - LEC fan cells,cluster,3,3,4074,1061,3013
+EC layer II - all MEC+LEC L2 excitatory,cluster,13,13,10810,2696,8114
+EC layer III - MEC,supertype,1,3,11921,305,11616
+EC layer III - LEC,supertype,4,12,8249,2257,5992
+CA1 pyramidal cells,supertype,2,15,22554,10942,11612
+CA2 pyramidal cells,supertype,1,1,143,139,4
+CA3 pyramidal cells,supertype,3,15,3949,2719,1230
+Dentate granule cells,subclass,1,9,82343,14294,68049
+Hilar mossy cells,supertype,1,2,318,113,205
+Hippocampal Sst (O-LM) interneurons,supertype,2,16,2729,1158,1571
+Hippocampal Pvalb interneurons,subclass,1,22,42314,10165,32149
+Hippocampal Lamp5/neurogliaform interneurons,supertype,2,12,9608,3740,5868
+Hippocampal Vip interneurons,supertype,2,7,2524,1392,1132
+Hippocampal Sncg (CCK) interneurons,supertype,4,14,3023,1438,1585
+Nucleus reuniens glutamatergic,supertype,1,5,2159,662,1497
+Supramammillary glutamatergic,supertype,4,17,1866,830,1036
+MS/DB cholinergic,supertype,1,6,467,466,1
+MS/DB GABAergic,supertype,2,19,3622,3473,149
+MS/DB glutamatergic,supertype,1,19,1191,1123,68
+Dorsal raphe serotonergic,cluster,7,7,610,610,0
+Median raphe serotonergic,cluster,4,4,244,244,0
+Locus coeruleus noradrenergic,cluster,1,1,22,22,0
+Negative control - striatal D1 MSN,subclass,1,22,36287,35689,598
+Negative control - striatal D2 MSN,subclass,1,25,36963,36320,643
+Negative control - cerebellar granule cells,subclass,1,5,133778,133778,0
+Negative control - olfactory bulb granule cells,subclass,1,36,79816,33543,46273
+Astrocytes,subclass,1,13,154311,144668,9643
+Oligodendrocytes,subclass,1,17,422574,371211,51363
+OPC,subclass,1,6,122605,106459,16146
+Microglia,subclass,1,1,86232,81472,4760
+Endothelial cells,subclass,1,3,88011,84356,3655
+Pericytes,subclass,1,2,24907,23170,1737
+VLMC,subclass,1,8,9104,8544,560

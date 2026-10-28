@@ -4,7 +4,20 @@
 # Do lamina proteomes carry the proteins of the neurons that project there?
 # (Figure 2k, 2026-10-28; classes revised the same day after an independent
 # review: the afferent class was dominated by a 22-cell locus coeruleus type,
-# the control class held proteins hippocampal cells make, classes overlapped)
+# the control class held proteins hippocampal cells make, classes overlapped.
+# 2026-10-29: carry-over rule shared with j and l, pinned reference hash,
+# animals named in the outputs)
+#
+# USAGE (from the repository root)
+#   Rscript analysis/spatial_validation/map_afferent_sources.R
+#   Rscript analysis/spatial_validation/map_afferent_sources.R --dry-run
+# Script: analysis/spatial_validation/map_afferent_sources.R
+# Stage: networks
+# Scope: global
+# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/external/allen_abc_wmb_10x/abc_wmb_source_type_mean_log2cpm.csv
+# Produces: results/spatial_validation/map_afferent_sources/global/tables/afferent_source_scores_by_animal.csv; results/spatial_validation/map_afferent_sources/global/tables/afferent_source_contrasts.csv; +1 more
+# Dataset behavior: global; reads the neuropil acquisitions of the joint bundle.
+# Notes: Laminar location of proteins by the cell type whose mRNA they are enriched in (entorhinal, other afferent, hippocampal, glial, control), CON animals (Figure 2k); stressed animals as replication.
 #
 # ORIGIN CLASSES from the whole-mouse-brain 10x reference (ABC atlas, mean
 # log2(CPM+1) per source type; data/external/allen_abc_wmb_10x). mRNA of other
@@ -18,14 +31,21 @@
 #                    that type >= 3, >= 0.75 above every other hippocampal type
 #                    and above every afferent and control type, up to 30 each;
 #   astrocytes, vascular (endothelial, pericytes, VLMC), oligodendrocytes -
-#                    the same with >= 1, up to 30 each;
+#                    the same (>= 3) with a margin >= 1, up to 30 each;
 #   control        - striatal medium spiny, cerebellar or olfactory-bulb
 #                    granule neurons >= 3 while every hippocampal and afferent
 #                    type stays < 2 (tested only with >= 5 such proteins).
 # The classes are mutually exclusive. Only proteins observed in every retained
-# acquisition of all ten laminae of every analysed animal enter (observed
+# acquisition of all ten laminae of every analysed animal enter (control and
+# stressed animals, so both sets are tested on the same classes; observed
 # values, nothing imputed; joint-QC eligible groups with an allowed gene-level
-# claim, official symbols).
+# claim, official symbols). The reference table is pinned by its SHA-256
+# (README of data/external/allen_abc_wmb_10x).
+#
+# ACQUISITIONS: DG po acquisitions with somatic carry-over are excluded by the
+# rule of map_input_territories (R/spatial/neuropil_lamina_utils.R); an animal
+# without a retained acquisition of every lamina is left out (manifest:
+# animals_left_out).
 #
 # SCORE: per animal and lamina, the mean over a class's proteins of the
 # protein-centred laminar profile (as in map_input_territories), against 1000
@@ -39,18 +59,9 @@
 # with a control class, its three SLM / DG mo contrasts and the entorhinal
 # minus control difference for each. Per animal: the excess difference between
 # the two laminae; across the control animals a one-sample t test, BH over the
-# contrasts of the table. Stressed animals: replication only, never pooled.
+# contrasts of each animal set (8 without a control class). Stressed animals:
+# replication only, tested the same way, never pooled.
 #
-# USAGE (from the repository root)
-#   Rscript analysis/spatial_validation/map_afferent_sources.R
-#   Rscript analysis/spatial_validation/map_afferent_sources.R --dry-run
-# Script: analysis/spatial_validation/map_afferent_sources.R
-# Stage: networks
-# Scope: global
-# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv; data/external/allen_abc_wmb_10x/abc_wmb_source_type_mean_log2cpm.csv
-# Produces: results/spatial_validation/map_afferent_sources/global/tables/afferent_source_scores_by_animal.csv; results/spatial_validation/map_afferent_sources/global/tables/afferent_source_contrasts.csv; +1 more
-# Dataset behavior: global; reads the neuropil acquisitions of the joint bundle.
-# Notes: Laminar location of proteins by the cell type whose mRNA they are enriched in (entorhinal, other afferent, hippocampal, glial, control), CON animals (Figure 2k); stressed animals as replication.
 #
 #
 
@@ -61,6 +72,7 @@ source("R/qc/qc_exploration_utils.R")
 source("R/qc/compartment_abundance_utils.R")
 source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "spatial_systems_paths.R"))
+source("R/spatial/neuropil_lamina_utils.R")
 
 ANALYSIS_ID <- "map_afferent_sources"
 CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
@@ -72,8 +84,8 @@ cli <- integration_cli(default_dataset = "all")
 JOINT_BUNDLE <- preprocessing_find("joint_compartment_qc_matrices.rds", owner = "build_joint_protigy_input",
                                    legacy_stage = "01_preprocessing", legacy_substep = "joint_compartment_qc",
                                    scope = "global", child = "models", legacy_family = "processed")
-CARRYOVER <- spatial_systems_find("input_territory_carryover_qc.csv")
 ABC <- path_external("allen_abc_wmb_10x", "abc_wmb_source_type_mean_log2cpm.csv")
+ABC_SHA256 <- "778e6a2dc82f55cbbbdd74060e56b579600e874b4be5add9227d4fc3e4e7dd88"   # data/external/allen_abc_wmb_10x/README.md
 OUT <- list(
   sets      = file.path(CANONICAL_PATHS$tables, "afferent_source_sets.csv"),
   scores    = file.path(CANONICAL_PATHS$tables, "afferent_source_scores_by_animal.csv"),
@@ -84,6 +96,7 @@ CONTRAST_GROUP <- "CON"
 N_DRAWS <- 1000L
 SEED <- 20261028L
 LAMINAE <- c("CA1_so", "CA1_sr", "CA1_slm", "CA2_so", "CA2_sr", "CA2_slm", "CA3_so", "CA3_sr", "DG_mo", "DG_po")
+SOMA_UNITS <- c("CA1_sp", "CA2_sp", "CA3_sp", "DG_sg")
 SOURCES <- list(
   "EC L2" = c("EC layer II - all MEC+LEC L2 excitatory", "EC layer II - MEC stellate (ocean) cells",
               "EC layer II - MEC pyramidal island cells", "EC layer II - LEC fan cells"),
@@ -119,11 +132,13 @@ CONTRASTS <- list(
 CONTROL_PAIRS <- list(c("CA1_slm", "CA1_sr"), c("CA2_slm", "CA2_sr"), c("DG_mo", "DG_po"))
 
 if (isTRUE(cli$dry_run)) {
-  cat("[DRY-RUN] Laminar location of proteins by the cell type that makes them (CON animals).\n")
-  dry_run_inputs(SCRIPT_ID, list(joint_bundle = JOINT_BUNDLE, carryover = CARRYOVER, abc_reference = ABC))
+  cat("[DRY-RUN] Laminar location of proteins by the cell type whose mRNA they are enriched in (CON animals).\n")
+  dry_run_inputs(SCRIPT_ID, list(joint_bundle = JOINT_BUNDLE, abc_reference = ABC))
   quit(save = "no", status = 0L)
 }
-for (f in c(JOINT_BUNDLE, CARRYOVER, ABC)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+for (f in c(JOINT_BUNDLE, ABC)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+if (!identical(unname(tools::sha256sum(ABC)), ABC_SHA256))
+  stop("The ABC reference table is not the pinned version (data/external/allen_abc_wmb_10x/README.md): ", ABC, call. = FALSE)
 invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
 set.seed(SEED)
 
@@ -134,11 +149,11 @@ cols <- rec$columns
 samples <- as.character(meta[[cols$sample]])
 info <- data.frame(Sample = samples, AnimalID = as.character(meta[[cols$animal]]),
                    group = ca_normalize_group(meta[[cols$group]]),
-                   lamina = paste(meta[[cols$region]], meta[[cols$layer]], sep = "_"), stringsAsFactors = FALSE)
-carry <- utils::read.csv(CARRYOVER, stringsAsFactors = FALSE)
-info <- info[info$lamina %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded %in% TRUE], , drop = FALSE]
-mat <- rec$normalized_nonimputed[, info$Sample, drop = FALSE]
-obs <- rec$observed[rownames(mat), info$Sample, drop = FALSE] & is.finite(mat)
+                   hemisphere = ca_normalize_hemisphere(meta[[cols$hemisphere]]),
+                   unit = paste(meta[[cols$region]], meta[[cols$layer]], sep = "_"), stringsAsFactors = FALSE)
+info$lamina <- info$unit
+mat <- rec$normalized_nonimputed[, samples, drop = FALSE]
+obs <- rec$observed[rownames(mat), samples, drop = FALSE] & is.finite(mat)
 ft <- rec$feature_table[match(rownames(mat), rec$feature_table$ProteinGroupID), , drop = FALSE]
 symbol <- as.character(ft$official_gene_symbol)
 use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & !is.na(symbol) & nzchar(symbol) &
@@ -146,6 +161,11 @@ use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & 
 mat <- mat[use, , drop = FALSE]
 obs <- obs[use, , drop = FALSE]
 rownames(mat) <- rownames(obs) <- symbol[use]
+# soma carry-over into DG po: the rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)
+carry <- dg_po_carryover(info, obs, LAMINAE, SOMA_UNITS)
+info <- info[info$lamina %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded], , drop = FALSE]
+mat <- mat[, info$Sample, drop = FALSE]
+obs <- obs[, info$Sample, drop = FALSE]
 
 profiles <- list()
 abundance <- list()
@@ -163,6 +183,7 @@ for (a in sort(unique(info$AnimalID))) {
   profiles[[a]] <- P - rowMeans(P)
 }
 group_of <- stats::setNames(info$group[match(names(profiles), info$AnimalID)], names(profiles))
+left_out <- setdiff(sort(unique(info$AnimalID)), names(profiles))
 
 # ---- origin classes ---------------------------------------------------------------------
 ref <- utils::read.csv(ABC, check.names = FALSE, stringsAsFactors = FALSE)
@@ -273,7 +294,8 @@ for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
       lamina_a = sp$a, lamina_b = sp$b, expectation = sp$expectation, estimate = mean(v),
       std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
       df = unname(tt$parameter), t_value = unname(tt$statistic), p_value = tt$p.value, n_animals = length(v),
-      animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]), stringsAsFactors = FALSE)
+      animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]),
+      animals = paste(sort(names(v)), collapse = "; "), stringsAsFactors = FALSE)
   }
 }
 contrasts <- do.call(rbind, contrasts)
@@ -291,7 +313,7 @@ contrasts$method <- paste0("per animal: excess difference between the laminae (c
 utils::write.csv(set_rows, OUT$sets, row.names = FALSE)
 utils::write.csv(scores, OUT$scores, row.names = FALSE)
 utils::write.csv(contrasts, OUT$contrasts, row.names = FALSE)
-write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE, carryover = CARRYOVER, abc_reference = ABC), outputs = OUT,
+write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE, abc_reference = ABC), outputs = OUT,
                    parameters = list(scale = "joint shared-core normalisation, observed values only (no imputation)",
                                      laminae = LAMINAE, resident_types = RESIDENT, afferent_types = AFFERENT,
                                      non_projecting_types = NON_PROJECTING, class_sizes = as.list(table(set_rows$origin_class)),
@@ -300,6 +322,8 @@ write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE, carryove
                                      seed = SEED, comparison_group = CONTRAST_GROUP,
                                      control_animals = sort(names(profiles)[group_of == CONTRAST_GROUP]),
                                      replication_animals = sort(names(profiles)[group_of != CONTRAST_GROUP]),
-                                     inferential_p_values = TRUE),
+                                     animals_left_out = left_out, carryover_threshold = carry$carryover_threshold[1],
+                                     excluded_acquisitions = carry$Sample[carry$excluded], abc_reference_sha256 = ABC_SHA256,
+                                     inferential_p_values = TRUE, provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = "mRNA of a source cell type (other animals, ABC atlas) is a proxy for where a protein is made; the animal is the unit.")
 message("Afferent sources complete: ", length(profiles), " animals, ", length(universe), " proteins")

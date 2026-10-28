@@ -1,0 +1,6 @@
+built_at: 2026-10-28T15:37:40+0100
+h5_source: /allen/programs/celltypes/workgroups/rnaseqanalysis/shiny/Taxonomies/AIT21.0_mouse/cl.means.freeze.csv (generated_on 20230821131348)
+value: cell-weighted mean over clusters of the cluster mean log2(CPM+1)
+weights: cluster number_of_cells (WMB-taxonomy 20231215 cluster.csv; 10Xv2+10Xv3+multiome)
+rounding: 3 decimals
+R: R version 4.5.1 (2025-06-13 ucrt)

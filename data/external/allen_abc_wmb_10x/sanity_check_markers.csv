@@ -1,0 +1,26 @@
+target,gene,target_mean,comparators,subclass_percentile_of_target,brainwide_max_subclass,brainwide_median_subclass
+Dentate granule cells,Prox1,8.79,CA3 pyramidal cells=0.29; CA1 pyramidal cells=0.19; Hilar mossy cells=0.27,0.997,148 AV Col27a1 Glut=8.92,0.22
+Dentate granule cells,C1ql2,5.88,CA3 pyramidal cells=0.49; CA1 pyramidal cells=0.11; Hilar mossy cells=0.29,0.994,147 AD Serpinb7 Glut=8.51,0.04
+CA2 pyramidal cells,Pcp4,11.26,CA1 pyramidal cells=0.98; CA3 pyramidal cells=5.60; Dentate granule cells=9.72,0.979,111 TRS-BAC Sln Glut=12.79,7.08
+CA2 pyramidal cells,Rgs14,8.84,CA1 pyramidal cells=5.23; CA3 pyramidal cells=2.47; Dentate granule cells=2.34,1,025 CA2-FC-IG Glut=6.38,0.09
+CA2 pyramidal cells,Amigo2,7.39,CA1 pyramidal cells=0.06; CA3 pyramidal cells=2.39; Dentate granule cells=0.30,1,145 MH Tac2 Glut=6.19,1.42
+Hilar mossy cells,Calb2,9.6,Dentate granule cells=0.11; CA3 pyramidal cells=0.87; CA1 pyramidal cells=0.12,0.988,111 TRS-BAC Sln Glut=10.68,2.43
+EC layer II - MEC stellate (ocean) cells,Reln,9.14,EC layer II - MEC pyramidal island cells=0.38; EC layer II - LEC fan cells=10.27; EC layer III - MEC=0.77,0.991,036 HPF CR Glut=12.40,1.32
+EC layer II - MEC stellate (ocean) cells,Calb1,0.65,EC layer II - MEC pyramidal island cells=7.11; EC layer II - LEC fan cells=2.08; EC layer III - MEC=1.27,0.34,313 CBX Purkinje Gaba=10.98,1.47
+EC layer II - MEC pyramidal island cells,Reln,0.38,EC layer II - MEC stellate (ocean) cells=9.14; EC layer III - MEC=0.77,0.234,036 HPF CR Glut=12.40,1.32
+EC layer II - MEC pyramidal island cells,Calb1,7.11,EC layer II - MEC stellate (ocean) cells=0.65; EC layer III - MEC=1.27,0.941,313 CBX Purkinje Gaba=10.98,1.47
+EC layer II - LEC fan cells,Reln,10.27,EC layer III - LEC=3.16; EC layer II - MEC pyramidal island cells=0.38,0.997,036 HPF CR Glut=12.40,1.32
+EC layer II - LEC fan cells,Calb1,2.08,EC layer III - LEC=5.55; EC layer II - MEC pyramidal island cells=7.11,0.583,313 CBX Purkinje Gaba=10.98,1.47
+EC layer II - all MEC+LEC L2 excitatory,Reln,7.47,EC layer III - MEC=0.77; EC layer III - LEC=3.16,0.967,036 HPF CR Glut=12.40,1.32
+EC layer II - all MEC+LEC L2 excitatory,Calb1,3.88,EC layer III - MEC=1.27; EC layer III - LEC=5.55,0.754,313 CBX Purkinje Gaba=10.98,1.47
+Nucleus reuniens glutamatergic,Slc17a6,8.68,CA1 pyramidal cells=0.43; Negative control - striatal D1 MSN=0.02,0.849,260 MDRNv Crp Glut=10.09,0.81
+Supramammillary glutamatergic,Slc17a6,8.85,CA1 pyramidal cells=0.43; Negative control - striatal D1 MSN=0.02,0.908,260 MDRNv Crp Glut=10.09,0.81
+MS/DB cholinergic,Chat,8.66,MS/DB GABAergic=0.01; MS/DB glutamatergic=0.01,1,261 HB Calcb Chol=7.28,0.01
+Dorsal raphe serotonergic,Tph2,11.04,Median raphe serotonergic=10.77; Locus coeruleus noradrenergic=0.60,1,216 MB-MY Tph2 Glut-Sero=6.49,0.05
+Median raphe serotonergic,Tph2,10.77,Dorsal raphe serotonergic=11.04; Locus coeruleus noradrenergic=0.60,1,216 MB-MY Tph2 Glut-Sero=6.49,0.05
+Locus coeruleus noradrenergic,Dbh,10.92,Dorsal raphe serotonergic=0.03; Median raphe serotonergic=0.04,1,251 NTS Dbh Glut=5.39,0
+Negative control - striatal D1 MSN,Drd1,8.51,Negative control - striatal D2 MSN=0.50,1,061 STR D1 Gaba=8.52,0.25
+Negative control - striatal D1 MSN,Drd2,0.39,Negative control - striatal D2 MSN=8.94,0.417,062 STR D2 Gaba=8.94,0.64
+Negative control - striatal D2 MSN,Drd1,0.5,Negative control - striatal D1 MSN=8.51,0.657,061 STR D1 Gaba=8.52,0.25
+Negative control - striatal D2 MSN,Drd2,8.94,Negative control - striatal D1 MSN=0.39,1,062 STR D2 Gaba=8.94,0.64
+Negative control - cerebellar granule cells,Gabra6,9.03,Dentate granule cells=0.00; Negative control - olfactory bulb granule cells=0.00,1,314 CB Granule Glut=9.03,0

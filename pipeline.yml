@@ -96,7 +96,7 @@ stages:
         datasets: ["global"]
         stage: "qc_global"
         scope: "global"
-        produces: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/build_reference_marker_registry/global/tables"]
+        produces: ["config/marker_panels/wgcna_reference_marker_sets.csv", "results/qc/build_reference_marker_registry/global/tables", "data/external/reference_markers/go_mgi/processed/mgi_human_mouse_homology_map.csv", "data/external/reference_markers/go_mgi/processed/go_mgi_compartment_marker_candidates.csv"]
         consumes_required: ["data/external/reference_markers/reference_marker_sources.yml"]
         consumes_optional: ["config/marker_panels/compartment_fidelity_marker_sets.csv", "data/external/reference_markers/go_mgi/raw/mgi.gaf.gz", "data/external/reference_markers/go_mgi/raw/go-basic.obo", "data/external/reference_markers/go_mgi/raw/HOM_MouseHumanSequence.rpt", "data/external/reference_markers/syngo/raw/"]
         recomputes_core_state: false
@@ -975,6 +975,8 @@ stages:
           - "results/spatial_validation/map_input_territories/global/tables/input_territory_pair_similarity.csv"
           - "results/spatial_validation/map_input_territories/global/tables/input_territory_protein_classes.csv"
           - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_sensitivity.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_protein_contrasts.csv"
         consumes_required:
           - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
           - "data/external/reference_markers/syngo/raw/annotations.xlsx"
@@ -986,7 +988,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Input territories of the ten neuropil laminae (added 2026-10-28): per animal, Spearman similarity (Fisher z) of protein-centred laminar profiles for SynGO presynaptic vs postsynaptic proteins (glial/vascular and mitochondrial genes removed), same-input minus same-region pairs (perforant path; mossy fibre as positive control), against abundance-matched random sets; observed values only; CON animals primary (Figure 2j), stressed animals as replication; DG po acquisitions with soma carry-over excluded."
+        notes: "Input territories of the ten neuropil laminae (added 2026-10-28): per animal, Spearman similarity (Fisher z) of protein-centred laminar profiles for SynGO presynaptic vs postsynaptic proteins (glial/vascular and mitochondrial genes removed), same-input minus same-region pairs (perforant path; mossy fibre as positive control), against abundance-matched random sets; observed values only; CON animals primary (Figure 2j), stressed animals with every lamina as replication; DG po acquisitions with soma carry-over excluded (R/spatial/neuropil_lamina_utils.R, shared with map_afferent_sources and compare_lamina_synapses); post hoc sensitivity analyses (2026-10-29: lamina-label permutation, cross-host pairs, without the shared DG pair, laminar-SD-matched null, without GABAergic-terminal proteins, left-out animal re-entered) and per-protein territory contrasts."
       - script: "analysis/spatial_validation/map_afferent_sources.R"
         required: false
         datasets: ["global"]
@@ -998,12 +1000,11 @@ stages:
           - "results/spatial_validation/map_afferent_sources/global/tables/afferent_source_contrasts.csv"
         consumes_required:
           - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
-          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
           - "data/external/allen_abc_wmb_10x/abc_wmb_source_type_mean_log2cpm.csv"
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Laminar location of proteins by the cell type that makes them (added 2026-10-28): origin classes from the ABC whole-mouse-brain 10x reference (made outside the hippocampus by projecting neurons; by CA3, granule, CA1, CA2 cells or interneurons; glial; non-projecting control), scored on protein-centred laminar profiles against abundance-matched random sets; pre-declared within-region contrasts (perforant path, Schaffer collaterals, mossy fibres, negative and fissure controls); CON animals primary (Figure 2k), stressed animals as replication."
+        notes: "Laminar location of proteins by the cell type whose mRNA they are enriched in (added 2026-10-28): origin classes from the ABC whole-mouse-brain 10x reference, pinned by SHA-256 (entorhinal; other afferent, descriptive; CA3, granule, CA1, CA2 cells or interneurons; astrocytes, vascular cells, oligodendrocytes; non-projecting control, tested only with >= 5 proteins), scored on protein-centred laminar profiles against abundance-matched random sets; 8 pre-declared within-region contrasts (perforant path, Schaffer collaterals, mossy fibres, fissure context); CON animals primary (Figure 2k), stressed animals with every lamina as replication; DG po carry-over rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)."
       - script: "analysis/spatial_validation/compare_lamina_synapses.R"
         required: false
         datasets: ["global"]
@@ -1015,11 +1016,10 @@ stages:
           - "results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_contrasts.csv"
         consumes_required:
           - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
-          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context."
+        notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context; DG po carry-over rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)."
       - script: "analysis/spatial_validation/quantify_empirical_compartments.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

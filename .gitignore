@@ -44,6 +44,16 @@ data/external/reference_markers/*
 !data/external/reference_markers/*/
 data/external/reference_markers/*/*
 !data/external/reference_markers/*/.gitkeep
+# the ABC whole-brain reference of Figure 2k: code and metadata tracked, the means table and raw files not
+!data/external/allen_abc_wmb_10x/
+data/external/allen_abc_wmb_10x/*
+!data/external/allen_abc_wmb_10x/README.md
+!data/external/allen_abc_wmb_10x/build_info.txt
+!data/external/allen_abc_wmb_10x/download_manifest.csv
+!data/external/allen_abc_wmb_10x/source_type_map.csv
+!data/external/allen_abc_wmb_10x/abc_wmb_source_type_info.csv
+!data/external/allen_abc_wmb_10x/sanity_check_markers.csv
+!data/external/allen_abc_wmb_10x/scripts/
 data/processed/
 results/figures/
 results/tables/

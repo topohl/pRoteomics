@@ -2,7 +2,8 @@
 #
 #
 # Inhibitory presynaptic share of every neuropil lamina (Figure 2l,
-# 2026-10-28), control animals; stressed animals as replication.
+# 2026-10-28; 2026-10-29: carry-over rule shared with j and k, animals named in
+# the outputs), control animals; stressed animals as replication.
 #
 # INHIBITORY SHARE: in every neuropil acquisition, the mean log2 abundance of
 # the GABAergic presynaptic proteins GAD1, GAD2 and VGAT (Slc32a1) minus the
@@ -14,17 +15,19 @@
 # tested on the per-animal differences of the CON animals (paired t, df = 2),
 # BH over the pairs. The pooled-error model (lamina + animal, one residual for
 # every pair) is kept as a sensitivity only: the between-animal spread of the
-# differences varies tenfold between pairs (independent review 2026-10-28).
-# The stressed animals are tested the same way as a replication, never pooled.
+# differences varies more than twentyfold between pairs (independent review
+# 2026-10-28). The stressed animals are tested the same way as a replication,
+# never pooled: every stressed animal with both laminae of a pair (six; five
+# where DG po is missing).
 # Sensitivities and context: GAD2 + VGAT only (GAD1 also marks interneuron
 # somata and runs opposite in the hilus); VGLUT2 (Slc17a6, detected mainly in
-# SLM and DG mo, where reuniens and supramammillary terminals add excitatory
-# input the VGLUT1 denominator misses, so the share there is an upper bound);
+# SLM and DG mo, mainly reuniens and supramammillary terminals; the VGLUT1
+# denominator misses it, so the share there is an upper bound);
 # GPHN and NLGN2 vs PSD-95 (Dlg4) and GluA2 (Gria2) as the postsynaptic
 # counterpart (descriptive).
 #
-# Acquisitions excluded for soma carry-over by map_input_territories are
-# excluded here too.
+# DG po acquisitions with somatic carry-over are excluded by the rule of
+# map_input_territories (R/spatial/neuropil_lamina_utils.R).
 #
 # USAGE (from the repository root)
 #   Rscript analysis/spatial_validation/compare_lamina_synapses.R
@@ -32,7 +35,7 @@
 # Script: analysis/spatial_validation/compare_lamina_synapses.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv
+# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds
 # Produces: results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_by_animal.csv; results/spatial_validation/compare_lamina_synapses/global/tables/inhibitory_share_contrasts.csv; +1 more
 # Dataset behavior: global; reads the neuropil acquisitions of the joint bundle.
 # Notes: Laminar inhibitory presynaptic share (GAD1/GAD2/VGAT vs VGLUT1), pre-declared lamina pairs paired over CON animals (Figure 2l); stressed animals as replication.
@@ -46,6 +49,7 @@ source("R/qc/qc_exploration_utils.R")
 source("R/qc/compartment_abundance_utils.R")
 source(repo_path("R", "preprocessing_paths.R"))
 source(repo_path("R", "spatial_systems_paths.R"))
+source("R/spatial/neuropil_lamina_utils.R")
 
 ANALYSIS_ID <- "compare_lamina_synapses"
 CANONICAL_PATHS <- spatial_systems_dirs(ANALYSIS_ID)
@@ -57,7 +61,6 @@ cli <- integration_cli(default_dataset = "all")
 JOINT_BUNDLE <- preprocessing_find("joint_compartment_qc_matrices.rds", owner = "build_joint_protigy_input",
                                    legacy_stage = "01_preprocessing", legacy_substep = "joint_compartment_qc",
                                    scope = "global", child = "models", legacy_family = "processed")
-CARRYOVER <- spatial_systems_find("input_territory_carryover_qc.csv")
 OUT <- list(
   share_acquisition = file.path(CANONICAL_PATHS$tables, "inhibitory_share_by_acquisition.csv"),
   share_animal      = file.path(CANONICAL_PATHS$tables, "inhibitory_share_by_animal.csv"),
@@ -66,6 +69,7 @@ OUT <- list(
 MANIFEST <- file.path(CANONICAL_PATHS$manifests, "run_manifest.yml")
 CONTRAST_GROUP <- "CON"
 LAMINAE <- c("CA1_so", "CA1_sr", "CA1_slm", "CA2_so", "CA2_sr", "CA2_slm", "CA3_so", "CA3_sr", "DG_mo", "DG_po")
+SOMA_UNITS <- c("CA1_sp", "CA2_sp", "CA3_sp", "DG_sg")
 INHIBITORY <- c("Gad1", "Gad2", "Slc32a1")
 EXCITATORY <- "Slc17a7"
 POST_INHIBITORY <- c("Gphn", "Nlgn2")
@@ -79,10 +83,10 @@ SHARE_PAIRS <- list(c("CA1_slm", "CA1_sr"), c("CA1_slm", "CA1_so"), c("CA1_sr", 
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Laminar inhibitory share (CON animals).\n")
-  dry_run_inputs(SCRIPT_ID, list(joint_bundle = JOINT_BUNDLE, carryover = CARRYOVER))
+  dry_run_inputs(SCRIPT_ID, list(joint_bundle = JOINT_BUNDLE))
   quit(save = "no", status = 0L)
 }
-for (f in c(JOINT_BUNDLE, CARRYOVER)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+if (!file.exists(JOINT_BUNDLE)) stop("missing_required_input: ", JOINT_BUNDLE, call. = FALSE)
 invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
 
 rec <- ca_validate_bundle_reconstruction(readRDS(JOINT_BUNDLE))
@@ -92,11 +96,9 @@ samples <- as.character(meta[[cols$sample]])
 info <- data.frame(Sample = samples, AnimalID = as.character(meta[[cols$animal]]),
                    group = ca_normalize_group(meta[[cols$group]]),
                    hemisphere = ca_normalize_hemisphere(meta[[cols$hemisphere]]),
-                   lamina = paste(meta[[cols$region]], meta[[cols$layer]], sep = "_"), stringsAsFactors = FALSE)
-carry <- utils::read.csv(CARRYOVER, stringsAsFactors = FALSE)
-info <- info[info$lamina %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded %in% TRUE], , drop = FALSE]
-mat <- rec$normalized_nonimputed[, info$Sample, drop = FALSE]
-obs <- rec$observed[rownames(mat), info$Sample, drop = FALSE] & is.finite(mat)
+                   unit = paste(meta[[cols$region]], meta[[cols$layer]], sep = "_"), stringsAsFactors = FALSE)
+mat <- rec$normalized_nonimputed[, samples, drop = FALSE]
+obs <- rec$observed[rownames(mat), samples, drop = FALSE] & is.finite(mat)
 ft <- rec$feature_table[match(rownames(mat), rec$feature_table$ProteinGroupID), , drop = FALSE]
 symbol <- as.character(ft$official_gene_symbol)
 use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & !is.na(symbol) & nzchar(symbol) &
@@ -104,6 +106,13 @@ use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & 
 mat <- mat[use, , drop = FALSE]
 obs <- obs[use, , drop = FALSE]
 rownames(mat) <- rownames(obs) <- symbol[use]
+# soma carry-over into DG po: the rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)
+carry <- dg_po_carryover(info, obs, LAMINAE, SOMA_UNITS)
+info <- info[info$unit %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded], c("Sample", "AnimalID", "group",
+                                                                                        "hemisphere", "unit"), drop = FALSE]
+names(info)[names(info) == "unit"] <- "lamina"
+mat <- mat[, info$Sample, drop = FALSE]
+obs <- obs[, info$Sample, drop = FALSE]
 need <- c(INHIBITORY, EXCITATORY, POST_INHIBITORY, POST_EXCITATORY)
 if (!all(need %in% rownames(mat))) stop("Synapse proteins absent: ", paste(setdiff(need, rownames(mat)), collapse = ", "), call. = FALSE)
 
@@ -166,7 +175,10 @@ for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
                       estimate = mean(v), std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1],
                       ci_high = tt$conf.int[2], df = unname(tt$parameter), t_value = unname(tt$statistic),
                       p_value = tt$p.value, n_animals = length(v), animals_positive = sum(v > 0),
-                      estimate_gad2_vgat_only = mean(g2), stringsAsFactors = FALSE)
+                      estimate_gad2_vgat_only = mean(g2),
+                      animals = paste(sort(intersect(d$AnimalID[d$lamina == p[1] & is.finite(d$inhibitory_presynaptic_share_log2)],
+                                                     d$AnimalID[d$lamina == p[2] & is.finite(d$inhibitory_presynaptic_share_log2)])),
+                                      collapse = "; "), stringsAsFactors = FALSE)
     if (set_name == CONTRAST_GROUP) {
       row$pooled_std_error <- se_pooled
       row$pooled_df <- dfe
@@ -198,12 +210,16 @@ share_contrasts$method <- paste0("per-animal difference of the lamina shares (a 
 utils::write.csv(acq, OUT$share_acquisition, row.names = FALSE)
 utils::write.csv(animal[order(animal$group, animal$AnimalID, match(animal$lamina, LAMINAE)), ], OUT$share_animal, row.names = FALSE)
 utils::write.csv(share_contrasts, OUT$share_contrasts, row.names = FALSE)
-write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE, carryover = CARRYOVER), outputs = OUT,
+write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE), outputs = OUT,
                    parameters = list(scale = "joint shared-core normalisation, observed values only (no imputation)",
                                      inhibitory = INHIBITORY, excitatory = EXCITATORY,
                                      postsynaptic_inhibitory = POST_INHIBITORY, postsynaptic_excitatory = POST_EXCITATORY,
                                      share_pairs = vapply(SHARE_PAIRS, paste, "", collapse = " - "),
                                      comparison_group = CONTRAST_GROUP,
-                                     comparison_animals = sort(unique(con$AnimalID)), inferential_p_values = TRUE),
-                   notes = "The animal is the unit; hemispheres are averaged within animal.")
+                                     comparison_animals = sort(unique(con$AnimalID)),
+                                     replication_animals = sort(unique(animal$AnimalID[animal$group != CONTRAST_GROUP])),
+                                     carryover_threshold = carry$carryover_threshold[1],
+                                     excluded_acquisitions = carry$Sample[carry$excluded], inferential_p_values = TRUE,
+                                     provenance = run_output_provenance(OUT, SCRIPT_ID)),
+                   notes = "The animal is the unit; retained hemisphere acquisitions are averaged within animal; the per-pair animals are in the contrasts table.")
 message("Laminar inhibitory share complete")

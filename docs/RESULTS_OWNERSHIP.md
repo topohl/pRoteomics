@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **115 families**, **405 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **115 families**, **407 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -97,7 +97,7 @@ its outputs.
 | `results/spatial_validation/decompose_bilateral_variance/global` | `decompose_bilateral_variance.R` | 1 | 2 |
 | `results/spatial_validation/map_afferent_sources/global` | `map_afferent_sources.R` | 1 | 3 |
 | `results/spatial_validation/map_anatomical_programmes/global` | `map_anatomical_programmes.R` | 1 | 15 |
-| `results/spatial_validation/map_input_territories/global` | `map_input_territories.R` | 1 | 5 |
+| `results/spatial_validation/map_input_territories/global` | `map_input_territories.R` | 1 | 7 |
 | `results/spatial_validation/quantify_bilateral_spatial_identity/global` | `quantify_bilateral_spatial_identity.R` | 1 | 2 |
 | `results/spatial_validation/quantify_empirical_compartments/global` | `quantify_empirical_compartments.R` | 1 | 3 |
 | `results/spatial_validation/quantify_module_bilateral_identity/global` | `quantify_module_bilateral_identity.R` | 1 | 3 |
