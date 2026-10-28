@@ -146,6 +146,10 @@ animal$presynaptic_share_centred <- animal$inhibitory_presynaptic_share_log2 -
   stats::ave(animal$inhibitory_presynaptic_share_log2, animal$AnimalID, FUN = function(x) mean(x, na.rm = TRUE))
 animal$postsynaptic_share_centred <- animal$inhibitory_postsynaptic_share_log2 -
   stats::ave(animal$inhibitory_postsynaptic_share_log2, animal$AnimalID, FUN = function(x) mean(x, na.rm = TRUE))
+# centred values only for animals with all ten laminae (an animal without a retained DG po would be centred on nine)
+ten <- stats::ave(animal$lamina, animal$AnimalID, FUN = function(x) length(unique(x))) == as.character(length(LAMINAE))
+animal$presynaptic_share_centred[!ten] <- NA_real_
+animal$postsynaptic_share_centred[!ten] <- NA_real_
 con <- animal[animal$group == CONTRAST_GROUP, , drop = FALSE]
 if (!all(table(factor(con$lamina, levels = LAMINAE)) == length(unique(con$AnimalID))) ||
     !all(is.finite(con$inhibitory_presynaptic_share_log2)))
