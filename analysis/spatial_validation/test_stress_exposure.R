@@ -11,7 +11,7 @@
 # Stage: networks
 # Scope: global
 # Consumes: required data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/<unit>sus_<unit>res.csv; +2 more
-# Produces: results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_protein_tests.csv; results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_unit_summary.csv; +4 more
+# Produces: results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_protein_tests.csv; results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_unit_summary.csv; +6 more
 # Dataset behavior: global; reads the animal-level matrices of neuron_neuropil, neuron_soma and microglia and the microglia acquisitions of the joint bundle.
 # Notes: Stressed (RES + SUS) vs CON per unit: protein-level contrast in the Figure 3 model, GO BP GSEA as in Figure 3 with a theme summary, and a declared animal-level microglia panel with exact label permutation.
 #
@@ -51,6 +51,10 @@
 # within each comparison. Checks: left-only and right-only acquisitions, and
 # without A765 (the control animal with the fewest detected proteins).
 #
+# POST HOC LEAD (2026-10-29): Npy, lower in the three susceptible animals across
+# the units where it is observed in every acquisition; selected after a probe of
+# these animals, so described, not confirmed (see the block before the writes).
+#
 #
 
 source("R/paths.R")
@@ -84,7 +88,9 @@ OUT <- list(
   go       = file.path(CANONICAL_PATHS$tables, "stress_exposure_go_bp.csv"),
   themes   = file.path(CANONICAL_PATHS$tables, "stress_exposure_theme_summary.csv"),
   panel    = file.path(CANONICAL_PATHS$tables, "stress_exposure_panel_by_animal.csv"),
-  tests    = file.path(CANONICAL_PATHS$tables, "stress_exposure_panel_tests.csv")
+  tests    = file.path(CANONICAL_PATHS$tables, "stress_exposure_panel_tests.csv"),
+  lead_animals = file.path(CANONICAL_PATHS$tables, "stress_exposure_npy_by_animal.csv"),
+  lead_tests   = file.path(CANONICAL_PATHS$tables, "stress_exposure_npy_tests.csv")
 )
 MANIFEST <- file.path(CANONICAL_PATHS$manifests, "run_manifest.yml")
 GSEA <- list(seed_base = 20260824L, n_perm = 100000L, min_size = 10L, max_size = 800L)
@@ -298,6 +304,76 @@ panel_tests$role <- ifelse(panel_tests$acquisitions == "all", "declared panel (B
 panel_tests$method <- paste0("animal mean of within-acquisition log2 ratios (every protein observed); difference of group means ",
                              "(stressed - CON or SUS - RES); exact permutation of the group labels over animals, two-sided on ",
                              "|difference|; pooled two-sample 95% CI")
+
+# ---- post hoc lead: Npy lower in the susceptible animals (added 2026-10-29) ----------------------------
+# Npy had the most SUS-RES separations in a probe of glucocorticoid and neuropeptide proteins on 2026-10-29,
+# so this is a description of a lead, not a test of a hypothesis. Score per animal: the mean, over the units
+# where the protein is observed in every acquisition, of its animal-level value (Figure 3 matrices; one protein
+# group per symbol) centred on the unit's mean over the nine animals; the same on observed values (animal mean
+# of the joint observed values). Tests: SUS vs the other six animals (84 labellings, smallest P 1/84), SUS vs
+# RES, SUS vs CON and RES vs CON (20 labellings each, two-sided smallest P 0.10). Background: the same official
+# score for every protein observed in every acquisition of the same units gives the lead's rank.
+LEAD <- "Npy"
+frames <- lapply(STRESS_DATASETS, stress_gene_frame); names(frames) <- STRESS_DATASETS
+unit_ds <- unlist(lapply(STRESS_DATASETS, function(ds) stats::setNames(rep(ds, length(frames[[ds]]$units)), frames[[ds]]$units)))
+full_obs <- function(sym, u) { s <- info$Sample[info$unit == u]; sym %in% rownames(obs) && length(s) > 0 && all(obs[sym, s]) }
+lead_units <- names(unit_ds)[vapply(names(unit_ds), function(u) full_obs(LEAD, u), TRUE)]
+official_value <- function(sym, u) {
+  d <- frames[[unit_ds[[u]]]]
+  j <- which(d$unit == u)
+  stats::setNames(d$m[d$rows[match(sym, d$genes)], j], d$animal[j])
+}
+animals <- sort(unique(info$AnimalID))
+grp <- stats::setNames(info$group[match(animals, info$AnimalID)], animals)
+lead_rows <- do.call(rbind, lapply(lead_units, function(u) {
+  v <- official_value(LEAD, u)[animals]
+  s <- info[info$unit == u, , drop = FALSE]
+  o <- tapply(mat[LEAD, s$Sample], s$AnimalID, mean)[animals]
+  data.frame(protein = LEAD, unit = u, AnimalID = animals, group = unname(grp[animals]), official_value = unname(v),
+             official_centred = unname(v - mean(v)), observed_value = unname(o), observed_centred = unname(o - mean(o)),
+             stringsAsFactors = FALSE)
+}))
+lead_score <- function(col) tapply(lead_rows[[col]], lead_rows$AnimalID, mean)[animals]
+lead_scores <- data.frame(protein = LEAD, unit = "score over units", AnimalID = animals, group = unname(grp[animals]),
+                          official_value = NA_real_, official_centred = unname(lead_score("official_centred")),
+                          observed_value = NA_real_, observed_centred = unname(lead_score("observed_centred")), stringsAsFactors = FALSE)
+# proteome background on the official score over the same units
+bg_genes <- Reduce(intersect, lapply(lead_units, function(u) {
+  d <- frames[[unit_ds[[u]]]]
+  g <- intersect(d$genes, rownames(obs))
+  s <- info$Sample[info$unit == u]
+  g[rowSums(!obs[g, s, drop = FALSE]) == 0]
+}))
+bg_score <- sapply(lead_units, function(u) {
+  d <- frames[[unit_ds[[u]]]]; j <- which(d$unit == u)
+  x <- d$m[d$rows[match(bg_genes, d$genes)], j, drop = FALSE]
+  colnames(x) <- d$animal[j]
+  x <- x[, animals, drop = FALSE]
+  x - rowMeans(x)
+}, simplify = "array")
+bg_score <- apply(bg_score, c(1, 2), mean)
+rownames(bg_score) <- bg_genes
+is_sus <- grp[animals] == "SUS"
+bg_diff <- rowMeans(bg_score[, is_sus, drop = FALSE]) - rowMeans(bg_score[, !is_sus, drop = FALSE])
+lead_tests <- do.call(rbind, lapply(c("official_centred", "observed_centred"), function(col) {
+  sc <- lead_scores[[col]]
+  do.call(rbind, lapply(list(c("SUS", "CON+RES"), c("SUS", "RES"), c("SUS", "CON"), c("RES", "CON")), function(cmp) {
+    keep <- grp %in% c(cmp[1], strsplit(cmp[2], "+", fixed = TRUE)[[1]])
+    g <- grp[keep] == cmp[1]
+    et <- exact_label_test(sc[keep], g)
+    ci <- ci_two_sample(sc[keep], g)
+    data.frame(protein = LEAD, values = col, comparison = paste(cmp[1], "vs", cmp[2]), units = paste(lead_units, collapse = "; "),
+               estimate = et$estimate, ci_low = ci[1], ci_high = ci[2], p_permutation = et$p, n_labellings = et$n_labellings,
+               complete_separation = max(sc[keep][g]) < min(sc[keep][!g]) || min(sc[keep][g]) > max(sc[keep][!g]),
+               proteome_percentile = if (col == "official_centred" && cmp[2] == "CON+RES") 100 * mean(bg_diff <= bg_diff[[LEAD]]) else NA_real_,
+               n_background_proteins = if (col == "official_centred" && cmp[2] == "CON+RES") length(bg_diff) else NA_integer_,
+               role = "post hoc lead (selected after a probe of these animals); description, not confirmation",
+               stringsAsFactors = FALSE)
+  }))
+}))
+lead_by_animal <- rbind(lead_rows, lead_scores)
+utils::write.csv(lead_by_animal, OUT$lead_animals, row.names = FALSE)
+utils::write.csv(lead_tests, OUT$lead_tests, row.names = FALSE)
 
 utils::write.csv(protein_tests, OUT$proteins, row.names = FALSE)
 utils::write.csv(unit_summary, OUT$units, row.names = FALSE)

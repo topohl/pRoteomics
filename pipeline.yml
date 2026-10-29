@@ -1032,6 +1032,8 @@ stages:
           - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_theme_summary.csv"
           - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_panel_by_animal.csv"
           - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_panel_tests.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_npy_by_animal.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_npy_tests.csv"
         consumes_required:
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
@@ -1041,7 +1043,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Stress exposure (added 2026-10-29): stressed (RES + SUS) vs CON per unit as a protein-level contrast in the Figure 3 model (fit_animal_level_limma inputs and design), GO BP GSEA exactly as Figure 3 with a manuscript-theme summary, and a declared animal-level microglia panel (within-acquisition ratios in the microglia-enriched ROIs, exact label permutation over animals)."
+        notes: "Stress exposure (added 2026-10-29): stressed (RES + SUS) vs CON per unit as a protein-level contrast in the Figure 3 model (fit_animal_level_limma inputs and design), GO BP GSEA exactly as Figure 3 with a manuscript-theme summary, and a declared animal-level microglia panel (within-acquisition ratios in the microglia-enriched ROIs, exact label permutation over animals); a post hoc Npy lead (lower in the susceptible animals across fully observed units, with its proteome rank)."
       - script: "analysis/spatial_validation/test_unit_specificity.R"
         required: false
         datasets: ["global"]
