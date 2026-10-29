@@ -29,7 +29,8 @@ dg_po_carryover <- function(info, obs, laminae, soma_units) {
 # code: the SHA-256 of every output and whether the script or these helpers had uncommitted changes.
 run_output_provenance <- function(outputs, script_id) {
   files <- unlist(outputs)
-  status <- tryCatch(system2("git", c("-C", repo_root(), "status", "--porcelain", "--", script_id, "R/spatial"),
+  # untracked files count too (this repository hides them from plain git status)
+  status <- tryCatch(system2("git", c("-C", repo_root(), "status", "--porcelain", "--untracked-files=all", "--", script_id, "R/spatial"),
                              stdout = TRUE, stderr = FALSE), error = function(e) NA_character_)
   list(output_sha256 = as.list(stats::setNames(unname(tools::sha256sum(files)), basename(files))),
        code_uncommitted = if (length(status) == 1L && is.na(status)) NA else length(status) > 0L)
