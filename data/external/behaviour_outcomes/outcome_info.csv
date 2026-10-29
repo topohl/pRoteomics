@@ -1,0 +1,5 @@
+item,id,sha256,note
+bundle_ebb,ebb_v104_20261026_4b651ac,9fe3c1a68db9a1d569791d684d710cb25b7098bc08f6ce03c53409bb87195c42,"00_manifest.csv of the MMMSociability behaviour bundle (A4, A2)"
+bundle_fsb,fsb_v10_20261030_b74873b,3bc9db48a2a75e79d3cbc1aa7d7a939c80240e74edd53c817fef63db30685007,00_manifest.csv of the MMMSociability figure-support bundle (S2)
+bundle_ctp,ctp_v14_20261026_f146fe4,a773bbefea9431a175f1ef2dd7c70a6c2f70ef1cd9e905229ca1dc2aa2290afd,00_manifest.csv of the SISanalyzer bundle (B_values)
+output,behaviour_outcomes_ov4.csv,f9fff5612ce6e3793d09edb1ee5f0954c0157585ca86ac8f850f353afb696929,117 animals; CombZ = ISS; early_movement = Stage 09 Movement_mean; movement_cc1_cc4_mean = mean of S2

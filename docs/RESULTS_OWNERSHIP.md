@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **118 families**, **422 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **120 families**, **429 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -95,7 +95,9 @@ its outputs.
 | `results/spatial_validation/build_spatial_data_contract/global` | `build_spatial_data_contract.R` | 1 | 3 |
 | `results/spatial_validation/compare_external_stress_studies/global` | `compare_external_stress_studies.R` | 1 | 4 |
 | `results/spatial_validation/compare_lamina_synapses/global` | `compare_lamina_synapses.R` | 1 | 3 |
+| `results/spatial_validation/couple_network_edges_to_outcomes/global` | `couple_network_edges_to_outcomes.R` | 1 | 2 |
 | `results/spatial_validation/decompose_bilateral_variance/global` | `decompose_bilateral_variance.R` | 1 | 2 |
+| `results/spatial_validation/describe_proteomic_animals/global` | `describe_proteomic_animals.R` | 1 | 5 |
 | `results/spatial_validation/map_afferent_sources/global` | `map_afferent_sources.R` | 1 | 3 |
 | `results/spatial_validation/map_anatomical_programmes/global` | `map_anatomical_programmes.R` | 1 | 15 |
 | `results/spatial_validation/map_input_territories/global` | `map_input_territories.R` | 1 | 7 |

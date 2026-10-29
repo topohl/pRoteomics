@@ -61,6 +61,10 @@ data/external/stress_signatures/*
 !data/external/stress_signatures/download_manifest.csv
 !data/external/stress_signatures/signature_info.csv
 !data/external/stress_signatures/scripts/
+!data/external/behaviour_outcomes/
+data/external/behaviour_outcomes/*
+!data/external/behaviour_outcomes/outcome_info.csv
+!data/external/behaviour_outcomes/scripts/
 data/processed/
 results/figures/
 results/tables/

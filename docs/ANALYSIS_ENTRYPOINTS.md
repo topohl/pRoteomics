@@ -86,10 +86,10 @@ Scripts:
 | analysis_id | `spatial_validation` |
 | human_name | Spatial systems validation, bilateral QC and CA2-SLM robustness |
 | entrypoint | `analysis/spatial_validation/build_spatial_data_contract.R` |
-| scripts_in_area | 26 (0 required) |
-| inputs | `results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/differential_abundance/validate_control_spatial_identity/global/tables/control_anatomical_go_bp_gsea.csv`, +55 more |
+| scripts_in_area | 28 (0 required) |
+| inputs | `results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx`, `data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx`, `results/differential_abundance/validate_control_spatial_identity/global/tables/control_anatomical_go_bp_gsea.csv`, +58 more |
 | optional_inputs | `results/wgcna/test_module_phenotypes/<dataset>/tables/WGCNA_group_effect_hemisphere_values.csv`, `results/tables/06_modules_WGCNA/group_effects/<dataset>/WGCNA_group_effect_hemisphere_values.csv`, `results/wgcna/build_wgcna_modules/<dataset>/tables/modules/WGCNA_modules_long.csv`, +40 more |
-| outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +120 more |
+| outputs | `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_aggregation_validation.csv`, `results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_evidence_dependence.csv`, `results/spatial_validation/quantify_bilateral_spatial_identity/global/tables/bilateral_spatial_identity_protein_level.csv`, +127 more |
 | required_config | `config/anatomical_programme_display_picks.csv`, `config/clusterProfiler_config.yml`, `config/manuscript_go_theme_registry.tsv`, `config/marker_panels/wgcna_reference_marker_sets.csv` |
 | upstream_dependencies | `preprocessing`, `qc`, `wgcna` |
 | downstream_consumers | `integration` |
@@ -107,6 +107,8 @@ Scripts:
 - `analysis/spatial_validation/compare_lamina_synapses.R` - stage `networks`, scope `global`
 - `analysis/spatial_validation/test_stress_exposure.R` - stage `networks`, scope `global`
 - `analysis/spatial_validation/test_unit_specificity.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/describe_proteomic_animals.R` - stage `networks`, scope `global`
+- `analysis/spatial_validation/couple_network_edges_to_outcomes.R` - stage `networks`, scope `global`
 - `analysis/spatial_validation/compare_external_stress_studies.R` - stage `networks`, scope `global`
 - `analysis/spatial_validation/quantify_empirical_compartments.R` - stage `networks`, scope `global`
 - `analysis/spatial_validation/quantify_module_bilateral_identity.R` - stage `networks`, scope `per_dataset`

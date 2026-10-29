@@ -1061,6 +1061,44 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Unit specificity of the stress effects (added 2026-10-29): one limma model per dataset over all units with the animal blocked (duplicateCorrelation), consensus SUS-RES and stressed-CON effects and direct unit-by-group contrasts (CA2 SLM vs CA1 SLM, CA2 SR and the other laminae; CA3 SR vs SO; CA2 vs the other microglia ROIs); protein-level."
+      - script: "analysis/spatial_validation/describe_proteomic_animals.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv"
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv"
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_scores.csv"
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/proteomic_animal_design.csv"
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/exemplar_proteins_by_animal.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/microglia/microglia_animal_level.gct"
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv"
+          - "data/external/behaviour_outcomes/outcome_info.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "The nine proteomic animals and their acquisitions (added 2026-10-30): missingness before imputation per acquisition in every unit, within-compartment PCA with the share of PC1-PC5 explained by unit, animal, group, MS plate and hemisphere, the design of the nine animals with their behaviour outcomes, and the animal-level values of the 21 Figure 3e-g exemplar proteins; descriptive."
+      - script: "analysis/spatial_validation/couple_network_edges_to_outcomes.R"
+        required: false
+        datasets: ["global"]
+        stage: "coupling"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_correlations.csv"
+          - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_values.csv"
+        consumes_required:
+          - "results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores.csv"
+          - "data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv"
+          - "data/external/behaviour_outcomes/outcome_info.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Edge-behaviour coupling on the current outcomes (added 2026-10-30; Extended Data 8c rerun): the eight stored neuropil edge scores of test_network_behaviour_coupling against the ISS, corticosterone rise, sucrose preference, early movement and first-night movement over CC1-CC4 from the frozen behaviour bundles; Pearson r with Fisher interval, BH within outcome and overall."
       - script: "analysis/spatial_validation/compare_external_stress_studies.R"
         required: false
         datasets: ["global"]
