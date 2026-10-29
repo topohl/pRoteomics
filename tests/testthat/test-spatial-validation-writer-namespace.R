@@ -25,14 +25,14 @@ source(repo_path("R", "migration_gate_utils.R"))
 WRITERS <- c("annotate_module_celltypes", "audit_ca2_slm_robustness",
              "audit_stress_identity_robustness", "build_animal_spatial_networks",
              "build_module_spatial_atlas", "build_protein_spatial_atlas",
-             "build_spatial_data_contract", "compare_lamina_synapses", "decompose_bilateral_variance",
+             "build_spatial_data_contract", "compare_external_stress_studies", "compare_lamina_synapses", "decompose_bilateral_variance",
              "map_afferent_sources", "map_anatomical_programmes", "map_input_territories",
              "quantify_bilateral_spatial_identity", "quantify_empirical_compartments",
              "quantify_module_bilateral_identity", "quantify_neuropil_detection_context",
              "quantify_neuropil_precision", "score_compartment_markers",
              "summarize_ca2_slm_robustness",
-             "summarize_spatial_atlas", "test_network_group_organization",
-             "validate_network_workbook", "validate_spatial_foundations")
+             "summarize_spatial_atlas", "test_network_group_organization", "test_stress_exposure",
+             "test_unit_specificity", "validate_network_workbook", "validate_spatial_foundations")
 LEGACY_NS <- "11_spatial_systems"
 REPORTS <- c("spatial_systems_atlas.xlsx", "spatial_systems_networks.xlsx",
              "CA2_SLM_robustness_audit.xlsx")

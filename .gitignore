@@ -54,6 +54,13 @@ data/external/allen_abc_wmb_10x/*
 !data/external/allen_abc_wmb_10x/abc_wmb_source_type_info.csv
 !data/external/allen_abc_wmb_10x/sanity_check_markers.csv
 !data/external/allen_abc_wmb_10x/scripts/
+# published stress signatures (compare_external_stress_studies): code and metadata tracked, signatures and raw files not
+!data/external/stress_signatures/
+data/external/stress_signatures/*
+!data/external/stress_signatures/README.md
+!data/external/stress_signatures/download_manifest.csv
+!data/external/stress_signatures/signature_info.csv
+!data/external/stress_signatures/scripts/
 data/processed/
 results/figures/
 results/tables/

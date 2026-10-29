@@ -1020,6 +1020,65 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context; DG po carry-over rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)."
+      - script: "analysis/spatial_validation/test_stress_exposure.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_protein_tests.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_unit_summary.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_go_bp.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_theme_summary.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_panel_by_animal.csv"
+          - "results/spatial_validation/test_stress_exposure/global/tables/stress_exposure_panel_tests.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/microglia/microglia_animal_level.gct"
+          - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
+          - "config/manuscript_go_theme_registry.tsv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Stress exposure (added 2026-10-29): stressed (RES + SUS) vs CON per unit as a protein-level contrast in the Figure 3 model (fit_animal_level_limma inputs and design), GO BP GSEA exactly as Figure 3 with a manuscript-theme summary, and a declared animal-level microglia panel (within-acquisition ratios in the microglia-enriched ROIs, exact label permutation over animals)."
+      - script: "analysis/spatial_validation/test_unit_specificity.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/test_unit_specificity/global/tables/unit_specificity_contrasts.csv"
+          - "results/spatial_validation/test_unit_specificity/global/tables/unit_specificity_summary.csv"
+          - "results/spatial_validation/test_unit_specificity/global/tables/unit_specificity_ca2_slm_proteins.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/microglia/microglia_animal_level.gct"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Unit specificity of the stress effects (added 2026-10-29): one limma model per dataset over all units with the animal blocked (duplicateCorrelation), consensus SUS-RES and stressed-CON effects and direct unit-by-group contrasts (CA2 SLM vs CA1 SLM, CA2 SR and the other laminae; CA3 SR vs SO; CA2 vs the other microglia ROIs); protein-level."
+      - script: "analysis/spatial_validation/compare_external_stress_studies.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/compare_external_stress_studies/global/tables/external_concordance_signatures.csv"
+          - "results/spatial_validation/compare_external_stress_studies/global/tables/external_concordance_omnibus.csv"
+          - "results/spatial_validation/compare_external_stress_studies/global/tables/external_concordance_units.csv"
+          - "results/spatial_validation/compare_external_stress_studies/global/tables/external_signature_agreement.csv"
+        consumes_required:
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
+          - "data/processed/01_preprocessing/protigy_input_animal_level/microglia/microglia_animal_level.gct"
+          - "data/external/stress_signatures/signature_info.csv"
+          - "config/manuscript_go_theme_registry.tsv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Concordance with published hippocampal stress datasets (added 2026-10-29): rank correlation of our per-unit SUS-CON, RES-CON, SUS-RES and stressed-CON t (Figure 3 model) with 18 rebuilt signatures (data/external/stress_signatures; 16 primary), at gene, GO-BP and Figure 3 theme-term level; exact null over all 1,680 assignments of the nine animals to three groups; plus agreement between the published signatures."
       - script: "analysis/spatial_validation/quantify_empirical_compartments.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

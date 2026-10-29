@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **115 families**, **407 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **118 families**, **420 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -93,6 +93,7 @@ its outputs.
 | `results/spatial_validation/build_module_spatial_atlas/global` | `build_module_spatial_atlas.R` | 1 | 10 |
 | `results/spatial_validation/build_protein_spatial_atlas/global` | `build_protein_spatial_atlas.R` | 1 | 3 |
 | `results/spatial_validation/build_spatial_data_contract/global` | `build_spatial_data_contract.R` | 1 | 3 |
+| `results/spatial_validation/compare_external_stress_studies/global` | `compare_external_stress_studies.R` | 1 | 4 |
 | `results/spatial_validation/compare_lamina_synapses/global` | `compare_lamina_synapses.R` | 1 | 3 |
 | `results/spatial_validation/decompose_bilateral_variance/global` | `decompose_bilateral_variance.R` | 1 | 2 |
 | `results/spatial_validation/map_afferent_sources/global` | `map_afferent_sources.R` | 1 | 3 |
@@ -107,6 +108,8 @@ its outputs.
 | `results/spatial_validation/summarize_ca2_slm_robustness/global` | `summarize_ca2_slm_robustness.R` | 1 | 3 |
 | `results/spatial_validation/summarize_spatial_atlas/global` | `summarize_spatial_atlas.R` | 1 | 2 |
 | `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 12 |
+| `results/spatial_validation/test_stress_exposure/global` | `test_stress_exposure.R` | 1 | 6 |
+| `results/spatial_validation/test_unit_specificity/global` | `test_unit_specificity.R` | 1 | 3 |
 | `results/spatial_validation/validate_network_workbook/global` | `validate_network_workbook.R` | 1 | 4 |
 | `results/spatial_validation/validate_spatial_foundations/global` | `validate_spatial_foundations.R` | 1 | 1 |
 | `results/wgcna/adjudicate_module_labels/global` | `adjudicate_module_labels.R` | 1 | 7 |
