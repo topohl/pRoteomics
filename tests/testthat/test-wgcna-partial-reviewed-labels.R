@@ -82,5 +82,27 @@ testthat::test_that("Stage 07 applies the overrides in reviewed mode only, for t
                 collapse = "\n")
   testthat::expect_match(code, 'identical(label_mode, "reviewed")', fixed = TRUE)
   testthat::expect_match(code, "ds %in% wgcna_partial_registry_datasets()", fixed = TRUE)
-  testthat::expect_identical(wgcna_partial_registry_datasets(), "neuron_soma")
+  testthat::expect_identical(wgcna_partial_registry_datasets(), c("neuron_soma", "neuron_neuropil"))
+})
+
+testthat::test_that("Stage 07 displays the reviewed labels of every partial-registry dataset", {
+  n <- 0L
+  for (ds in wgcna_partial_registry_datasets()) {
+    cfg <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
+    lk_path <- current_wgcna("summarize_module_interpretation", ds, "WGCNA_final_label_lookup.csv")
+    if (!file.exists(cfg) || !file.exists(lk_path)) next
+    if (identical(wgcna_declared_label_mode(ds)$mode, "provisional")) next   # Stage 07 does not read it there
+    reg <- utils::read.csv(cfg, stringsAsFactors = FALSE, encoding = "UTF-8")
+    lk <- utils::read.csv(lk_path, stringsAsFactors = FALSE, encoding = "UTF-8")
+    m <- lk[match(paste(reg$level, reg$entity_id), paste(lk$level, lk$entity_id)), , drop = FALSE]
+    testthat::expect_false(anyNA(m$entity_id), info = ds)
+    testthat::expect_identical(m$best_data_driven_label, reg$reviewed_biological_label, info = ds)
+    testthat::expect_identical(m$label_confidence, reg$label_confidence, info = ds)
+    testthat::expect_identical(m$final_plot_label, paste0(reg$entity_id, " \u00b7 ", reg$reviewed_short_label), info = ds)
+    testthat::expect_true(all(startsWith(m$label_basis, "reviewed_registry=")), info = ds)
+    status <- utils::read.csv(wgcna_label_status_manifest(ds), stringsAsFactors = FALSE)
+    testthat::expect_identical(unique(status$label_review_status), "automatic_with_reviewed_overrides", info = ds)
+    n <- n + 1L
+  }
+  if (!n) testthat::skip("no partial registry with a Stage 07 lookup in reviewed mode")
 })

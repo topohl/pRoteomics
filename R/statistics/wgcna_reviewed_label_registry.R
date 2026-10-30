@@ -213,10 +213,12 @@ wgcna_read_reviewed_registry <- function(dataset, member_map,
 }
 
 # ------------------------------------------------- partial reviewed registries
-# Datasets whose config/wgcna_labels/<dataset>.csv holds reviewed labels for SOME entities, applied
-# by Stage 07 over the automatic labels (reviewed label mode only). neuron_soma: m01, m03 and SM04
-# (reviewed 2026-10-27). The neuron_neuropil file (m11) feeds the claims and approval tables only.
-wgcna_partial_registry_datasets <- function() "neuron_soma"
+# Datasets whose config/wgcna_labels/<dataset>.csv holds reviewed labels that Stage 07 applies over
+# the automatic labels (reviewed label mode only), with member_ModuleIDs on supermodule rows. Since
+# 2026-10-30 both files have a row for every module and supermodule of the primary network: the
+# rule-based labels (tools/normalisation_review/write_rule_label_registry.R) and the soma rows reviewed
+# on 2026-10-27. Microglia has the full registry (config/wgcna_labels/microglia.csv).
+wgcna_partial_registry_datasets <- function() c("neuron_soma", "neuron_neuropil")
 
 # The reviewed-registry columns plus member_ModuleIDs: the member modules a supermodule row was
 # reviewed for (";"-separated, any order); empty on module rows.

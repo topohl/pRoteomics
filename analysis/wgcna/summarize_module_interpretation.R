@@ -1825,9 +1825,9 @@ make_dataset_summary <- function(ds) {
   if (!label_mode %in% c("reviewed", "provisional")) stop("PROTEOMICS_WGCNA_LABEL_MODE must be reviewed or provisional.", call. = FALSE)
   use_registry <- identical(ds, "microglia")
   registry_source <- NA_character_
-  # Reviewed labels for SOME entities of a dataset (wgcna_partial_registry_datasets(): neuron_soma
-  # m01, m03 and SM04 since 2026-10-27) replace those automatic labels in reviewed mode only; in
-  # provisional mode the file names the IDs of the primary network and is not read.
+  # The reviewed labels of a dataset (wgcna_partial_registry_datasets(): neuron_soma and
+  # neuron_neuropil, every entity since 2026-10-30) replace the automatic labels in reviewed mode only;
+  # in provisional mode the file names the IDs of the primary network and is not read.
   partial_registry_source <- file.path("config", "wgcna_labels", paste0(ds, ".csv"))
   use_partial_registry <- !use_registry && identical(label_mode, "reviewed") &&
     ds %in% wgcna_partial_registry_datasets() && file.exists(repo_path(partial_registry_source))

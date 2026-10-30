@@ -283,11 +283,18 @@ subcellular context, and ROI context remain separate. Automatic proposals and
 GO evidence remain provenance and are fingerprinted. `final_plot_label` is an
 exact compatibility alias for `canonical_plot_label`.
 
-For neuron soma, `config/wgcna_labels/neuron_soma.csv` holds reviewed labels
-for some entities only (m01, m03 and SM04, reviewed 2026-10-27). In reviewed
-mode Stage 07 applies them over the automatic labels; a supermodule row applies
-only while its supermodule has the members it lists (`member_ModuleIDs`), and
-`manifests/label_review_status.csv` reads `automatic_with_reviewed_overrides`.
+For neuron neuropil and neuron soma, `config/wgcna_labels/<dataset>.csv` holds
+a reviewed label for every module and supermodule (since 2026-10-30): the
+rule-based labels, written by `tools/normalisation_review/write_rule_label_registry.R`
+from `rule_based/labels.tsv`, and the soma m01, m03 and SM04 rows reviewed on
+2026-10-27. In reviewed mode Stage 07 applies them over the automatic labels; a
+supermodule row applies only while its supermodule has the members it lists
+(`member_ModuleIDs`), and `manifests/label_review_status.csv` reads
+`automatic_with_reviewed_overrides`. The automatic Stage 06 programme names stay
+in the Stage 06 tables as provenance; they score each programme 0 or 1 and
+break ties by list order, which is why they are not displayed. In microglia the
+five July rows that the rule-based labels contradicted (m02, m04, m09, SM03,
+SM06) carry the rule-based labels; the other rows keep their reviewed labels.
 Soma SM04 is two member components (m01 ubiquitin-dependent protein
 catabolism; m03 cell-cell/synaptic signaling), not one pathway. Its primary
 SUS - RES effect is p = 0.04486, FDR = 0.07922 (family of 3 supermodules), not

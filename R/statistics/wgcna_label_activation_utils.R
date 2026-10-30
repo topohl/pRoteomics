@@ -107,8 +107,9 @@ resolve_wgcna_display_label <- function(entities, reviewed = NULL,
   source[take] <- "entity_id_fallback"
 
   confidence <- rep(NA_character_, length(k))
-  if (reviewed_active && !is.null(reviewed$confidence)) {
-    confidence <- lookup(reviewed, "confidence")
+  conf_col <- intersect(c("confidence", "label_confidence"), names(reviewed))[1]   # registries: label_confidence
+  if (reviewed_active && !is.na(conf_col)) {
+    confidence <- lookup(reviewed, conf_col)
   }
   confidence[source != "active_reviewed_registry"] <- "automatic"
 
@@ -248,6 +249,9 @@ wal_build_approval_table <- function(entities) {
 # The manual-adjudication layer. Each entry records a decision taken by reading
 # the existing evidence packet, with the specific evidence in `rationale`.
 # These are PROPOSALS for a human to approve; nothing here is activated.
+# Superseded 2026-10-30: every entity of the primary network now has a reviewed
+# registry label (config/wgcna_labels/), which takes precedence in the approval
+# table; these rows are kept as the record of the earlier proposals.
 #
 # Every entry is phenotype-blind: only GO/theme/centrality/hub evidence was
 # consulted. No group contrast or differential-abundance result was used.

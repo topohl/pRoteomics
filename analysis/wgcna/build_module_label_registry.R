@@ -132,6 +132,14 @@ if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewe
   curated_mod <- curated_mod[0, , drop = FALSE]
   curated_sup <- curated_sup[0, , drop = FALSE]
 }
+# A curated row does not apply where a reviewed registry label is active: the reviewed label is the
+# authority (KEEP_ACTIVE_REVIEWED below). Since 2026-10-30 every entity of the primary network has one,
+# so the curated rows remain only as the record of the earlier proposals.
+active_reviewed <- resolved %>%
+  filter(.data$canonical_label_source == "active_reviewed_registry") %>%
+  select("dataset", "level", "entity_id")
+curated_mod <- anti_join(curated_mod, active_reviewed, by = c("dataset", "level", "entity_id"))
+curated_sup <- anti_join(curated_sup, active_reviewed, by = c("dataset", "level", "entity_id"))
 # A curated supermodule row applies only while its supermodule has the members it was adjudicated for
 # (supermodule IDs follow the dendrogram order, so a new cut height renumbers them).
 if (nrow(curated_sup)) {
@@ -216,7 +224,7 @@ supermodule_rows <- sup %>%
 all_rows <- bind_rows(module_rows, supermodule_rows) %>%
   left_join(resolved %>% select("dataset", "level", "entity_id",
                                 current_active_label = "canonical_display_label",
-                                "canonical_label_source"),
+                                "canonical_label_source", "canonical_label_confidence"),
             by = c("dataset", "level", "entity_id"))
 
 # Uncurated entities keep the algorithmic proposal rather than inventing one.
@@ -290,6 +298,10 @@ if (any(already_reviewed)) {
   all_rows$proposed_final_label[already_reviewed] <-
     all_rows$current_active_label[already_reviewed]
   all_rows$adjudication_action[already_reviewed] <- "KEEP_ACTIVE_REVIEWED"
+  # and its confidence is the reviewed one, not the automatic proposal's
+  all_rows$confidence[already_reviewed] <- ifelse(
+    is.na(all_rows$canonical_label_confidence[already_reviewed]),
+    all_rows$confidence[already_reviewed], all_rows$canonical_label_confidence[already_reviewed])
   all_rows$rationale[already_reviewed] <- paste0(
     "An active reviewed label already exists and is the authority. This pass did ",
     "not re-adjudicate it; the automatic proposal is retained in ",

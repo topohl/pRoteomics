@@ -476,9 +476,11 @@ testthat::test_that("proposals on disk are not active and config is untouched", 
     testthat::expect_true(all(is.na(r$reviewer) | r$reviewer == ""), info = ds)
     testthat::expect_false(wla_is_active_registry(r), info = ds)
   }
-  # neuron_soma carries reviewed labels for SOME entities (m01, m03, SM04 since
-  # 2026-10-27), applied by Stage 07 in reviewed mode: every row is a finished
-  # review, and a supermodule row names the current members it was reviewed for.
+  # neuron_soma and neuron_neuropil carry a reviewed label for every module and
+  # supermodule since 2026-10-30 (the rule-based labels; soma m01, m03 and SM04
+  # reviewed 2026-10-27), applied by Stage 07 in reviewed mode: every row is a
+  # finished review, and a supermodule row names the current members it was
+  # reviewed for.
   sp <- repo_path("config", "wgcna_labels", "neuron_soma.csv")
   if (file.exists(sp)) {
     source(repo_path("R", "wgcna_reviewed_label_registry.R"))
@@ -486,27 +488,28 @@ testthat::test_that("proposals on disk are not active and config is untouched", 
     s <- readr::read_csv(sp, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
     testthat::expect_true(wal_is_active_reviewed(s))
     testthat::expect_true(all(reviewed_rows_are_complete(s)))
-    testthat::expect_lt(nrow(s), current_network_shape("neuron_soma")$n_identities)
+    testthat::expect_identical(nrow(s), current_network_shape("neuron_soma")$n_identities)
     testthat::expect_silent(wgcna_validate_partial_reviewed_registry(
       s, "neuron_soma", current_network_shape("neuron_soma")$member_map))
+    # the rows reviewed on 2026-10-27, and the rule-based labels for every other entity
+    kept <- s$entity_id %in% c("WGCNA_m01", "WGCNA_m03", "SM04")
+    testthat::expect_true(all(grepl("write_rule_label_registry.R", s$proposal_prepared_by[!kept], fixed = TRUE)))
+    testthat::expect_false(any(s$proposal_prepared_by %in% "automated_evidence_audit"))
   }
-  # Part-29 finalization: a neuron_neuropil registry may exist, but only as a
-  # small reviewed subset of current modules that never asserts a cell type.
   np <- repo_path("config", "wgcna_labels", "neuron_neuropil.csv")
   if (file.exists(np)) {
-    r <- utils::read.csv(np, stringsAsFactors = FALSE)
-    proposal <- wla_out("proposed_neuron_neuropil_reviewed_labels.csv")
-    if (file.exists(proposal)) {
-      testthat::expect_lt(nrow(r), nrow(utils::read.csv(proposal, stringsAsFactors = FALSE)))
-    }
-    # the Part-29 adjudication: exactly one module, the myelin-associated m11
-    testthat::expect_identical(nrow(r), 1L)
-    testthat::expect_identical(r$entity_id, "WGCNA_m11")
-    testthat::expect_true(grepl("myelin-associated", r$reviewed_biological_label, fixed = TRUE))
-    testthat::expect_true(all(r$level == "module"))
-    testthat::expect_true(all(r$entity_id %in% current_network_shape("neuron_neuropil")$modules))
-    testthat::expect_true(all(r$adjudication_status == "reviewed"))
+    source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+    source(repo_path("R", "wgcna_label_activation_utils.R"))
+    r <- readr::read_csv(np, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
+    testthat::expect_true(wal_is_active_reviewed(r))
     testthat::expect_true(all(reviewed_rows_are_complete(r)))
+    testthat::expect_identical(nrow(r), current_network_shape("neuron_neuropil")$n_identities)
+    testthat::expect_silent(wgcna_validate_partial_reviewed_registry(
+      r, "neuron_neuropil", current_network_shape("neuron_neuropil")$member_map))
+    # written from the rule-based labels, never promoted from the automatic proposals
+    testthat::expect_true(all(grepl("write_rule_label_registry.R", r$proposal_prepared_by, fixed = TRUE)))
+    # m11 is named for its myelin proteins (Part-29 adjudication; rule-based wording since 2026-10-30)
+    testthat::expect_true(grepl("myelin", r$reviewed_biological_label[r$entity_id == "WGCNA_m11"], ignore.case = TRUE))
     # a co-abundance module may be named for its protein composition, never
     # for a cell type it cannot establish
     testthat::expect_false(any(grepl("oligodendrocyte",
@@ -530,6 +533,27 @@ testthat::test_that("the microglia reviewed registry is present exactly where re
       testthat::expect_identical(decl$label_review_status, "reviewed")
     }
   }
+  # the neuron registries name the primary network's entities too (every one since 2026-10-30), and the
+  # label registry and claims resolver read them in any mode: they must be absent where provisional is declared
+  for (ds in c("neuron_neuropil", "neuron_soma")) {
+    if (identical(wgcna_declared_label_mode(ds)$mode, "provisional"))
+      testthat::expect_false(file.exists(repo_path("config", "wgcna_labels", paste0(ds, ".csv"))), info = ds)
+  }
+})
+
+testthat::test_that("the neuron registries are not the automatic Stage-15 proposals", {
+  n <- 0L
+  for (ds in c("neuron_neuropil", "neuron_soma")) {
+    cfg <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
+    p <- wla_out(paste0("proposed_", ds, "_reviewed_labels.csv"))
+    if (!file.exists(cfg) || !file.exists(p)) next
+    r <- utils::read.csv(cfg, stringsAsFactors = FALSE)
+    x <- utils::read.csv(p, stringsAsFactors = FALSE)
+    testthat::expect_false(any(r$proposal_prepared_by %in% "automated_evidence_audit"), info = ds)
+    testthat::expect_lt(mean(r$reviewed_biological_label %in% x$reviewed_biological_label), 0.5)
+    n <- n + 1L
+  }
+  if (!n) testthat::skip("no neuron registry beside a generated proposal")
 })
 
 testthat::test_that("nonsignificant GO terms cannot yield a high-confidence label", {
@@ -621,10 +645,10 @@ testthat::test_that("the microglia registry in force still validates after gener
     registry, "microglia", member_map, allow_provisional = reg$allow_provisional))
 })
 
-testthat::test_that("the automatic fallback still applies when no registry is active", {
+testthat::test_that("the Stage-15 proposals are never treated as an active registry", {
   source(repo_path("R", "wgcna_label_adjudication_utils.R"))
-  # the proposals generated by this pass must never be treated as active,
-  # so the automatic/canonical labels remain in force
+  # the proposals generated by this pass must never be treated as active (the reviewed
+  # registries in config/wgcna_labels, not these proposals, are in force)
   for (ds in c("neuron_neuropil", "neuron_soma")) {
     p <- wla_out(paste0("proposed_", ds, "_reviewed_labels.csv"))
     testthat::skip_if_not(file.exists(p), "adjudication has not been generated")

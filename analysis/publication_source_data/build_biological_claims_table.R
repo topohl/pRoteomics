@@ -2222,9 +2222,8 @@ wgcna_stage13_cardinality_audit <- write_wgcna_stage13_cardinality_audit(claims)
 # Resolution now goes through the single shared helper, with one precedence:
 #   active validated reviewed registry > Stage-07 canonical > Stage-01 fallback.
 # Historical labels are NOT discarded; they are retained as provenance columns.
-# Nothing is activated here: no reviewed registry exists for the neuronal
-# datasets, so those rows resolve to the Stage-07 automatic label exactly as
-# before - the change is that they now do so consistently.
+# Nothing is activated here: the reviewed registries (config/wgcna_labels/, one
+# row per entity in every dataset since 2026-10-30) are read as they stand.
 claims <- attach_canonical_wgcna_display_label(claims)
 assert_one_canonical_label_per_wgcna_entity(claims)
 

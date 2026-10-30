@@ -428,13 +428,14 @@ testthat::test_that("canonical labels and module identities are untouched", {
     x <- read_current_csv(wcl_review_path(
       ds, paste0("PROPOSED_wgcna_reviewed_labels_", ds, ".csv")))
     testthat::expect_true(all(x$review_status == "PROPOSED_NOT_PROMOTED"))
-    # A PROPOSED registry must never be promoted wholesale. Part-29 activated
-    # one adjudicated neuropil module, so if a config registry exists it must
-    # be far smaller than the proposal it sits beside.
+    # A PROPOSED registry must never be promoted wholesale. The config registries
+    # hold reviewed labels (since 2026-10-30 the rule-based labels of
+    # tools/normalisation_review/write_rule_label_registry.R), not these proposals.
     cfg <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
     if (file.exists(cfg)) {
       r <- utils::read.csv(cfg, stringsAsFactors = FALSE)
-      testthat::expect_lt(nrow(r), nrow(x))
+      testthat::expect_false(any(grepl("PROPOSED|label_coherence|automated_evidence_audit", r$proposal_prepared_by)), info = ds)
+      testthat::expect_lt(mean(r$reviewed_biological_label %in% x$reviewed_biological_label), 0.5)
       testthat::expect_true(all(r$adjudication_status == "reviewed"), info = ds)
       shape <- current_network_shape(ds)
       testthat::expect_true(all(r$entity_id[r$level == "module"] %in% shape$modules), info = ds)
