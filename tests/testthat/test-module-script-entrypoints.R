@@ -116,10 +116,11 @@ testthat::test_that("pipeline legacy block does not retain removed wrapper names
 })
 
 testthat::test_that("module score dry-run reports dataset-aware source defaults", {
-  run <- function(dataset) {
+  run <- function(dataset, env = character()) {
     cmd <- file.path(R.home("bin"), "Rscript")
     old_wd <- setwd(repo_path())
     on.exit(setwd(old_wd), add = TRUE)
+    if (length(env)) withr::local_envvar(env)
     out <- suppressWarnings(system2(
       cmd,
       c("analysis/wgcna/score_module_activity.R", "--dataset", dataset, "--dry-run"),
@@ -136,7 +137,21 @@ testthat::test_that("module score dry-run reports dataset-aware source defaults"
   soma <- run("neuron_soma")
   testthat::expect_true(grepl("Module definition source: wgcna", soma, fixed = TRUE))
 
-  neuropil <- run("neuron_neuropil")
-  testthat::expect_true(grepl("Module definition source: overlap", neuropil, fixed = TRUE))
-  testthat::expect_true(grepl("Will score: curated overlap programs", neuropil, fixed = TRUE))
+  # neuron_neuropil is scored only by the registered WGCNA-source row. Its
+  # unregistered 'overlap' default needs curated_overlap_programs.xlsx, which no
+  # current tree produces (dd68eb9), so asserting that default only ever passed
+  # on a stale pre-migration copy.
+  neuropil <- run("neuron_neuropil", c(PROTEOMICS_MODULE_DEFINITION_SOURCE = "wgcna"))
+  testthat::expect_true(grepl("Module definition source: wgcna", neuropil, fixed = TRUE))
+  testthat::expect_true(grepl("Will score: WGCNA modules", neuropil, fixed = TRUE))
+})
+
+testthat::test_that("the registered neuron_neuropil score run names its source explicitly", {
+  testthat::skip_if_not_installed("yaml")
+  registry <- yaml::read_yaml(repo_path("pipeline.yml"))
+  rows <- Filter(function(x) identical(x$script, "analysis/wgcna/score_module_activity.R"),
+                 registry$stages$modules_downstream$scripts)
+  np <- Filter(function(x) "neuron_neuropil" %in% unlist(x$datasets), rows)
+  testthat::expect_length(np, 1L)
+  testthat::expect_identical(np[[1]]$env$PROTEOMICS_MODULE_DEFINITION_SOURCE, "wgcna")
 })

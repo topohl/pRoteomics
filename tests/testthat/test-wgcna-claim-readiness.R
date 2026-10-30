@@ -3,7 +3,7 @@ source(repo_path("R", "pipeline_registry.R"))
 
 testthat::local_edition(3)
 
-root <- normalizePath(testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE)
+root <- normalizePath(repo_root(), winslash = "/", mustWork = TRUE)
 
 testthat::test_that(
   "repeated-animal lm fallback cannot enable neuropil claims",
@@ -81,14 +81,20 @@ testthat::test_that("Stage 13 is a parseable non-circular microglia handoff", {
   }
 })
 
+# Current canonical Stage 13 output (analysis/wgcna/audit_module_claim_readiness.R).
+stage13_readiness_path <- function() {
+  current_wgcna("audit_module_claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
+}
+
 testthat::test_that("completed Stage 13 output has exact current identities without join multiplication", {
-  path <- file.path(root, "results", "tables", "06_modules_WGCNA", "claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
+  path <- stage13_readiness_path()
   testthat::skip_if_not(file.exists(path), "Stage 13 has not been run")
   x <- read.csv(path, check.names = FALSE)
-  testthat::expect_equal(nrow(x), 22L)
+  shape <- current_network_shape("microglia")
+  testthat::expect_equal(nrow(x), shape$n_identities)
   testthat::expect_equal(anyDuplicated(x[c("dataset", "level", "entity_id")]), 0L)
-  testthat::expect_setequal(x$entity_id[x$level == "module"], sprintf("WGCNA_m%02d", 1:13))
-  testthat::expect_setequal(x$entity_id[x$level == "supermodule"], sprintf("SM%02d", 1:9))
+  testthat::expect_setequal(x$entity_id[x$level == "module"], shape$modules)
+  testthat::expect_setequal(x$entity_id[x$level == "supermodule"], shape$supermodules)
   testthat::expect_false(any(x$conventional_preservation_claim_gate_eligible %in% TRUE))
   source(repo_path("R", "paths.R"), local = TRUE)
   source(repo_path("R", "schema_validation.R"), local = TRUE)
@@ -104,9 +110,15 @@ testthat::test_that("completed Stage 13 output has exact current identities with
       "Generated Stage 13 output predates the current provenance schema."
     )
   }
-  testthat::expect_setequal(unique(x$claim_entity_role), c("canonical_module", "higher_order_block", "compatibility_alias"))
+  testthat::expect_true(all(x$claim_entity_role %in% c("canonical_module", "higher_order_block", "compatibility_alias")))
+  testthat::expect_setequal(x$entity_id[x$claim_entity_role == "canonical_module"], shape$modules)
+  testthat::expect_setequal(x$entity_id[x$claim_entity_role == "higher_order_block"], shape$blocks)
   aliases <- x[x$claim_entity_role == "compatibility_alias", ]
-  testthat::expect_equal(nrow(aliases), 6L)
+  # every singleton supermodule, and only those, is an alias of its member module
+  testthat::expect_setequal(aliases$entity_id, names(shape$singletons))
+  testthat::expect_identical(
+    unname(aliases$compatibility_target_entity_id),
+    unname(shape$singletons[aliases$entity_id]))
   testthat::expect_true(all(!aliases$separate_manuscript_claim_allowed))
   testthat::expect_true(all(aliases$compatibility_target_level == "module"))
   testthat::expect_identical(aliases$canonical_claim_entity_id, aliases$compatibility_target_entity_id)
@@ -114,15 +126,16 @@ testthat::test_that("completed Stage 13 output has exact current identities with
   testthat::expect_true(all(aliases$manuscript_placement == "compatibility_only"))
   testthat::expect_true(all(grepl("not a separate biological claim", aliases$allowed_wording, fixed = TRUE)))
 
-  claimable_blocks <- x$entity_id[x$claim_entity_role == "higher_order_block" & x$separate_manuscript_claim_allowed]
-  testthat::expect_identical(claimable_blocks, "SM09")
-  testthat::expect_false(x$separate_manuscript_claim_allowed[x$entity_id == "SM01"])
-  testthat::expect_false(x$separate_manuscript_claim_allowed[x$entity_id == "SM03"])
+  # which blocks are claimable is a result, not a contract; only multi-module
+  # blocks can be, and no canonical identity can be claimed twice
+  claimable <- x[x$separate_manuscript_claim_allowed %in% TRUE, ]
+  testthat::expect_true(all(claimable$claim_entity_role %in% c("canonical_module", "higher_order_block")))
+  testthat::expect_true(all(claimable$entity_id[claimable$level == "supermodule"] %in% shape$blocks))
   testthat::expect_equal(anyDuplicated(x$canonical_claim_entity_id[x$separate_manuscript_claim_allowed]), 0L)
 })
 
 testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and provenance", {
-  output_path <- file.path(root, "results", "tables", "06_modules_WGCNA", "claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
+  output_path <- stage13_readiness_path()
   testthat::skip_if_not(file.exists(output_path), "Stage 13 has not been run")
   out <- read.csv(output_path, check.names = FALSE)
   current_provenance <- c(
@@ -156,14 +169,10 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
   )
   testthat::expect_true(all(required_provenance %in% names(out)))
 
-  source <- read.csv(
-    file.path(
-      root, "results", "tables", "06_modules_WGCNA",
-      "interpretable_summary", "microglia",
-      "WGCNA_inferential_handoff.csv"
-    ),
-    check.names = FALSE
-  )
+  # current canonical Stage 07 handoff (analysis/wgcna/summarize_module_interpretation.R)
+  handoff_path <- current_wgcna("summarize_module_interpretation", "microglia",
+                                "WGCNA_inferential_handoff.csv")
+  source <- read_current_csv(handoff_path)
   compare_level <- function(level) {
     selected <- source[
       source$dataset == "microglia" & source$entity_level == level &
@@ -207,9 +216,12 @@ testthat::test_that("Stage 13 carries the exact Stage 07 primary endpoint and pr
       observed$group_effect_source_key_contract,
       source_match$source_key_contract
     )
+    # the recorded handoff is the current canonical one (compared from results/
+    # on, because the producer records an absolute, drive-dependent path)
+    rel <- function(p) sub("^.*?(results/)", "\\1", gsub("\\\\", "/", p))
     testthat::expect_true(all(
-      observed$group_effect_handoff_file ==
-        "results/tables/06_modules_WGCNA/interpretable_summary/microglia/WGCNA_inferential_handoff.csv"
+      rel(observed$group_effect_handoff_file) ==
+        "results/wgcna/summarize_module_interpretation/microglia/tables/WGCNA_inferential_handoff.csv"
     ))
   }
   compare_level("module")
@@ -230,17 +242,9 @@ testthat::test_that("future cut-height defaults remain distinct from frozen micr
   testthat::expect_equal(env$supermodule_merge_cut_height("neuron_soma"), 0.55)
   testthat::expect_equal(env$supermodule_merge_cut_height("microglia"), 0.45)
 
-  # the frozen state in the old layout was built at 0.40; the current build uses the rule's 0.45
-  state_path <- file.path(root, "data", "processed", "06_modules_WGCNA", "01_WGCNA", "microglia", "wgcna_final_model_state.rds")
-  if (file.exists(state_path)) {
-    state <- readRDS(state_path)
-    testthat::expect_equal(
-      as.numeric(state$parameters$supermodule_merge_cut_height), 0.40
-    )
-  } else {
-    testthat::succeed("Frozen microglia state is unavailable.")
-  }
-  current_path <- file.path(root, "results", "wgcna", "build_wgcna_modules", "microglia", "models", "wgcna_final_model_state.rds")
+  # the current build uses the rule's 0.45 (the historical 0.40 state is a
+  # snapshot check in tests/historical/)
+  current_path <- current_wgcna("build_wgcna_modules", "microglia", "wgcna_final_model_state.rds", child = "models")
   if (file.exists(current_path)) {
     testthat::expect_equal(as.numeric(readRDS(current_path)$parameters$supermodule_merge_cut_height), 0.45)
   }
@@ -317,14 +321,16 @@ testthat::test_that("pipeline declares Stage 13 and corrected-renderer contracts
 })
 
 testthat::test_that("protected current state and memberships retain audited hashes", {
-  protected_path <- file.path(root, "results", "reviewer_audit", "microglia_wgcna_nature_readiness", "protected_output_hash_audit.csv")
+  # current canonical Stage 12 audit (analysis/wgcna/audit_microglia_module_claims.R):
+  # the md5 it recorded after its run must still match the current files
+  protected_path <- current_wgcna("audit_microglia_module_claims", "global", "protected_output_hash_audit.csv")
   testthat::skip_if_not(file.exists(protected_path), "Protected-hash audit is unavailable")
   protected <- read.csv(protected_path, check.names = FALSE)
   targets <- c(
-    "data/processed/06_modules_WGCNA/01_WGCNA/microglia/wgcna_final_model_state.rds",
-    "results/tables/06_modules_WGCNA/01_WGCNA/microglia/supermodules/wgcna_module_supermodule_annotation.csv",
-    "results/tables/06_modules_WGCNA/group_effects/microglia/module_group_effects.csv",
-    "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_group_effects.csv"
+    "results/wgcna/build_wgcna_modules/microglia/models/wgcna_final_model_state.rds",
+    "results/wgcna/build_wgcna_modules/microglia/tables/supermodules/wgcna_module_supermodule_annotation.csv",
+    "results/wgcna/test_module_phenotypes/microglia/tables/module_group_effects.csv",
+    "results/wgcna/test_module_phenotypes/microglia/tables/supermodule_group_effects.csv"
   )
   rows <- protected[match(targets, protected$protected_path), , drop = FALSE]
   testthat::expect_false(anyNA(rows$protected_path))

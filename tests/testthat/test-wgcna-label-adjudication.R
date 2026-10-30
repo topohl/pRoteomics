@@ -388,7 +388,14 @@ testthat::test_that("proposal validation derives identity from authoritative sta
 # REAL OUTPUT CONTRACTS
 # =====================================================================
 
-wla_out <- function(f) path_results("reviewer_audit", "wgcna_label_adjudication", f)
+# Current canonical adjudication packet (analysis/wgcna/adjudicate_module_labels.R).
+wla_out <- function(f) current_wgcna("adjudicate_module_labels", "global", f)
+
+# Current canonical identity contract (analysis/wgcna/build_module_identity_contract.R).
+wla_contract <- function(ds) {
+  current_wgcna("build_module_identity_contract", ds,
+                "WGCNA_module_supermodule_membership_contract.csv")
+}
 
 testthat::test_that("every current module and supermodule has exactly one packet", {
   mp <- wla_out("WGCNA_module_adjudication.csv")
@@ -397,12 +404,12 @@ testthat::test_that("every current module and supermodule has exactly one packet
                         "adjudication has not been generated")
   m <- utils::read.csv(mp, stringsAsFactors = FALSE)
   s <- utils::read.csv(sp, stringsAsFactors = FALSE)
+  testthat::expect_setequal(unique(m$dataset), wgcna_test_datasets)
 
   for (ds in unique(m$dataset)) {
-    ct_path <- path_results("tables", "06_modules_WGCNA", "identity_contract", ds,
-                            "WGCNA_module_supermodule_membership_contract.csv")
-    if (!file.exists(ct_path)) next
-    ct <- utils::read.csv(ct_path, stringsAsFactors = FALSE)
+    # a packet without its current identity contract is an error, not a pass
+    testthat::expect_true(file.exists(wla_contract(ds)), info = paste(ds, "identity contract missing"))
+    ct <- read_current_csv(wla_contract(ds))
     md <- m[m$dataset == ds, ]; sd <- s[s$dataset == ds, ]
     testthat::expect_identical(anyDuplicated(md$ModuleID), 0L, info = ds)
     testthat::expect_identical(anyDuplicated(sd$SupermoduleID), 0L, info = ds)
@@ -410,6 +417,10 @@ testthat::test_that("every current module and supermodule has exactly one packet
     testthat::expect_setequal(md$ModuleID, unique(ct$module_id))
     testthat::expect_setequal(sd$SupermoduleID, unique(ct$supermodule_id))
     testthat::expect_identical(sum(sd$n_member_modules), nrow(ct), info = ds)
+    # and agree with the current Stage 01 network
+    shape <- current_network_shape(ds)
+    testthat::expect_setequal(md$ModuleID, shape$modules)
+    testthat::expect_setequal(sd$SupermoduleID, shape$supermodules)
   }
 })
 
@@ -423,7 +434,7 @@ testthat::test_that("real outputs are phenotype-blind and conservatively graded"
       x, f, allow = "naming_evidence_is_phenotype_blind"))
   }
   p <- wla_out("WGCNA_module_adjudication.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "adjudication has not been generated")
   m <- utils::read.csv(p, stringsAsFactors = FALSE)
   testthat::expect_true(all(m$coherence_class %in% wla_coherence_classes()))
   testthat::expect_true(all(m$recommended_action %in% wla_actions()))
@@ -443,7 +454,7 @@ testthat::test_that("real outputs are phenotype-blind and conservatively graded"
 
 testthat::test_that("hub tables follow the frozen abs_kME ordering", {
   p <- wla_out("WGCNA_module_top25_hubs.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "adjudication has not been generated")
   h <- utils::read.csv(p, stringsAsFactors = FALSE)
   for (k in unique(paste(h$dataset, h$ModuleID))) {
     sub <- h[paste(h$dataset, h$ModuleID) == k, , drop = FALSE]
@@ -457,7 +468,7 @@ testthat::test_that("hub tables follow the frozen abs_kME ordering", {
 })
 
 testthat::test_that("proposals on disk are not active and config is untouched", {
-  for (ds in c("neuron_neuropil", "neuron_soma", "microglia")) {
+  for (ds in wgcna_test_datasets) {
     p <- wla_out(paste0("proposed_", ds, "_reviewed_labels.csv"))
     if (!file.exists(p)) next
     r <- utils::read.csv(p, stringsAsFactors = FALSE)
@@ -465,38 +476,70 @@ testthat::test_that("proposals on disk are not active and config is untouched", 
     testthat::expect_true(all(is.na(r$reviewer) | r$reviewer == ""), info = ds)
     testthat::expect_false(wla_is_active_registry(r), info = ds)
   }
-  # the only registry under config/ is still microglia's
-  testthat::expect_true(file.exists(repo_path("config", "wgcna_labels", "microglia.csv")))
-  # Part-29 finalization: neuron_neuropil now has a registry, but it must
-  # contain ONLY the single adjudicated module and must never assert a
-  # cell-type identity. neuron_soma still has none. This keeps the original
-  # guard - no bulk auto-activation - while allowing the reviewed entry.
-  testthat::expect_false(
-    file.exists(repo_path("config", "wgcna_labels", "neuron_soma.csv")))
+  # neuron_soma carries reviewed labels for SOME entities (m01, m03, SM04 since
+  # 2026-10-27), applied by Stage 07 in reviewed mode: every row is a finished
+  # review, and a supermodule row names the current members it was reviewed for.
+  sp <- repo_path("config", "wgcna_labels", "neuron_soma.csv")
+  if (file.exists(sp)) {
+    source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+    source(repo_path("R", "wgcna_label_activation_utils.R"))
+    s <- readr::read_csv(sp, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
+    testthat::expect_true(wal_is_active_reviewed(s))
+    testthat::expect_true(all(reviewed_rows_are_complete(s)))
+    testthat::expect_lt(nrow(s), current_network_shape("neuron_soma")$n_identities)
+    testthat::expect_silent(wgcna_validate_partial_reviewed_registry(
+      s, "neuron_soma", current_network_shape("neuron_soma")$member_map))
+  }
+  # Part-29 finalization: a neuron_neuropil registry may exist, but only as a
+  # small reviewed subset of current modules that never asserts a cell type.
   np <- repo_path("config", "wgcna_labels", "neuron_neuropil.csv")
   if (file.exists(np)) {
     r <- utils::read.csv(np, stringsAsFactors = FALSE)
+    proposal <- wla_out("proposed_neuron_neuropil_reviewed_labels.csv")
+    if (file.exists(proposal)) {
+      testthat::expect_lt(nrow(r), nrow(utils::read.csv(proposal, stringsAsFactors = FALSE)))
+    }
+    # the Part-29 adjudication: exactly one module, the myelin-associated m11
     testthat::expect_identical(nrow(r), 1L)
     testthat::expect_identical(r$entity_id, "WGCNA_m11")
-    testthat::expect_identical(r$adjudication_status, "reviewed")
-    testthat::expect_true(grepl("myelin-associated",
-                                r$reviewed_biological_label, fixed = TRUE))
+    testthat::expect_true(grepl("myelin-associated", r$reviewed_biological_label, fixed = TRUE))
+    testthat::expect_true(all(r$level == "module"))
+    testthat::expect_true(all(r$entity_id %in% current_network_shape("neuron_neuropil")$modules))
+    testthat::expect_true(all(r$adjudication_status == "reviewed"))
+    testthat::expect_true(all(reviewed_rows_are_complete(r)))
     # a co-abundance module may be named for its protein composition, never
     # for a cell type it cannot establish
-    testthat::expect_false(grepl("oligodendrocyte",
-                                 r$reviewed_biological_label, ignore.case = TRUE))
-    testthat::expect_false(grepl("oligodendrocyte",
-                                 r$reviewed_short_label, ignore.case = TRUE))
+    testthat::expect_false(any(grepl("oligodendrocyte",
+                                     r$reviewed_biological_label, ignore.case = TRUE)))
+    testthat::expect_false(any(grepl("oligodendrocyte",
+                                     r$reviewed_short_label, ignore.case = TRUE)))
+  }
+})
+
+testthat::test_that("the microglia reviewed registry is present exactly where reviewed labels are declared", {
+  decl <- wgcna_declared_label_mode("microglia")
+  if (identical(decl$mode, "provisional")) {
+    # The reviewed registry describes another network. Stage 07 does not read it
+    # in provisional mode, but build_module_label_registry.R and the claims-table
+    # resolver would, so it must not sit in config/ here.
+    testthat::expect_false(file.exists(wgcna_reviewed_registry_path("microglia")))
+    testthat::expect_identical(decl$label_review_status, "provisional_unreviewed")
+  } else {
+    testthat::expect_true(file.exists(require_reviewed_registry("microglia")))
+    if (!all(is.na(decl$label_review_status))) {
+      testthat::expect_identical(decl$label_review_status, "reviewed")
+    }
   }
 })
 
 testthat::test_that("nonsignificant GO terms cannot yield a high-confidence label", {
   p <- wla_out("WGCNA_module_adjudication.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "adjudication has not been generated")
   m <- utils::read.csv(p, stringsAsFactors = FALSE)
   ns <- m[!is.finite(m$best_p_adjust_all) | m$best_p_adjust_all > 0.05, , drop = FALSE]
   if (nrow(ns)) testthat::expect_false(any(ns$proposed_confidence == "high"))
 })
+
 
 # =====================================================================
 # REVIEWED-REGISTRY GENERALIZATION (must not weaken validation)
@@ -564,21 +607,18 @@ testthat::test_that("the canonical lookup check rejects stale IDs for any datase
     "must contain exactly")
 })
 
-testthat::test_that("the microglia registry still validates after generalization", {
+
+testthat::test_that("the microglia registry in force still validates after generalization", {
   source(repo_path("R", "wgcna_reviewed_label_registry.R"))
-  cfg <- repo_path("config", "wgcna_labels", "microglia.csv")
-  contract <- path_results("tables", "06_modules_WGCNA", "identity_contract",
-                           "microglia",
-                           "WGCNA_module_supermodule_membership_contract.csv")
-  testthat::skip_if_not(file.exists(cfg) && file.exists(contract))
-  reg <- readr::read_csv(cfg, show_col_types = FALSE, progress = FALSE)
-  ct <- utils::read.csv(contract, stringsAsFactors = FALSE)
+  reg <- wgcna_registry_in_force("microglia")
+  ct <- read_current_csv(wla_contract("microglia"))
+  registry <- readr::read_csv(reg$path, show_col_types = FALSE, progress = FALSE)
   member_map <- data.frame(dataset = "microglia", ModuleID = ct$module_id,
                            SupermoduleID = ct$supermodule_id,
                            stringsAsFactors = FALSE)
-  # counts are now derived, so no explicit 13/9 is supplied by the caller
-  testthat::expect_silent(
-    wgcna_validate_reviewed_registry(reg, "microglia", member_map))
+  # counts are derived, so no explicit module/supermodule numbers are supplied
+  testthat::expect_silent(wgcna_validate_reviewed_registry(
+    registry, "microglia", member_map, allow_provisional = reg$allow_provisional))
 })
 
 testthat::test_that("the automatic fallback still applies when no registry is active", {
@@ -587,20 +627,18 @@ testthat::test_that("the automatic fallback still applies when no registry is ac
   # so the automatic/canonical labels remain in force
   for (ds in c("neuron_neuropil", "neuron_soma")) {
     p <- wla_out(paste0("proposed_", ds, "_reviewed_labels.csv"))
-    if (!file.exists(p)) next
+    testthat::skip_if_not(file.exists(p), "adjudication has not been generated")
     r <- utils::read.csv(p, stringsAsFactors = FALSE)
     testthat::expect_false(wla_is_active_registry(r), info = ds)
   }
-  # and the Stage-07 automatic label lookup is still present for those datasets
+  # and the current Stage-07 automatic label lookup is present for those datasets
   for (ds in c("neuron_neuropil", "neuron_soma")) {
-    lk <- path_results("tables", "06_modules_WGCNA", "interpretable_summary", ds,
-                       "WGCNA_final_label_lookup.csv")
-    if (file.exists(lk)) {
-      x <- utils::read.csv(lk, stringsAsFactors = FALSE)
-      testthat::expect_gt(nrow(x), 0L)
-    }
+    x <- read_current_csv(current_wgcna("summarize_module_interpretation", ds,
+                                        "WGCNA_final_label_lookup.csv"))
+    testthat::expect_equal(nrow(x), current_network_shape(ds)$n_identities, info = ds)
   }
 })
+
 
 testthat::test_that("the consumer migration plan is complete and does not migrate Figure 3", {
   plan <- wla_consumer_migration_plan()

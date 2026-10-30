@@ -44,6 +44,14 @@ comparego_manifest_columns <- function() c(
   "analysis_status_summary_file"
 )
 
+# Columns a compareGO manifest may carry but need not: the declared value of each runtime-required
+# clusterProfiler path field, which clusterprofiler_manifest_runtime_resolution() keeps beside the
+# runtime path when compareGO reads its input manifest. inst/schemas/compareGO_manifest.yml lists
+# them under columns (so strict validation accepts them), never under required_columns.
+comparego_manifest_optional_columns <- function() {
+  paste0(clusterprofiler_runtime_required_fields(), "_declared")
+}
+
 clusterprofiler_compatibility_fallback_enabled <- function(strict_mode, fallback_requested) {
   !isTRUE(strict_mode) && isTRUE(fallback_requested)
 }

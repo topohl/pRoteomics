@@ -62,6 +62,10 @@ if (isTRUE(run$dry_run)) {
   dry_run_inputs(SCRIPT_ID, inputs)
   quit(status = 0, save = "no")
 }
+# These inventories feed the manuscript (Figure 3b-g; supplementary inventories): only the theme
+# table of a completed concordance run is read.
+integration_mark_run_started(paths, SCRIPT_ID)
+integration_require_completed_run("test_enrichment_module_concordance", inputs$themes, consumer = SCRIPT_ID)
 
 loaded <- read_csv_optional(inputs$themes, "global", "integration",
                             "theme_assignments", required = TRUE)
@@ -533,4 +537,8 @@ write_integration_manifest(
   paste0("Release of the pathway and leading-edge protein denominators behind ",
          "the selected results shown in Figures 2 and 3. Nothing is recomputed."))
 
+integration_mark_run_completed(paths, c("pathway_enrichment_inventory.csv",
+  "pathway_enrichment_inventory_fdr_supported.csv", "leading_edge_protein_inventory.csv",
+  "leading_edge_protein_recurrence.csv", "display_selection_disclosure.csv", "inventory_data_dictionary.csv"),
+  unlist(inputs))
 message("Display selection inventories complete: ", paths$tables)

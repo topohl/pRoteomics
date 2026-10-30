@@ -6,11 +6,9 @@ source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
 source(repo_path("R", "module_semantic_utils.R"))
 
 wave1a_effects <- function(dataset = "microglia", level = "module") {
-  path <- testthat::test_path(
-    "..", "..", "results", "tables", "06_modules_WGCNA",
-    "group_effects", dataset, paste0(level, "_group_effects.csv")
-  )
-  testthat::skip_if_not(file.exists(path), "Local Stage 05 v5 fixture absent.")
+  path <- current_wgcna("test_module_phenotypes", dataset,
+                        paste0(level, "_group_effects.csv"))
+  testthat::skip_if_not(file.exists(path), "Current Stage 05 group effects not generated.")
   fixture <- readr::read_csv(path, show_col_types = FALSE)
   canonical <- fixture$independent_hypothesis %in% TRUE &
     fixture$claim_entity_role != "compatibility_alias" &
@@ -24,12 +22,9 @@ wave1a_effects <- function(dataset = "microglia", level = "module") {
 }
 
 wave1a_conditional <- function(dataset = "microglia") {
-  path <- testthat::test_path(
-    "..", "..", "results", "tables", "06_modules_WGCNA",
-    "group_effects", dataset,
-    "WGCNA_group_effect_interaction_conditional_followup.csv"
-  )
-  testthat::skip_if_not(file.exists(path), "Committed conditional fixture absent.")
+  path <- current_wgcna("test_module_phenotypes", dataset,
+                        "WGCNA_group_effect_interaction_conditional_followup.csv")
+  testthat::skip_if_not(file.exists(path), "Current Stage 05 conditional follow-up not generated.")
   wgcna_group_effect_consumer_adapt(readr::read_csv(
     path, show_col_types = FALSE
   ))
@@ -548,10 +543,10 @@ testthat::test_that("omnibus sentences preserve controlled support granularity",
 
 testthat::test_that("typed zero-row Wave 1A outputs are valid", {
   effects <- wave1a_effects()
-  unsupported <- wgcna_group_effect_consumer_select_primary(
-    effects, support_status = "FDR_supported"
-  )
   empty <- effects[0, , drop = FALSE]
+  unsupported <- wgcna_group_effect_consumer_select_primary(
+    empty, support_status = "FDR_supported"
+  )
   interpreted <- wgcna_stage07_add_interpretation_sentences(empty)
   spatial <- wgcna_stage07_build_spatial_organization(empty, empty)
 

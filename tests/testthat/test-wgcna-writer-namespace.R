@@ -237,7 +237,10 @@ testthat::test_that("the dry-run capability audit covers every entrypoint and is
 
 # --- section 2: the state carriers, including the fourth -----------------
 
-testthat::test_that("the state-carrier audit records all four carriers with roles", {
+# Historical evidence, not current model identity: the hashes are those of the
+# pre-renormalisation states the Phase 6G.8 audit recorded. Current model and
+# contract consistency is checked in test-wgcna-identity-contract.R.
+testthat::test_that("the Phase 6G.8 state-carrier record (pre-renormalisation hashes) is intact", {
   f <- repo_path("audits", "phase6g_wgcna_state_carriers.csv")
   testthat::expect_true(file.exists(f))
   d <- utils::read.csv(f, stringsAsFactors = FALSE)

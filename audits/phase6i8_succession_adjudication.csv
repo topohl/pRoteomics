@@ -17,5 +17,5 @@
 "audits/preprocessing/03b_directionality_audit_raw_vs_protigy.r","PROSE_NOT_PATH","PROSE_NOT_PATH",FALSE,"Exclusion-with-explanation: diagnostic-only audit, no canonical downstream consumer."
 "audits/preprocessing/01b_animal_level_mapping_audit.r","PROSE_NOT_PATH","PROSE_NOT_PATH",FALSE,"Exclusion-with-explanation: validation-only audit of isolated animal-level mapping outputs."
 "audits/integration/07_gsea_wgcna_concordance_correction_audit.R","PROSE_NOT_PATH","PROSE_NOT_PATH",FALSE,"Exclusion-with-explanation: historical before/after audit requiring a preserved baseline."
-"audits/wgcna/proteomics_wgcna_downstream_audit.R","PROSE_NOT_PATH","PROSE_NOT_PATH",FALSE,"Exclusion-with-explanation: root-level read-only audit utility."
+"audits/wgcna/proteomics_wgcna_downstream_audit.R","PROSE_NOT_PATH","PROSE_NOT_PATH",FALSE,"Exclusion-with-explanation: retired 2026-10-27; historical one-off audit of the 2026-07-22 network, kept as history with its report, not an acceptance check."
 "analysis/integration/export_module_protein_zoom_source_data.R","REAL_SCRIPT_PATH","PARTIAL_SUCCESSOR",FALSE,"Retired 2026-10-25 (it sourced a renderer library that moved to Exp9_manuscript); the successor exports the Figure 3 protein zoom source only, not the other Figure 3 integration panels."

@@ -121,7 +121,9 @@ WRAPPER_WRITE_CALLS <- c(
   "copy_export_file", "write_validation_summary_md", "qc_write_csv",
   "qc_write_xlsx", "qc_save_square_svg", "joint_pub_save_svg",
   "tokenize_wgcna_mouse_only", "wgcna_group_prepare_stage",
-  "wgcna_group_atomic_publish")
+  "wgcna_group_atomic_publish",
+  # integration run status (manifests/run_status.yml), R/statistics/integration_utils.R
+  "integration_mark_run_started", "integration_mark_run_completed")
 WRITE_CALLS <- c(BASE_WRITE_CALLS, WRAPPER_WRITE_CALLS)
 
 # Phase 6G.8: classify a destination from the contract, not from numbering.
@@ -224,7 +226,8 @@ DEST_ARG <- list(
   write_csv = list(2L, "file"), write_xlsx = list(2L, "path"),
   write_json = list(2L, "path"), write_delim = list(2L, "file"),
   write_lines = list(2L, "file"), write_rds = list(2L, "file"),
-  svglite = list(1L, "filename")
+  svglite = list(1L, "filename"),
+  integration_mark_run_started = list(1L, "paths"), integration_mark_run_completed = list(1L, "paths")
 )
 
 # Calls that write only when they are handed a destination. cat() has 552 call

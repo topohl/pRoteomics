@@ -768,12 +768,87 @@ gww_theme_mapping_path <- function(default = repo_path("config", "gsea_wgcna_the
   if (nzchar(override)) override else default
 }
 
-gww_read_theme_entity_mapping <- function(path) {
+# Supermodule rows carry member_module_ids: the member modules (";"-separated, any order) the row
+# was reviewed for. A supermodule ID is a position in the cut dendrogram, not an identity (cut
+# heights of 2026-10-26: microglia m07 + m11 moved from SM09 to SM08, and SM04 was reused), so the
+# reader compares the sorted set with the current membership of the identity contracts and stops
+# on a supermodule ID that no longer exists or whose members changed. Module rows leave it empty.
+gww_membership_contract_paths <- function(datasets = c("neuron_neuropil", "neuron_soma", "microglia")) {
+  stats::setNames(vapply(datasets, function(ds) canonical_result_path(
+    "wgcna", "build_module_identity_contract", ds, "tables",
+    "WGCNA_module_supermodule_membership_contract.csv"), character(1)), datasets)
+}
+
+gww_read_supermodule_membership <- function(paths = gww_membership_contract_paths()) {
+  if (!length(paths) || is.null(names(paths)) || any(!nzchar(names(paths)))) {
+    stop("Supermodule membership contract paths must be named by dataset.", call. = FALSE)
+  }
+  dplyr::bind_rows(lapply(names(paths), function(ds) {
+    path <- paths[[ds]]
+    if (!file.exists(path)) {
+      stop("Current supermodule membership (identity contract) missing for ", ds, ": ", path, call. = FALSE)
+    }
+    m <- readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
+    gww_assert_columns(m, c("dataset", "module_id", "supermodule_id", "membership_status"),
+                       paste(ds, "membership contract"))
+    if (!nrow(m) || any(m$dataset != ds)) stop("Membership contract is not scoped to ", ds, ": ", path, call. = FALSE)
+    if (any(m$membership_status != "current_authoritative_membership")) {
+      stop("Membership contract for ", ds, " is not current_authoritative_membership: ", path, call. = FALSE)
+    }
+    dplyr::distinct(m, .data$dataset, .data$module_id, .data$supermodule_id)
+  }))
+}
+
+gww_assert_theme_mapping_membership <- function(mapping, membership) {
+  gww_assert_columns(membership, c("dataset", "module_id", "supermodule_id"), "Current supermodule membership")
+  raw <- as.character(mapping$member_module_ids)
+  raw[is.na(raw)] <- ""
+  members <- lapply(strsplit(raw, ";", fixed = TRUE), function(v) {
+    v <- trimws(v)
+    v[nzchar(v)]
+  })
+  is_sm <- mapping$entity_level == "supermodule"
+  label <- paste(mapping$dataset, mapping$theme_id, mapping$entity_level, mapping$entity_id, sep = " / ")
+  refuse <- function(what, rows) {
+    stop("Theme mapping ", what, ": ", paste(label[rows], collapse = "; "), ".", call. = FALSE)
+  }
+  if (any(!is_sm & lengths(members) > 0L)) refuse("module rows must leave member_module_ids empty", which(!is_sm & lengths(members) > 0L))
+  if (any(is_sm & lengths(members) == 0L)) refuse("supermodule rows need member_module_ids", which(is_sm & lengths(members) == 0L))
+  repeated <- vapply(members, anyDuplicated, integer(1)) > 0L
+  if (any(repeated)) refuse("member_module_ids names a module twice", which(repeated))
+  if (!any(is_sm)) return(invisible(TRUE))
+  current <- membership |>
+    dplyr::transmute(dataset = as.character(.data$dataset), entity_id = as.character(.data$supermodule_id),
+                     module_id = as.character(.data$module_id)) |>
+    dplyr::distinct() |>
+    dplyr::group_by(.data$dataset, .data$entity_id) |>
+    dplyr::summarise(current = paste(sort(.data$module_id, method = "radix"), collapse = ";"), .groups = "drop")
+  stated <- vapply(members, function(v) paste(sort(v, method = "radix"), collapse = ";"), character(1))
+  no_membership <- is_sm & !mapping$dataset %in% current$dataset
+  if (any(no_membership)) refuse("rows have no current membership for their dataset", which(no_membership))
+  hit <- match(paste(mapping$dataset, mapping$entity_id), paste(current$dataset, current$entity_id))
+  if (any(is_sm & is.na(hit))) refuse("names supermodule(s) absent from the current membership (stale ID)", which(is_sm & is.na(hit)))
+  changed <- which(is_sm & stated != current$current[hit])
+  if (length(changed)) {
+    stop("Theme mapping supermodule membership changed since review: ",
+         paste0(label[changed], " lists ", stated[changed], ", current is ", current$current[hit[changed]],
+                collapse = "; "),
+         ". Re-review these rows.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+gww_read_theme_entity_mapping <- function(path, membership) {
+  if (missing(membership) || is.null(membership)) {
+    stop("Reading the theme-to-WGCNA mapping needs the current supermodule membership ",
+         "(gww_read_supermodule_membership()).", call. = FALSE)
+  }
   x <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
   required <- c(
       "dataset", "theme_id", "entity_level", "entity_id",
       "mapping_status", "mapping_rationale", "annotation_source",
-      "confidence", "mapping_role", "approved_for_manuscript_interpretation"
+      "confidence", "mapping_role", "approved_for_manuscript_interpretation",
+      "member_module_ids"
   )
   gww_assert_columns(x, required, "Theme-to-WGCNA mapping registry")
   x <- x |>
@@ -791,7 +866,8 @@ gww_read_theme_entity_mapping <- function(path) {
       ),
       approved_for_manuscript_interpretation = as.logical(
         .data$approved_for_manuscript_interpretation
-      )
+      ),
+      member_module_ids = as.character(.data$member_module_ids)
     )
   gww_assert_unique(
     x, c("dataset", "theme_id", "entity_level", "entity_id"),
@@ -822,6 +898,7 @@ gww_read_theme_entity_mapping <- function(path) {
     stop("Only approved theme mappings may be manuscript-eligible.",
          call. = FALSE)
   }
+  gww_assert_theme_mapping_membership(x, membership)
   x
 }
 

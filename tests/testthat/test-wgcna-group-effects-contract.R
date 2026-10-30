@@ -5,20 +5,18 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_identity_contract_utils.R"))
 source(repo_path("R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 group_test_datasets <- c("neuron_soma", "neuron_neuropil", "microglia")
 
-group_state_path <- function(dataset) {
-  path_processed(
-    "06_modules_WGCNA", "01_WGCNA", dataset,
-    "wgcna_final_model_state.rds"
-  )
-}
+# Current artifacts only (tests/testthat/helper-wgcna-current-artifacts.R): the
+# state Stage 05 reads (wgcna_final_state(), analysis/wgcna/test_module_phenotypes.R)
+# and the outputs it publishes under results/wgcna/test_module_phenotypes/<dataset>/.
+# The pre-renormalisation snapshot is checked in tests/historical/.
+group_state_path <- function(dataset) wgcna_test_current_state(dataset)
 
 group_output_path <- function(dataset, filename) {
-  path_results(
-    "tables", "06_modules_WGCNA", "group_effects", dataset, filename
-  )
+  wgcna_test_current_group_output(dataset, filename)
 }
 
 read_group_output <- function(dataset, filename) {
@@ -494,9 +492,9 @@ testthat::test_that("generated canonical tables contain only valid finite tests"
     module <- read_group_output(dataset, "module_group_effects.csv")
     supermodule <- read_group_output(dataset, "supermodule_group_effects.csv")
     primary <- dplyr::bind_rows(module, supermodule)
-    testthat::skip_if_not(
+    testthat::expect_true(
       "model_diagnostic_scope" %in% names(primary),
-      "Stage 05 v5 outputs have not yet been republished."
+      info = paste(dataset, "current Stage 05 output lacks model_diagnostic_scope")
     )
     testthat::expect_gt(nrow(primary), 0L)
     testthat::expect_true(all(primary$claim_allowed_model), info = dataset)
@@ -548,9 +546,9 @@ testthat::test_that("v5 aggregation hashes use the canonical LF contract", {
     aggregated <- read_group_output(
       dataset, "WGCNA_group_effect_animal_spatial_unit_values.csv"
     )
-    testthat::skip_if_not(
+    testthat::expect_true(
       "aggregated_row_hash_contract" %in% names(aggregated),
-      "Stage 05 v5 outputs have not yet been republished."
+      info = paste(dataset, "current Stage 05 output lacks aggregated_row_hash_contract")
     )
     testthat::expect_true(all(
       aggregated$aggregated_row_hash_contract == "sha256_utf8_lf_v1"
@@ -890,18 +888,25 @@ testthat::test_that("published endpoint and sample cardinalities derive from con
   }
 })
 
-testthat::test_that("legacy outputs are preserved at their audited hashes", {
+testthat::test_that("legacy staleness audit matches the current Stage 05 output tree", {
   for (dataset in group_test_datasets) {
     audit <- read_group_output(
       dataset, "WGCNA_group_effect_legacy_output_staleness_audit.csv"
     )
-    testthat::expect_gt(nrow(audit), 0L)
+    ## Recomputed over the directories Stage 05 audits. An empty audit is
+    ## correct for a clean normalized tree; it is compared, never assumed.
+    recomputed <- wgcna_group_legacy_staleness_audit(
+      dataset, wgcna_dirs("test_module_phenotypes", dataset, create = FALSE)
+    )
+    testthat::expect_setequal(
+      paste(audit$source_file, audit$sha256),
+      paste(recomputed$source_file, recomputed$sha256)
+    )
     for (i in seq_len(nrow(audit))) {
       path <- do.call(
         repo_path,
         as.list(strsplit(audit$source_file[[i]], "/", fixed = TRUE)[[1]])
       )
-      testthat::expect_true(file.exists(path), info = audit$source_file[[i]])
       testthat::expect_identical(
         file_hash_sha256(path), audit$sha256[[i]],
         info = audit$source_file[[i]]
@@ -909,6 +914,8 @@ testthat::test_that("legacy outputs are preserved at their audited hashes", {
     }
   }
 })
+# The archived pre-renormalisation audit (46/46/47 hashed files) is checked in
+# tests/historical/test-historical-wgcna-snapshots.R.
 
 testthat::test_that("atomic publication rollback restores prior directories", {
   root <- tempfile("wgcna-group-atomic-")

@@ -197,7 +197,16 @@ testthat::test_that("enrichment manifest schemas match the columns written by sh
   cluster_schema <- read_table_schema("clusterProfiler_manifest")
   compare_schema <- read_table_schema("compareGO_manifest")
   testthat::expect_setequal(names(cluster_schema$columns), clusterprofiler_manifest_columns())
-  testthat::expect_setequal(names(compare_schema$columns), comparego_manifest_columns())
+  testthat::expect_setequal(
+    names(compare_schema$columns),
+    c(comparego_manifest_columns(), comparego_manifest_optional_columns())
+  )
+  ## the declared-path provenance columns stay optional: allowed, never required
+  testthat::expect_length(comparego_manifest_optional_columns(), 4L)
+  testthat::expect_length(intersect(
+    comparego_manifest_optional_columns(),
+    unlist(compare_schema$required_columns, use.names = FALSE)
+  ), 0L)
 })
 
 testthat::test_that("WGCNA group-effect output validation checks required columns and ranges", {
@@ -443,8 +452,8 @@ testthat::test_that("WGCNA inferential handoff schema requires source provenance
     spatial_unit = "global_spatial_adjusted",
     result_scope = "primary_global_vulnerability",
     source_artifact = c(
-      "results/tables/06_modules_WGCNA/group_effects/microglia/module_group_effects.csv",
-      "results/tables/06_modules_WGCNA/group_effects/microglia/supermodule_group_effects.csv"
+      "results/wgcna/test_module_phenotypes/microglia/tables/module_group_effects.csv",
+      "results/wgcna/test_module_phenotypes/microglia/tables/supermodule_group_effects.csv"
     ),
     source_key = c("module_source", "supermodule_source"),
     source_key_contract = "dataset+level+endpoint_id+effect_scope+spatial_unit+contrast+test_type",

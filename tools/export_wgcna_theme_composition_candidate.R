@@ -22,6 +22,12 @@ publication_id <- "wgcna_theme_composition_candidate"
 exporter <- "tools/export_wgcna_theme_composition_candidate.R"
 producers <- c("analysis/integration/test_theme_module_composition.R",
                "R/enrichment/theme_module_composition_utils.R",
+               "R/enrichment/gsea_wgcna_concordance_utils.R",
+               "R/statistics/integration_utils.R",
+               # the wheel table's module labels come from the label layers (via Stage 07 and the atlas)
+               "config/wgcna_labels",
+               "R/statistics/wgcna_reviewed_label_registry.R",
+               "analysis/wgcna/summarize_module_interpretation.R",
                "config/manuscript_go_theme_registry.tsv",
                "config/gsea_wgcna_theme_module_mapping.csv")
 src <- rel("results", "integration", "test_theme_module_composition", "global")
@@ -55,6 +61,13 @@ paths <- setNames(file.path(src, "tables", paste0(tables, ".csv")), tables)
 mirrors <- file.path(src, "tables", "source_data", paste0(tables, ".csv"))
 if (!all(file.exists(paths))) stop("Missing composition tables: ",
                                    paste(paths[!file.exists(paths)], collapse = ", "), call. = FALSE)
+## Only the tables of a completed composition run (manifests/run_status.yml): a failed rerun
+## leaves the previous run's tables in place.
+local({
+  source(file.path(root, "R", "paths.R"), local = TRUE)
+  source(repo_path("R", "integration_utils.R"), local = TRUE)
+  integration_require_completed_run("test_theme_module_composition", paths, consumer = exporter)
+})
 for (i in seq_along(tables)) {
   if (file.exists(mirrors[[i]]) &&
       !identical(unname(tools::sha256sum(mirrors[[i]])), unname(tools::sha256sum(paths[[i]]))))

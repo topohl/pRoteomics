@@ -13,9 +13,11 @@
 #      to declare them, never to stop writing them.
 #
 #   2. docs/file_contracts.tsv declared two clusterProfiler objects under a
-#      results/ root that exists but holds zero files, while the 54 executed
-#      per-comparison directories sit under data/processed/. Nothing noticed,
-#      because no validator checks that a declared path resolves to anything.
+#      root that held zero files, while the executed per-comparison
+#      directories sat elsewhere. Nothing noticed, because no validator checked
+#      that a declared path resolves to anything. (Since the 2026-10 reruns the
+#      clusterProfiler families live under
+#      results/differential_abundance/run_clusterprofiler_enrichment/<dataset>/models/.)
 #
 # These tests close that gap: they check agreement between contract and
 # reality, not the shape of today's data.
@@ -23,7 +25,9 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 source(testthat::test_path("..", "..", "R", "utilities", "schema_validation.R"))
 
-CLAIMS <- path_results("tables", "biological_claims_table.csv")
+# The current claims table only (helper-wgcna-current-artifacts.R): the historical
+# results/tables/ copy is never read.
+CLAIMS <- current_claims_table()
 CONTRACTS <- repo_path("docs", "file_contracts.tsv")
 
 read_schema_columns <- function(name) {
@@ -83,7 +87,9 @@ testthat::test_that("the schema change moved no claim", {
   # as Phase 6I.5 found it; the schema was the only thing that changed.
   testthat::skip_if_not(file.exists(CLAIMS), "claims table absent")
   d <- utils::read.csv(CLAIMS, stringsAsFactors = FALSE, check.names = FALSE)
-  testthat::expect_identical(ncol(d), 75L)
+  # Phase 6I.5 found 75 columns; the invariant is that the artifact carries
+  # exactly the declared columns.
+  testthat::expect_identical(ncol(d), length(read_schema_columns("biological_claims_table")$declared))
   testthat::expect_gt(nrow(d), 0L)
   # claim identity is unique, which is the invariant a merge accident would break
   if ("claim_id" %in% names(d)) {
@@ -117,12 +123,18 @@ testthat::test_that("every declared file contract resolves to something that exi
         if (file.exists(repo_path(p)) || dir.exists(repo_path(p))) return(TRUE)
         next
       }
-      prefix <- paste(segs[seq_len(which(wild)[1] - 1L)], collapse = "/")
-      if (nzchar(prefix) && dir.exists(repo_path(prefix))) return(TRUE)
+      fixed <- segs[seq_len(which(wild)[1] - 1L)]
+      # A wildcard directly under a top-level root ('results/{...}') would let
+      # any populated results/ tree satisfy the row; require <root>/<domain>.
+      if (length(fixed) >= 2L && dir.exists(repo_path(paste(fixed, collapse = "/")))) return(TRUE)
     }
     FALSE
   }
-  bad <- d$object_id[!vapply(d$path, resolves, logical(1), USE.NAMES = FALSE)]
+  # A row may name a location a checkout legitimately lacks only if created_by
+  # SAYS so: HISTORICAL (no active producer; files survive only in archives) or
+  # NOT_RUN_HERE (a registered producer this analysis run does not execute).
+  declared_absent <- grepl("^(HISTORICAL|NOT_RUN_HERE): .+", d$created_by)
+  bad <- d$object_id[!declared_absent & !vapply(d$path, resolves, logical(1), USE.NAMES = FALSE)]
   testthat::expect_identical(bad, character(0),
     info = paste("contract rows whose declared location does not exist:",
                  paste(bad, collapse = ", ")))
@@ -289,9 +301,7 @@ testthat::test_that("the audit contract and the retention declaration agree on a
                        d$path[d$object_id == "clusterProfiler_protein_group_audits"][1])),
                        winslash = "/", mustWork = FALSE)
 
-  mf <- file.path(repo_path("data", "processed",
-                            "04_differential_expression_enrichment", "clusterProfiler"),
-                  "microglia", "clusterProfiler_manifest.csv")
+  mf <- canonical_clusterprofiler_manifest_path("microglia")   # normalized-first resolver (enrichment_io.R)
   testthat::skip_if_not(file.exists(mf), "microglia manifest absent")
   m <- utils::read.csv(mf, stringsAsFactors = FALSE)
   m <- m[m$result_type == "GSEA_GO" & m$ontology == "BP", , drop = FALSE]

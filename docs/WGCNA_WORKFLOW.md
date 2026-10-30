@@ -283,6 +283,16 @@ subcellular context, and ROI context remain separate. Automatic proposals and
 GO evidence remain provenance and are fingerprinted. `final_plot_label` is an
 exact compatibility alias for `canonical_plot_label`.
 
+For neuron soma, `config/wgcna_labels/neuron_soma.csv` holds reviewed labels
+for some entities only (m01, m03 and SM04, reviewed 2026-10-27). In reviewed
+mode Stage 07 applies them over the automatic labels; a supermodule row applies
+only while its supermodule has the members it lists (`member_ModuleIDs`), and
+`manifests/label_review_status.csv` reads `automatic_with_reviewed_overrides`.
+Soma SM04 is two member components (m01 ubiquitin-dependent protein
+catabolism; m03 cell-cell/synaptic signaling), not one pathway. Its primary
+SUS - RES effect is p = 0.04486, FDR = 0.07922 (family of 3 supermodules), not
+FDR-supported at 0.05; label fields stay free of group statistics.
+
 Run:
 
 ```bash

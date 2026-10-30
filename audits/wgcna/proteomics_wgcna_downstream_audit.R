@@ -1,12 +1,20 @@
 #!/usr/bin/env Rscript
 options(stringsAsFactors = FALSE, warn = 1)
 
-# This audit reports on whatever the CURRENT Stage 05/13 outputs are, so it
-# names them through the WGCNA path resolver rather than hard-coding the
-# historical tree. The resolver looks in the normalized location first and
-# falls back to the historical one, so today it reads exactly what it read
-# before.
-paths_file <- if (file.exists(file.path("R", "paths.R"))) {
+# HISTORICAL - retired 2026-10-27. A one-off audit of the 2026-07-22,
+# pre-renormalisation network (added with its report in 883882c). Section G pins
+# values of that state (atlas 275/660/264, 22 Stage-13 identities, SM09 as the
+# only eligible block, 27 circular segments), and sections A, C, E and F read
+# pre-migration paths, so it describes no current tree and is not an acceptance
+# check. Its report (Overall: PASS) is kept beside it as
+# audits/wgcna/proteomics_wgcna_downstream_audit_2026-07-22_report.txt
+# (= git show a9f3e86^:proteomics_wgcna_downstream_audit_output.txt, blob 1c98cc0a).
+if (!identical(Sys.getenv("PROTEOMICS_RUN_HISTORICAL_AUDIT"), "1")) {
+  message("proteomics_wgcna_downstream_audit.R is a retired historical audit (2026-07-22 state), ",
+          "not an acceptance check; set PROTEOMICS_RUN_HISTORICAL_AUDIT=1 to run it anyway.")
+  quit(status = 2L, save = "no")
+}
+paths_file <-if (file.exists(file.path("R", "paths.R"))) {
   file.path("R", "paths.R")
 } else {
   file.path("..", "..", "R", "paths.R")

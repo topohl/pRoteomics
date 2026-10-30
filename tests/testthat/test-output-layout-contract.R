@@ -18,6 +18,21 @@ registry_steps <- function() {
   s[!duplicated(s$script), , drop = FALSE]
 }
 
+# The Phase 6B baseline. Its literal hash (docs/RESTRUCTURE_PLAN.md) no longer
+# exists in this object store after a history rewrite; the same commit is
+# e456241 on the branch and 0f84a10 behind the annotated tag. Resolve through
+# the tag, keeping the hash as a fallback, so the guard cannot skip forever.
+BASELINE_REFS <- c("pre-restructure-scientific-freeze-2026-09",
+                   "6801edbce8a5d222f4af46e06b6db4e99f6a9761")
+git_show_baseline <- function(rel) {
+  for (ref in BASELINE_REFS) {
+    out <- suppressWarnings(system2("git", c("show", paste0(ref, ":", rel)),
+                                    stdout = TRUE, stderr = FALSE))
+    if (length(out) && is.null(attr(out, "status"))) return(out)
+  }
+  character(0)
+}
+
 # --- the contract itself --------------------------------------------------
 
 testthat::test_that("the layout contract declares three disjoint lifecycles", {
@@ -40,11 +55,9 @@ testthat::test_that("the layout contract declares three disjoint lifecycles", {
 testthat::test_that("the frozen v1 namespace contract is still byte-identical", {
   # v2 supersedes v1 for future writes; v1 is a frozen baseline object and
   # describes the historical tree, so it must not be edited to fit v2.
-  baseline <- "6801edbce8a5d222f4af46e06b6db4e99f6a9761"
   rel <- "config/output_namespaces.yml"
-  old <- suppressWarnings(system2("git", c("show", paste0(baseline, ":", rel)),
-                                  stdout = TRUE, stderr = FALSE))
-  testthat::skip_if(!length(old), "baseline commit not resolvable here")
+  old <- git_show_baseline(rel)
+  testthat::skip_if(!length(old), "baseline not resolvable here (neither tag nor commit)")
   now <- readLines(repo_path(rel), warn = FALSE)
   testthat::expect_identical(paste(now, collapse = "\n"), paste(old, collapse = "\n"))
 })
@@ -116,10 +129,7 @@ testthat::test_that("the legacy registry covers the trees that lost their writer
   # honest as Phase 6G migrates domains: each migration moves frozen objects
   # from the active side of this ledger to the legacy side without changing
   # the total.
-  baseline <- "6801edbce8a5d222f4af46e06b6db4e99f6a9761"
-  fm <- suppressWarnings(system2(
-    "git", c("show", paste0(baseline, ":manuscript/prerestructure_freeze_manifest.csv")),
-    stdout = TRUE, stderr = FALSE))
+  fm <- git_show_baseline("manuscript/prerestructure_freeze_manifest.csv")
   testthat::skip_if(!length(fm), "baseline manifest not resolvable here")
   frozen <- unique(utils::read.csv(text = paste(fm, collapse = "\n"),
                                    stringsAsFactors = FALSE)$repository_relative_path)

@@ -1,4 +1,8 @@
-source(testthat::test_path("..", "..", "R", "paths.R"))
+# HISTORICAL SNAPSHOT - moved from tests/testthat/ (not current acceptance).
+# The program-evidence audit is a one-off review made on 2026-09-14 by
+# audits/program_evidence/01-04_*.R (hard-coded setwd to Analysis/proteomics) on
+# the pre-2026-10-19 GO atlas; nothing in the pipeline regenerates it, and it
+# reads the historical results/tables/10_biological_integration layout.
 
 # Regression tests for the atlas program-evidence audit.
 #
@@ -7,8 +11,8 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 # protein, and that the protein evidence is counted only over FDR-supported
 # results.
 
-pe <- function(f) path_results("tables", "publication_audits",
-                               "program_evidence", f)
+pe <- function(f) historical_path("results", "tables", "publication_audits",
+                                  "program_evidence", f)
 rd <- function(p) utils::read.csv(p, stringsAsFactors = FALSE,
                                   check.names = FALSE)
 PROGS <- c("rna_processing_splicing_rnp", "ribosome_translation",
@@ -32,7 +36,7 @@ testthat::test_that("every ledger row traces back to the canonical table", {
   p <- pe("program_evidence_ledger.csv")
   testthat::skip_if_not(file.exists(p), "ledger not built")
   l <- rd(p)
-  TH <- rd(repo_path("results", "tables", "10_biological_integration",
+  TH <- rd(historical_path("results", "tables", "10_biological_integration",
                      "gsea_wgcna_concordance", "global",
                      "ontology_aware_gsea_theme_assignments_all_contrasts.csv"))
   testthat::expect_identical(unique(TH$registry_version),
@@ -107,8 +111,8 @@ testthat::test_that("the omitted re-audit still finds no genuine omission", {
 })
 
 testthat::test_that("each program has a review sheet", {
-  d <- path_results("reports", "publication_audits", "program_evidence",
-                    "program_sheets")
+  d <- historical_path("results", "reports", "publication_audits", "program_evidence",
+                       "program_sheets")
   testthat::skip_if_not(dir.exists(d), "sheets not built")
   f <- list.files(d, pattern = "[.]md$")
   testthat::expect_identical(length(f), 7L)

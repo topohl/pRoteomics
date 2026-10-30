@@ -379,68 +379,74 @@ testthat::test_that("the label audit source contains no phenotype input", {
 
 # ------------------------------------------------- real-output contracts
 
+# Current canonical label-coherence audit (analysis/wgcna/audit_module_label_coherence.R).
 wcl_review_path <- function(dataset, file) {
-  path_results("reviewer_audit", "wgcna_label_review", dataset, file)
+  current_wgcna("audit_module_label_coherence", dataset, file)
 }
 
 testthat::test_that("every module and supermodule appears exactly once", {
-  for (ds in c("neuron_neuropil", "neuron_soma", "microglia")) {
-    mp <- wcl_review_path(ds, "WGCNA_module_label_coherence_audit.csv")
-    sp <- wcl_review_path(ds, "WGCNA_supermodule_label_coherence_audit.csv")
-    if (!file.exists(mp) || !file.exists(sp)) next
-    m <- utils::read.csv(mp, stringsAsFactors = FALSE)
-    s <- utils::read.csv(sp, stringsAsFactors = FALSE)
+  for (ds in wgcna_test_datasets) {
+    m <- read_current_csv(wcl_review_path(ds, "WGCNA_module_label_coherence_audit.csv"))
+    s <- read_current_csv(wcl_review_path(ds, "WGCNA_supermodule_label_coherence_audit.csv"))
     testthat::expect_identical(anyDuplicated(m$ModuleID), 0L, info = ds)
     testthat::expect_identical(anyDuplicated(s$SupermoduleID), 0L, info = ds)
 
-    # matches the authoritative identity contract exactly
-    contract_path <- path_results(
-      "tables", "06_modules_WGCNA", "identity_contract", ds,
-      "WGCNA_module_supermodule_membership_contract.csv")
-    if (file.exists(contract_path)) {
-      ct <- utils::read.csv(contract_path, stringsAsFactors = FALSE)
-      testthat::expect_setequal(m$ModuleID, unique(ct$module_id))
-      testthat::expect_setequal(s$SupermoduleID, unique(ct$supermodule_id))
-      testthat::expect_identical(sum(s$n_member_modules), nrow(ct), info = ds)
-    }
+    # matches the current authoritative identity contract exactly
+    # (analysis/wgcna/build_module_identity_contract.R)
+    ct <- read_current_csv(current_wgcna(
+      "build_module_identity_contract", ds,
+      "WGCNA_module_supermodule_membership_contract.csv"))
+    testthat::expect_setequal(m$ModuleID, unique(ct$module_id))
+    testthat::expect_setequal(s$SupermoduleID, unique(ct$supermodule_id))
+    testthat::expect_identical(sum(s$n_member_modules), nrow(ct), info = ds)
+    shape <- current_network_shape(ds)
+    testthat::expect_setequal(m$ModuleID, shape$modules)
+    testthat::expect_setequal(s$SupermoduleID, shape$supermodules)
   }
 })
 
 testthat::test_that("real label-audit outputs stay phenotype-blind", {
-  for (ds in c("neuron_neuropil", "neuron_soma", "microglia")) {
+  n_read <- 0L
+  for (ds in wgcna_test_datasets) {
     for (f in c("WGCNA_module_label_coherence_audit.csv",
                 "WGCNA_supermodule_label_coherence_audit.csv",
                 "WGCNA_label_supporting_proteins.csv")) {
       p <- wcl_review_path(ds, f)
       if (!file.exists(p)) next
+      n_read <- n_read + 1L
       x <- utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
       testthat::expect_silent(wcl_assert_phenotype_blind(
         x, paste(ds, f), allow = "naming_evidence_is_phenotype_blind"))
     }
   }
+  testthat::skip_if(n_read == 0L, "label-coherence audit has not been generated")
 })
 
 testthat::test_that("canonical labels and module identities are untouched", {
-  # the audit writes only under results/reviewer_audit/wgcna_label_review/
+  # the audit writes only proposals under its own results namespace
   for (ds in c("neuron_neuropil", "neuron_soma")) {
-    proposed <- wcl_review_path(
-      ds, paste0("PROPOSED_wgcna_reviewed_labels_", ds, ".csv"))
-    if (!file.exists(proposed)) next
-    x <- utils::read.csv(proposed, stringsAsFactors = FALSE)
+    x <- read_current_csv(wcl_review_path(
+      ds, paste0("PROPOSED_wgcna_reviewed_labels_", ds, ".csv")))
     testthat::expect_true(all(x$review_status == "PROPOSED_NOT_PROMOTED"))
     # A PROPOSED registry must never be promoted wholesale. Part-29 activated
-    # exactly one adjudicated module (neuropil m11), so if a config registry
-    # exists it must be far smaller than the proposal it sits beside.
+    # one adjudicated neuropil module, so if a config registry exists it must
+    # be far smaller than the proposal it sits beside.
     cfg <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
     if (file.exists(cfg)) {
       r <- utils::read.csv(cfg, stringsAsFactors = FALSE)
       testthat::expect_lt(nrow(r), nrow(x))
       testthat::expect_true(all(r$adjudication_status == "reviewed"), info = ds)
+      shape <- current_network_shape(ds)
+      testthat::expect_true(all(r$entity_id[r$level == "module"] %in% shape$modules), info = ds)
+      testthat::expect_true(all(r$entity_id[r$level == "supermodule"] %in% shape$supermodules), info = ds)
     } else {
       testthat::succeed()
     }
   }
-  # the one reviewed registry that does exist is still microglia's
-  testthat::expect_true(file.exists(repo_path("config", "wgcna_labels",
-                                              "microglia.csv")))
+})
+
+testthat::test_that("the microglia reviewed registry exists wherever reviewed labels are declared", {
+  # skips only where Stage 07 declared provisional labels; errors if reviewed
+  # labels are declared and the registry is missing
+  testthat::expect_true(file.exists(require_reviewed_registry("microglia")))
 })

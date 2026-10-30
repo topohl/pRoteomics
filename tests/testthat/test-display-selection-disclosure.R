@@ -111,25 +111,33 @@ testthat::test_that("the three surfaces agree on what is and is not supported", 
 })
 
 testthat::test_that("the released scientific tables are unchanged by documentation edits", {
-  # A dictionary reword must never move a number. These are the row counts the
-  # Phase 6H closure accepted.
-  expected <- c(pathway_enrichment_inventory.csv = 203073L,
-                leading_edge_protein_inventory.csv = 282296L,
-                leading_edge_protein_recurrence.csv = 12227L,
-                pathway_enrichment_inventory_fdr_supported.csv = 3559L,
-                inventory_data_dictionary.csv = 72L,
-                display_selection_disclosure.csv = 7L)
+  # A dictionary reword must never move a number: every exported inventory is the
+  # producer's current table byte for byte, with the row count and hash its
+  # manifest row records. (The Phase 6H row counts of the pre-renormalisation
+  # export are kept in tests/historical/.)
+  files <- c("pathway_enrichment_inventory.csv", "leading_edge_protein_inventory.csv",
+             "leading_edge_protein_recurrence.csv", "pathway_enrichment_inventory_fdr_supported.csv",
+             "inventory_data_dictionary.csv", "display_selection_disclosure.csv")
   man <- repo_path("exports", "publication_source_data", "manifest.csv")
   testthat::skip_if_not(file.exists(man), "export manifest absent")
   m <- utils::read.csv(man, stringsAsFactors = FALSE)
   s <- m[m$publication_id == "supplementary_selection_inventories", , drop = FALSE]
-  testthat::expect_identical(nrow(s), 6L)
-  for (nm in names(expected)) {
+  testthat::expect_setequal(basename(s$exported_file), files)
+  for (nm in files) {
     row <- s[basename(s$exported_file) == nm, , drop = FALSE]
     testthat::expect_identical(nrow(row), 1L, info = nm)
-    testthat::expect_identical(as.integer(row$rows[1]), expected[[nm]], info = nm)
+    exported <- repo_path(row$exported_file[1])
+    testthat::expect_true(file.exists(exported), info = nm)
+    testthat::expect_identical(unname(tools::sha256sum(exported)), row$sha256[1], info = nm)
+    testthat::expect_identical(nrow(utils::read.csv(exported, check.names = FALSE)),
+                               as.integer(row$rows[1]), info = nm)
+    producer <- current_integration("build_display_selection_inventories", nm)
+    # export runs only in the tree with the approved centring (config/normalisation.yml); elsewhere
+    # exports/ holds the preserved primary-version export, not this tree's tables
+    norm <- yaml::read_yaml(repo_path("config", "normalisation.yml"))
+    exports_this_tree <- identical(norm$sample_centring, norm$approved_sample_centring)
+    if (exports_this_tree && file.exists(producer)) {
+      testthat::expect_identical(unname(tools::sha256sum(producer)), row$sha256[1], info = nm)
+    }
   }
-  # and the bundle stays the accepted shape
-  testthat::expect_identical(nrow(m), 60L)
-  testthat::expect_identical(length(unique(m$publication_id)), 11L)
 })

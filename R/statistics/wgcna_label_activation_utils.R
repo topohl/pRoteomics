@@ -48,6 +48,7 @@ wal_is_active_reviewed <- function(registry) {
   } else trimws(as.character(registry$reviewed_biological_label))
   all(status %in% c("reviewed", "adjudicated", "active")) &&
     all(!is.na(reviewer) & nzchar(reviewer) & !tolower(reviewer) %in% c("na", "none")) &&
+    !any(grepl("pending|not yet reviewed|carry-over", reviewer, ignore.case = TRUE)) &&
     all(!is.na(label) & nzchar(label))
 }
 
@@ -316,17 +317,17 @@ wal_curated_adjudications <- function() {
       "Kept as an explicit SIGNATURE, never a cell-type claim. The literal epithelial program markers are present: CC cornified envelope, desmosome and adherens junction, with 4 core keratinization terms (p=2e-04) and hubs TGM1, FLG2, DSP, S100A14 and LYZ1. Because the structural CC markers are the literal program, keratinization-like hedging is unnecessary; the contextual caveat carries the interpretation instead."),
     # ---- neuron_soma -----------------------------------------------------
     c("neuron_soma", "module", "WGCNA_m01",
-      "proteostasis / ubiquitin-proteasome", "ubiquitin-dependent protein catabolism",
-      "mixed / unresolved", "low",
-      "The proteasome concept is specific but weak and peripheral. CC proteasome regulatory particle, base subcomplex p=3.3e-04 with proteasome complex p=2e-02; BP ubiquitin-dependent protein catabolic process p=2e-03 over only 8 core terms. The top-25 hub set has just 2 significant terms and NEITHER is proteasomal (ATP-dependent protein folding chaperone MF p=3.6e-02, smooth endoplasmic reticulum CC p=5e-02), and no top hub (ATXN10, DGKE, STRAP, HID1, PDIA4, RYR2, DST) is a proteasome subunit. The packet records centre_supports_theme=FALSE. Downgraded from moderate to LOW and NOT recommended: a real but peripheral signal must not be promoted to a module name on the strength of 16 all-set terms."),
+      "ubiquitin-dependent protein catabolism", "proteostasis / ubiquitin-proteasome",
+      NA, "moderate",
+      "Re-adjudicated 2026-10-27 on the regenerated GO evidence (official gene mapping, GO term sizes 10-800), following the rule-based label. The dominant BP signal in the all set is ubiquitin-dependent protein catabolic process (BH-adjusted p=9.7e-03, 41 proteins) with modification-dependent protein catabolism and proteolysis involved in protein catabolic process, supported by CC proteasome regulatory particle, base subcomplex (p=3.6e-04) and proteasome complex (p=6.1e-04, 14 proteins); a smaller passing signal is endosome organization (12 proteins). Moderate, not high: none of the ten highest-kME hubs (Atxn10, Dgke, Strap, Hid1, Pdia4, Ryr2, Dst, Hook3, Eef2, Olfm1) is in the signal. The earlier automatic display 'mitochondrial / energy metabolism', which the Stage 06 keyword classifier assigned by matching 'ATP' in the MF term 'ATP-dependent protein folding chaperone' (tied with translation / proteostasis), not from the module's dominant signal, is not used."),
     c("neuron_soma", "module", "WGCNA_m02",
       "nuclear gene expression - chromatin remodelling and RNA processing",
       "nuclear RNA processing / splicing", "chromatin remodelling", "high",
       "CORRECTED from mixed / unresolved, which was an uncritical pass-through of the algorithmic coherence_class. This is the strongest module in the soma network: 492 / 553 / 119 significant terms across the all / core / top-25 sets, with n_protein_sets_supporting_theme=3 and centre_supports_theme=TRUE. Core CC nuclear protein-containing complex p=5.6e-167, chromosome p=4e-78, nuclear body p=2e-66; core BP RNA processing p=8e-143, mRNA processing p=4e-117, RNA splicing p=3e-99; core MF DNA binding p=1e-82, chromatin binding p=4e-47. The mixed_biology class reflected high theme ENTROPY in a 1836-protein module, not absence of a dominant theme. Both halves of the name are earned: the module body is nuclear RNA processing, and the hub centre is specifically chromatin remodelling (top-25 chromatin p=6.9e-09, chromatin remodeling p=2e-06, SWI/SNF superfamily-type complex p=2e-06; hubs CHD4, GATAD2B, SMARCA2, SMARCA5, RBBP4)."),
     c("neuron_soma", "module", "WGCNA_m03",
-      "mixed / unresolved", "organic acid catabolic process",
-      "amino acid metabolic process", "low",
-      "CORRECTED to mixed. The three protein sets disagree on what the module is: the all set has 8 CC terms led by anchoring junction p=6.2e-03 and NO significant BP, the core set has 21 BP terms led by organic acid catabolic process p=5.5e-03 and NO significant CC, and the top-25 set is led by caveola p=5.3e-03. Nothing is stronger than p~5e-03, the packet records n_protein_sets_supporting_theme=1 and centre_supports_theme=FALSE. Naming the module amino acid metabolic process promoted a single weak core term over mutually inconsistent evidence, which is the failure mode this pass exists to prevent."),
+      "cell-cell/synaptic signaling", "cell-cell signaling",
+      "organic acid catabolic process", "high",
+      "CORRECTED 2026-10-27. The earlier mixed / unresolved call described the GO evidence before the regeneration (official gene mapping, GO term sizes 10-800), when the all set had no significant BP term. The dominant BP signal in the all set is now cell-cell signaling (BH-adjusted p=2.8e-02, 43 proteins) with synaptic signaling (p=2.8e-02, 37 proteins, a child term inside the same set), in CC plasma membrane region (p=2.7e-02). Six of the ten highest-kME hubs are in it (Prkar2b, Plcl1, Mapk3, Sorbs1, Nedd4, Mapk1). The strongest CC term is anchoring junction (p=3.5e-03, 29 proteins). A smaller BP signal, organic acid catabolic process (p=2.8e-02, 15 proteins), is kept as the alternative. The central proteins are general signalling kinases, so the label names the GO process, not a synapse-specific mechanism."),
     c("neuron_soma", "module", "WGCNA_m04",
       "mixed / unresolved", "cytoplasmic translation", NA, "low",
       "Algorithmic adjudication was mixed_biology and the centre did not support the translation term. Retained as mixed. Not recommended for activation."),
@@ -369,8 +370,8 @@ wal_curated_supermodule_adjudications <- function() {
     c("neuron_soma", "SM03", "nuclear gene expression - chromatin remodelling and RNA processing",
       "high",
       "Singleton supermodule inheriting its only member, m02, whose evidence is the strongest in the soma network (core CC nuclear protein-containing complex p=5.6e-167). Parent and member necessarily share a name here; the redundancy check correctly exempts singletons."),
-    c("neuron_soma", "SM04", "mixed / unresolved", "low",
-      "Formed when the soma supermodule cut height moved from 0.35 to 0.55 (stated rule, 2026-10-26): joins m01 (proteostasis / ubiquitin-proteasome, low confidence, peripheral proteasome signal) and m03 (mixed / unresolved), the former singletons SM04 and SM05. One weak and one unresolved member cannot name a supermodule, so no supermodule biology is claimed; pending review.")
+    c("neuron_soma", "SM04", "Compound: ubiquitin-dependent protein catabolism (m01) + cell-cell/synaptic signaling (m03)", "moderate",
+      "Two member components, not one shared pathway. Formed when the soma supermodule cut height moved from 0.35 to 0.55 (stated rule, 2026-10-26), joining the former singletons m01 and m03. Their dominant GO signals share no terms (rule class compound): m01 is ubiquitin-dependent protein catabolism (moderate; no top-10 hub in the signal) and m03 is cell-cell/synaptic signaling (high). Confidence is the lower member confidence. Reviewed 2026-10-27.")
   )
   out <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
   names(out) <- c("dataset", "entity_id", "proposed_final_label", "confidence",

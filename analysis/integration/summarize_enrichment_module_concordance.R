@@ -78,7 +78,8 @@ dataset_inputs <- lapply(datasets, function(dataset) {
     supermodule_annotation = wgcna_annotation_artifact("WGCNA_supermodule_biological_annotation.csv", dataset),
     module_go = wgcna_modules_artifact("WGCNA_module_GO_enrichment_long.csv", dataset, child = "tables", "modules"),
     final_labels = wgcna_interpretable_artifact("WGCNA_final_label_lookup.csv", dataset),
-    group_sensitivity = wgcna_group_effects_artifact("WGCNA_group_effect_sensitivity.csv", dataset)
+    group_sensitivity = wgcna_group_effects_artifact("WGCNA_group_effect_sensitivity.csv", dataset),
+    membership_contract = gww_membership_contract_paths(dataset)[[dataset]]
   )
 })
 names(dataset_inputs) <- datasets
@@ -121,12 +122,23 @@ if (run$dry_run) {
   quit(save = "no", status = 0L)
 }
 
+integration_mark_run_started(paths, SCRIPT_ID)
 missing_required <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_required)) {
   stop("Required diagnostic input(s) missing: ", paste(
     names(missing_required), missing_required, sep = "=", collapse = "; "
   ), ".", call. = FALSE)
 }
+# Only the tables of a completed concordance run on these same inputs are read.
+integration_require_completed_run(
+  "test_enrichment_module_concordance",
+  c(strict_long_file, strict_pattern_file, strict_overlap_file, strict_matching_file, gsea_terms_file),
+  c(required_inputs,
+    # the concordance records the same feature universes as <dataset>_wgcna_universe
+    stats::setNames(vapply(dataset_inputs, `[[`, character(1), "feature_universe"),
+                    paste0(names(dataset_inputs), "_wgcna_universe"))),
+  consumer = SCRIPT_ID
+)
 
 source_hashes <- function(paths_named) {
   data.frame(
@@ -195,7 +207,10 @@ if (any(!handoff$independent_hypothesis %in% TRUE) ||
 }
 
 theme_registry <- read_manuscript_go_theme_registry(theme_registry_file)
-theme_mapping <- gww_read_theme_entity_mapping(theme_mapping_file)
+theme_mapping <- gww_read_theme_entity_mapping(
+  theme_mapping_file,
+  gww_read_supermodule_membership(vapply(dataset_inputs, `[[`, character(1), "membership_contract"))
+)
 validated_theme_mapping <- gww_validate_theme_entity_mapping(
   handoff, theme_mapping, theme_registry
 )
@@ -1146,4 +1161,5 @@ write_integration_manifest(
   )
 )
 
+integration_mark_run_completed(paths, output_files, required_inputs)
 message("GSEA/WGCNA concordance diagnostics complete: ", paths$tables)

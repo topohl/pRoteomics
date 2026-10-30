@@ -130,11 +130,16 @@ test_that("the guard is a no-op on an empty or already-clean selection", {
   expect_equal(drop_noncanonical_wgcna_dataset_scopes(clean), clean)
 })
 
-test_that("the real figure tree yields no failed-run candidate after the guard", {
-  root <- path_results("figures", "06_modules_WGCNA")
-  skip_if_not(dir.exists(root), "historical WGCNA figure tree not present")
-  cand <- list.files(root, pattern = "[.](svg|pdf|png)$", recursive = TRUE,
-                     full.names = TRUE)
+test_that("the real figure trees yield no failed-run candidate after the guard", {
+  # Both discovery routes: the historical stage (holds the July failed run in
+  # pre-migration trees) and the normalized construction tree (where a failed
+  # rerun would land now).
+  roots <- c(path_results("figures", "06_modules_WGCNA"),
+             path_results("wgcna", "build_wgcna_modules"))
+  roots <- roots[dir.exists(roots)]
+  skip_if(!length(roots), "no WGCNA figure tree in this checkout")
+  cand <- unlist(lapply(roots, list.files, pattern = "[.](svg|pdf|png)$",
+                        recursive = TRUE, full.names = TRUE), use.names = FALSE)
   skip_if(length(cand) == 0, "no figures on disk")
   kept <- drop_noncanonical_wgcna_dataset_scopes(cand)
   expect_equal(sum(grepl("_failed_", kept)), 0L)
@@ -156,7 +161,8 @@ test_that("the real figure tree yields no failed-run candidate after the guard",
 # the gitignore fact so the mistaken inference cannot be made again silently.
 
 test_that("results/ and exports/ are gitignored, so git status is not payload evidence", {
-  skip_if_not(dir.exists(testthat::test_path("..", "..", ".git")), "not a git checkout")
+  # a linked worktree has a .git FILE (gitdir pointer), not a directory
+  skip_if_not(file.exists(testthat::test_path("..", "..", ".git")), "not a git checkout")
   gitignore <- readLines(testthat::test_path("..", "..", ".gitignore"), warn = FALSE)
   expect_true(any(grepl("^/results/?$", trimws(gitignore))),
               info = "/results/ must be gitignored for this test to be meaningful")
@@ -165,7 +171,7 @@ test_that("results/ and exports/ are gitignored, so git status is not payload ev
 })
 
 test_that("the tracked footprint of results/ and exports/ is placeholders only", {
-  skip_if_not(dir.exists(testthat::test_path("..", "..", ".git")), "not a git checkout")
+  skip_if_not(file.exists(testthat::test_path("..", "..", ".git")), "not a git checkout")
   root <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   tracked <- suppressWarnings(system2("git", c("-C", shQuote(root), "ls-files", "results", "exports"),
                                       stdout = TRUE, stderr = FALSE))

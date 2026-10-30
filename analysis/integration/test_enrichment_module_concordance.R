@@ -59,7 +59,8 @@ dataset_inputs <- lapply(datasets, function(dataset) {
   list(
     wgcna_handoff = wgcna_interpretable_artifact("WGCNA_inferential_handoff.csv", dataset),
     wgcna_universe = wgcna_modules_artifact("WGCNA_feature_universe.csv", dataset, child = "tables", "modules"),
-    module_preservation = wgcna_modules_artifact("WGCNA_module_preservation_summary.csv", dataset, child = "tables", "modules")
+    module_preservation = wgcna_modules_artifact("WGCNA_module_preservation_summary.csv", dataset, child = "tables", "modules"),
+    membership_contract = gww_membership_contract_paths(dataset)[[dataset]]
   )
 })
 names(dataset_inputs) <- datasets
@@ -80,7 +81,9 @@ required_inputs <- c(
       setNames(dataset_inputs[[dataset]]$wgcna_handoff,
                paste0(dataset, "_wgcna_handoff")),
       setNames(dataset_inputs[[dataset]]$wgcna_universe,
-               paste0(dataset, "_wgcna_universe"))
+               paste0(dataset, "_wgcna_universe")),
+      setNames(dataset_inputs[[dataset]]$membership_contract,
+               paste0(dataset, "_membership_contract"))
     )
   }))
 )
@@ -117,6 +120,10 @@ if (run$dry_run) {
   )
   quit(save = "no", status = 0L)
 }
+
+# From here a failure leaves manifests/run_status.yml at "started", so no reader takes the
+# previous run's tables for this run's.
+integration_mark_run_started(paths, SCRIPT_ID)
 
 missing_required <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_required)) {
@@ -206,7 +213,10 @@ universe_bundles <- lapply(datasets, function(dataset) {
 names(universe_bundles) <- datasets
 token_map <- dplyr::bind_rows(lapply(universe_bundles, `[[`, "token_map"))
 
-theme_mapping <- gww_read_theme_entity_mapping(theme_mapping_file)
+theme_mapping <- gww_read_theme_entity_mapping(
+  theme_mapping_file,
+  gww_read_supermodule_membership(vapply(dataset_inputs, `[[`, character(1), "membership_contract"))
+)
 validated_theme_mapping <- gww_validate_theme_entity_mapping(
   wgcna, theme_mapping, theme_registry
 )
@@ -1138,4 +1148,5 @@ write_integration_manifest(
   )
 )
 
+integration_mark_run_completed(paths, output_files, c(required_inputs, optional_inputs))
 message("GSEA/WGCNA concordance complete: ", paths$tables)

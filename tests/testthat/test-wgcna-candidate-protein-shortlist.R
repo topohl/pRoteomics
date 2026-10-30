@@ -1,5 +1,5 @@
-source(repo_path("R", "wgcna_candidate_protein_utils.R"))
 source(testthat::test_path("..", "..", "R", "paths.R"))
+source(repo_path("R", "wgcna_candidate_protein_utils.R"))
 
 # --------------------------------------------------------------- fixtures
 
@@ -493,9 +493,8 @@ testthat::test_that("joins are keyed on canonical ProteinGroupID", {
 # ------------------------------------------- real-output contract (optional)
 
 wcp_summary_path <- function(scope = "global") {
-  path_results("tables", "10_biological_integration",
-               "wgcna_candidate_protein_shortlist", scope,
-               "wgcna_candidate_proteins_all.csv")
+  current_integration("build_candidate_protein_shortlist",
+                      "wgcna_candidate_proteins_all.csv", scope = scope)
 }
 
 testthat::test_that("exported canonical table holds one row per protein identity", {
@@ -633,11 +632,8 @@ testthat::test_that("Tier D rows are FDR-supported and peripheral", {
 })
 
 testthat::test_that("top10-per-module export is exactly the top 10 by abs_kME", {
-  path <- path_results(
-    "tables", "10_biological_integration",
-    "wgcna_candidate_protein_shortlist", "global",
-    "wgcna_top10_per_module.csv"
-  )
+  path <- current_integration("build_candidate_protein_shortlist",
+                              "wgcna_top10_per_module.csv")
   testthat::skip_if_not(file.exists(path), "shortlist has not been generated")
   top10 <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 
@@ -677,8 +673,8 @@ testthat::test_that("dry-run reports inputs and writes nothing", {
                       "build_candidate_protein_shortlist.R")
   testthat::skip_if_not(file.exists(script))
 
-  out_root <- path_results("tables", "10_biological_integration",
-                           "wgcna_candidate_protein_shortlist")
+  # the writer's canonical namespace, all scopes
+  out_root <- path_results("integration", "build_candidate_protein_shortlist")
   before <- if (dir.exists(out_root)) {
     f <- list.files(out_root, recursive = TRUE, full.names = TRUE)
     stats::setNames(file.info(f)$mtime, f)
@@ -899,9 +895,8 @@ testthat::test_that("xlsx_save_valid_workbook writes a well-formed package", {
 # --------------------------------------- generated workbook contract (real)
 
 wcp_workbook_path <- function(scope) {
-  path_results("tables", "10_biological_integration",
-               "wgcna_candidate_protein_shortlist", scope,
-               "wgcna_candidate_proteins_shortlist.xlsx")
+  current_integration("build_candidate_protein_shortlist",
+                      "wgcna_candidate_proteins_shortlist.xlsx", scope = scope)
 }
 
 testthat::test_that("generated workbooks are valid OOXML packages", {
@@ -960,9 +955,7 @@ testthat::test_that("review sheets carry the intended compact content", {
                              .name_repair = "minimal")
   testthat::expect_identical(ncol(hits), ncol(review))
 
-  csv <- path_results("tables", "10_biological_integration",
-                      "wgcna_candidate_protein_shortlist", "neuron_neuropil",
-                      "wgcna_candidate_proteins_all.csv")
+  csv <- wcp_summary_path("neuron_neuropil")
   if (file.exists(csv)) {
     x <- utils::read.csv(csv, stringsAsFactors = FALSE, check.names = FALSE)
     # exactly every FDR-supported protein, tiered or not, with no duplicates
@@ -1018,10 +1011,8 @@ testthat::test_that("empty tier sheets contain no phantom record", {
   # back as a single all-NA record and makes an empty class look populated.
   path <- wcp_workbook_path("neuron_soma")
   testthat::skip_if_not(file.exists(path), "workbook has not been generated")
-  csv <- path_results("tables", "10_biological_integration",
-                      "wgcna_candidate_protein_shortlist", "neuron_soma",
-                      "wgcna_candidate_proteins_all.csv")
-  testthat::skip_if_not(file.exists(csv))
+  csv <- wcp_summary_path("neuron_soma")
+  testthat::skip_if_not(file.exists(csv), "shortlist has not been generated")
   x <- utils::read.csv(csv, stringsAsFactors = FALSE, check.names = FALSE)
 
   for (nm in c("Tier_A1", "Tier_A2", "Tier_B", "Tier_C", "Tier_D")) {
@@ -1032,7 +1023,10 @@ testthat::test_that("empty tier sheets contain no phantom record", {
                                info = nm)
   }
   # an empty sheet says so, above the header, rather than showing a blank row
-  note <- readxl::read_excel(path, sheet = "Tier_A1", range = "A2",
+  tiers <- c("Tier_A1", "Tier_A2", "Tier_B", "Tier_C", "Tier_D")
+  empty <- tiers[vapply(tiers, function(nm) sum(as.logical(x[[sub("Tier_", "is_tier_", nm)]])) == 0L, logical(1))]
+  testthat::skip_if(!length(empty), "no empty tier in this scope")
+  note <- readxl::read_excel(path, sheet = empty[[1]], range = "A2",
                              col_names = FALSE, .name_repair = "minimal")
   testthat::expect_match(as.character(note[[1]][1]), "NONE IN THIS SCOPE",
                          fixed = TRUE)

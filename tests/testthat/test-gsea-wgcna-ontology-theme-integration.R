@@ -8,6 +8,43 @@ testthat::skip_if_not_installed("AnnotationDbi")
 source(repo_path("R", "manuscript_go_theme_utils.R"))
 source(repo_path("R", "gsea_wgcna_concordance_utils.R"))
 
+# The checked-in mapping, read as the pipeline reads it: against the current
+# supermodule membership. It names the primary network's entities, so a tree
+# whose Stage 07 manifest declares provisional labels (the sensitivity tree)
+# skips these checks (helper-wgcna-current-artifacts.R) and tests the lineage
+# proposal it reads instead (below).
+checked_in_theme_mapping <- function() {
+  decl <- wgcna_declared_label_mode("microglia")
+  testthat::skip_if(identical(decl$mode, "provisional"), paste0(
+    "Declared provisional label mode (", decl$declared_by,
+    "): config/gsea_wgcna_theme_module_mapping.csv maps the primary network and is not read here."))
+  contracts <- gww_membership_contract_paths()
+  testthat::skip_if_not(all(file.exists(contracts)), "identity contracts are not built in this tree")
+  gww_read_theme_entity_mapping(
+    testthat::test_path("..", "..", "config", "gsea_wgcna_theme_module_mapping.csv"),
+    gww_read_supermodule_membership(contracts)
+  )
+}
+
+# Fixtures for the membership guard: microglia SM03 = m04 + m08 + m12, SM08 = m07 + m11.
+membership_fixture <- data.frame(
+  dataset = "microglia",
+  module_id = c("WGCNA_m04", "WGCNA_m08", "WGCNA_m12", "WGCNA_m07", "WGCNA_m11"),
+  supermodule_id = c("SM03", "SM03", "SM03", "SM08", "SM08"),
+  stringsAsFactors = FALSE
+)
+mapping_fixture <- function(entity_id, members) {
+  path <- tempfile(fileext = ".csv")
+  utils::write.csv(data.frame(
+    dataset = "microglia", theme_id = "synaptic_signaling_vesicle",
+    entity_level = c("module", "supermodule"), entity_id = c("WGCNA_m04", entity_id),
+    mapping_status = "approved", mapping_rationale = "fixture", annotation_source = "fixture",
+    confidence = "high", approved_for_manuscript_interpretation = TRUE, mapping_role = "primary",
+    member_module_ids = c(NA, members), stringsAsFactors = FALSE
+  ), path, row.names = FALSE, na = "")
+  path
+}
+
 ontology_fixture <- function(ids, descriptions) {
   data.frame(
     dataset = "neuron_neuropil",
@@ -64,9 +101,7 @@ testthat::test_that("QC-review ontology branches cannot become claim evidence", 
 })
 
 testthat::test_that("checked-in theme mappings are composite-key unique", {
-  mapping <- gww_read_theme_entity_mapping(testthat::test_path(
-    "..", "..", "config", "gsea_wgcna_theme_module_mapping.csv"
-  ))
+  mapping <- checked_in_theme_mapping()
   key <- c("dataset", "theme_id", "entity_level", "entity_id")
   testthat::expect_identical(anyDuplicated(mapping[key]), 0L)
   testthat::expect_true(all(
@@ -81,9 +116,7 @@ testthat::test_that("checked-in theme mappings are composite-key unique", {
 })
 
 testthat::test_that("resolved multifaceted mappings retain one WGCNA entity", {
-  mapping <- gww_read_theme_entity_mapping(testthat::test_path(
-    "..", "..", "config", "gsea_wgcna_theme_module_mapping.csv"
-  ))
+  mapping <- checked_in_theme_mapping()
   approved_secondary <- mapping |>
     dplyr::filter(
       .data$mapping_status == "approved",
@@ -116,4 +149,62 @@ testthat::test_that("resolved multifaceted mappings retain one WGCNA entity", {
       mapping$entity_id == "WGCNA_m08" &
       mapping$approved_for_manuscript_interpretation %in% TRUE
   ))
+})
+
+# ---- supermodule membership guard ------------------------------------------
+
+testthat::test_that("checked-in supermodule rows name the current members", {
+  mapping <- checked_in_theme_mapping()
+  sm <- mapping[mapping$entity_level == "supermodule", , drop = FALSE]
+  testthat::expect_gt(nrow(sm), 0L)
+  testthat::expect_true(all(nzchar(sm$member_module_ids)))
+  testthat::expect_true(all(is.na(mapping$member_module_ids[mapping$entity_level == "module"])))
+})
+
+# A provisional tree reads the lineage proposal (PROTEOMICS_GSEA_WGCNA_THEME_MAPPING, by default the
+# output of tools/map_wgcna_module_lineage.R); it must pass the same guard, or concordance stops.
+testthat::test_that("the lineage mapping a provisional tree reads passes the membership guard", {
+  decl <- wgcna_declared_label_mode("microglia")
+  testthat::skip_if_not(identical(decl$mode, "provisional"),
+                        "Reviewed label mode: the checked-in mapping is read and tested above.")
+  path <- Sys.getenv("PROTEOMICS_GSEA_WGCNA_THEME_MAPPING", unset = repo_path(
+    "results", "wgcna", "map_wgcna_module_lineage", "global", "tables", "provisional_theme_module_mapping.csv"))
+  testthat::skip_if_not(file.exists(path), "tools/map_wgcna_module_lineage.R has not been run in this tree")
+  contracts <- gww_membership_contract_paths()
+  testthat::skip_if_not(all(file.exists(contracts)), "identity contracts are not built in this tree")
+  mapping <- gww_read_theme_entity_mapping(path, gww_read_supermodule_membership(contracts))
+  testthat::expect_gt(nrow(mapping), 0L)
+  testthat::expect_true(all(mapping$mapping_status == "provisional_supported"))
+  testthat::expect_false(any(mapping$approved_for_manuscript_interpretation %in% TRUE))
+})
+
+testthat::test_that("an unchanged member set listed in another order is accepted", {
+  x <- gww_read_theme_entity_mapping(mapping_fixture("SM03", "WGCNA_m12; WGCNA_m04;WGCNA_m08"),
+                                     membership_fixture)
+  testthat::expect_equal(nrow(x), 2L)
+})
+
+testthat::test_that("a surviving supermodule ID whose members changed is refused", {
+  testthat::expect_error(
+    gww_read_theme_entity_mapping(mapping_fixture("SM03", "WGCNA_m04;WGCNA_m08"), membership_fixture),
+    "membership changed since review")
+  # the renumbering case: an old ID that now names a different block
+  testthat::expect_error(
+    gww_read_theme_entity_mapping(mapping_fixture("SM08", "WGCNA_m09;WGCNA_m13"), membership_fixture),
+    "membership changed since review")
+})
+
+testthat::test_that("a supermodule ID absent from the current membership is refused", {
+  testthat::expect_error(
+    gww_read_theme_entity_mapping(mapping_fixture("SM09", "WGCNA_m07;WGCNA_m11"), membership_fixture),
+    "absent from the current membership")
+})
+
+testthat::test_that("supermodule rows must state members and the reader needs the membership", {
+  testthat::expect_error(
+    gww_read_theme_entity_mapping(mapping_fixture("SM03", NA), membership_fixture),
+    "need member_module_ids")
+  testthat::expect_error(
+    gww_read_theme_entity_mapping(mapping_fixture("SM03", "WGCNA_m04;WGCNA_m08;WGCNA_m12")),
+    "current supermodule membership")
 })

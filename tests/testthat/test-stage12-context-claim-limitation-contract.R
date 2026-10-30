@@ -104,13 +104,12 @@ testthat::test_that("the neuropil-associated branch states the limitation explic
 })
 
 testthat::test_that("the emitted context table satisfies the contract when present", {
-  out <- testthat::test_path(
-    "..", "..", "results", "reviewer_audit",
-    "microglia_wgcna_nature_readiness",
-    "module_biological_context_validation.csv"
-  )
+  # current canonical Stage-12 output (analysis/wgcna/audit_microglia_module_claims.R)
+  out <- current_wgcna("audit_microglia_module_claims", "global",
+                       "module_biological_context_validation.csv")
   testthat::skip_if_not(file.exists(out), "Stage-12 context table unavailable")
   context <- utils::read.csv(out, check.names = FALSE)
+  testthat::expect_setequal(context$ModuleID, current_network_shape("microglia")$modules)
   testthat::expect_true(all(nzchar(context$claim_limitation)))
   testthat::expect_true(all(grepl(
     CLAIM_LIMIT_PATTERN, context$claim_limitation, ignore.case = TRUE

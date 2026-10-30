@@ -55,32 +55,47 @@ testthat::test_that("a proposal is never treated as an active reviewed registry"
 
 testthat::test_that("the generated proposal files on disk are inactive", {
   for (ds in c("neuron_neuropil", "neuron_soma", "microglia")) {
-    p <- path_results("reviewer_audit", "wgcna_label_adjudication",
-                      paste0("proposed_", ds, "_reviewed_labels.csv"))
+    p <- current_wgcna("adjudicate_module_labels", "global",
+                       paste0("proposed_", ds, "_reviewed_labels.csv"))
     if (!file.exists(p)) next
     r <- utils::read.csv(p, stringsAsFactors = FALSE)
     testthat::expect_false(wal_is_active_reviewed(r), info = ds)
   }
   # Part-29 finalization: neuron_neuropil now has a registry, but it must
   # contain ONLY the single adjudicated module and must never assert a
-  # cell-type identity. neuron_soma still has none. This keeps the original
-  # guard - no bulk auto-activation - while allowing the reviewed entry.
-  testthat::expect_false(
-    file.exists(repo_path("config", "wgcna_labels", "neuron_soma.csv")))
+  # cell-type identity. This keeps the original guard - no bulk
+  # auto-activation - while allowing the reviewed entries.
+  # neuron_soma carries reviewed labels for SOME entities (m01, m03, SM04 since
+  # 2026-10-27), applied by Stage 07 in reviewed mode: every row is a finished
+  # review, and a supermodule row names the current members it was reviewed for.
+  sp <- repo_path("config", "wgcna_labels", "neuron_soma.csv")
+  if (file.exists(sp)) {
+    source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+    s <- readr::read_csv(sp, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
+    testthat::expect_true(wal_is_active_reviewed(s))
+    testthat::expect_true(all(reviewed_rows_are_complete(s)))
+    testthat::expect_lt(nrow(s), current_network_shape("neuron_soma")$n_identities)
+    testthat::expect_silent(wgcna_validate_partial_reviewed_registry(
+      s, "neuron_soma", current_network_shape("neuron_soma")$member_map))
+  }
   np <- repo_path("config", "wgcna_labels", "neuron_neuropil.csv")
   if (file.exists(np)) {
     r <- utils::read.csv(np, stringsAsFactors = FALSE)
+    # the Part-29 adjudication: exactly one module, the myelin-associated m11
     testthat::expect_identical(nrow(r), 1L)
     testthat::expect_identical(r$entity_id, "WGCNA_m11")
-    testthat::expect_identical(r$adjudication_status, "reviewed")
-    testthat::expect_true(grepl("myelin-associated",
-                                r$reviewed_biological_label, fixed = TRUE))
+    testthat::expect_true(grepl("myelin-associated", r$reviewed_biological_label, fixed = TRUE))
+    testthat::expect_true(all(r$level == "module"))
+    testthat::expect_true(all(r$entity_id %in% current_network_shape("neuron_neuropil")$modules))
+    testthat::expect_true(all(r$adjudication_status == "reviewed"))
+    testthat::expect_true(wal_is_active_reviewed(r))
+    testthat::expect_true(all(reviewed_rows_are_complete(r)))
     # a co-abundance module may be named for its protein composition, never
     # for a cell type it cannot establish
-    testthat::expect_false(grepl("oligodendrocyte",
-                                 r$reviewed_biological_label, ignore.case = TRUE))
-    testthat::expect_false(grepl("oligodendrocyte",
-                                 r$reviewed_short_label, ignore.case = TRUE))
+    testthat::expect_false(any(grepl("oligodendrocyte",
+                                     r$reviewed_biological_label, ignore.case = TRUE)))
+    testthat::expect_false(any(grepl("oligodendrocyte",
+                                     r$reviewed_short_label, ignore.case = TRUE)))
   }
 })
 
@@ -264,7 +279,7 @@ testthat::test_that("the claims-table resolver accepts both entity column spelli
 })
 
 testthat::test_that("the real claims table carries one label per entity with provenance", {
-  p <- path_results("tables", "biological_claims_table.csv")
+  p <- current_claims_table()
   testthat::skip_if_not(file.exists(p), "claims table has not been generated")
   x <- utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
 
@@ -285,13 +300,28 @@ testthat::test_that("the real claims table carries one label per entity with pro
 })
 
 testthat::test_that("raw Stage-01 failures never surface as canonical displays", {
-  p <- path_results("tables", "biological_claims_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  p <- current_claims_table()
+  testthat::skip_if_not(file.exists(p), "claims table has not been generated")
   x <- utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
   # these are known Stage-01 microglia labels that the reviewed registry replaces
   for (bad in c("Zona Pellucida", "Binding Sperm", "Skin Development")) {
     testthat::expect_false(any(grepl(bad, x$canonical_display_label, ignore.case = TRUE)),
                            info = bad)
+  }
+  # where the registry is the declared source, the display IS the reviewed label
+  cols <- wal_claims_entity_columns(x)
+  from_registry <- x$canonical_label_source %in% "active_reviewed_registry" &
+    x$dataset == "microglia"
+  if (identical(wgcna_declared_label_mode("microglia")$mode, "provisional")) {
+    # in declared provisional mode no row may claim an active reviewed registry
+    testthat::expect_false(any(from_registry))
+  } else if (any(from_registry)) {
+    reg <- utils::read.csv(require_reviewed_registry("microglia"), stringsAsFactors = FALSE)
+    rows <- x[from_registry, , drop = FALSE]
+    want <- reg$reviewed_biological_label[match(
+      paste(rows[[cols$level]], rows[[cols$id]]), paste(reg$level, reg$entity_id))]
+    testthat::expect_false(anyNA(want))
+    testthat::expect_identical(rows$canonical_display_label, want)
   }
 })
 
@@ -300,7 +330,7 @@ testthat::test_that("raw Stage-01 failures never surface as canonical displays",
 # =====================================================================
 
 wal_approval_path <- function(f) {
-  path_results("reviewer_audit", "wgcna_label_approval", f)
+  current_wgcna("build_module_label_registry", "global", f)
 }
 
 testthat::test_that("the approval table covers every entity exactly once", {
@@ -311,25 +341,24 @@ testthat::test_that("the approval table covers every entity exactly once", {
   testthat::expect_identical(anyDuplicated(paste(a$dataset, a$level, a$entity_id)), 0L)
   testthat::expect_true(all(is.na(a$human_decision) | a$human_decision == ""))
 
+  testthat::expect_setequal(unique(a$dataset), wgcna_test_datasets)
   for (ds in unique(a$dataset)) {
-    ct <- path_results("tables", "06_modules_WGCNA", "identity_contract", ds,
-                       "WGCNA_module_supermodule_membership_contract.csv")
-    if (!file.exists(ct)) next
-    m <- utils::read.csv(ct, stringsAsFactors = FALSE)
+    m <- read_current_csv(current_wgcna("build_module_identity_contract", ds,
+                                        "WGCNA_module_supermodule_membership_contract.csv"))
     sub <- a[a$dataset == ds, , drop = FALSE]
     # IDs unchanged and complete
     testthat::expect_setequal(sub$entity_id[sub$level == "module"], unique(m$module_id))
     testthat::expect_setequal(sub$entity_id[sub$level == "supermodule"],
                               unique(m$supermodule_id))
   }
-  # every proposed label is non-empty, and mixed/unresolved is a legal value
+  # every proposed label is non-empty (mixed/unresolved is a legal value; its
+  # agreement with the adjudicated action is checked below)
   testthat::expect_true(all(nzchar(a$proposed_final_label)))
-  testthat::expect_true(any(grepl("unresolved", a$proposed_final_label)))
 })
 
 testthat::test_that("nothing low-confidence or mixed is recommended for activation", {
   p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "approval table has not been generated")
   a <- utils::read.csv(p, stringsAsFactors = FALSE)
   rec <- a[a$recommended_for_activation %in% TRUE, , drop = FALSE]
   testthat::expect_false(any(rec$confidence == "low"))
@@ -341,7 +370,7 @@ testthat::test_that("nothing low-confidence or mixed is recommended for activati
 
 testthat::test_that("no phenotype field reaches the approval table", {
   p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "approval table has not been generated")
   a <- utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
   testthat::expect_silent(wla_assert_phenotype_blind(a, "approval table"))
 })
@@ -387,7 +416,7 @@ testthat::test_that("the approval script writes the rules but activates nothing"
 
 testthat::test_that("the action always agrees with the adjudicated label", {
   p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "approval table has not been generated")
   a <- utils::read.csv(p, stringsAsFactors = FALSE)
   lab <- tolower(trimws(a$proposed_final_label))
   act <- toupper(trimws(a$adjudication_action))
@@ -402,7 +431,7 @@ testthat::test_that("the action always agrees with the adjudicated label", {
 
 testthat::test_that("a manual override keeps the algorithmic class as provenance", {
   p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "approval table has not been generated")
   a <- utils::read.csv(p, stringsAsFactors = FALSE)
   testthat::expect_true(all(c("algorithmic_evidence_class",
                               "evidence_class_source") %in% names(a)))
@@ -416,6 +445,17 @@ testthat::test_that("a manual override keeps the algorithmic class as provenance
     # an override must never be a silent upgrade: it has to carry a rationale
     testthat::expect_true(all(nchar(ov$rationale) > 80))
   }
+})
+
+testthat::test_that("no curated named label at high or moderate confidence is refused activation", {
+  p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
+  testthat::skip_if_not(file.exists(p), "approval table not generated")
+  a <- utils::read.csv(p, stringsAsFactors = FALSE, check.names = FALSE)
+  cur <- a[a$evidence_class_source == "manual_adjudication" &
+             !tolower(a$proposed_final_label) %in% c("mixed / unresolved", "unresolved") &
+             a$confidence %in% c("high", "moderate"), , drop = FALSE]
+  testthat::expect_true(all(as.logical(cur$recommended_for_activation)),
+                        info = paste(cur$dataset, cur$entity_id)[!as.logical(cur$recommended_for_activation)])
 })
 
 testthat::test_that("every curated entity carries a substantive rationale", {
@@ -440,10 +480,18 @@ testthat::test_that("KEEP_ACTIVE_REVIEWED can never be recommended", {
 
 testthat::test_that("a dataset with an active registry proposes no replacements", {
   p <- wal_approval_path("WGCNA_final_label_approval_table.csv")
-  testthat::skip_if_not(file.exists(p))
+  testthat::skip_if_not(file.exists(p), "approval table has not been generated")
   a <- utils::read.csv(p, stringsAsFactors = FALSE)
   rev <- a[a$adjudication_action %in% "KEEP_ACTIVE_REVIEWED", , drop = FALSE]
-  testthat::skip_if(nrow(rev) == 0L)
+  if (identical(wgcna_declared_label_mode("microglia")$mode, "provisional")) {
+    # no reviewed registry is in force, so nothing may be kept as active-reviewed
+    testthat::expect_false(any(rev$dataset == "microglia"))
+    testthat::skip("Declared provisional label mode: no active reviewed microglia registry to keep.")
+  }
+  # reviewed mode: every microglia entity is kept from the active registry
+  testthat::expect_setequal(
+    paste(rev$level, rev$entity_id)[rev$dataset == "microglia"],
+    paste(a$level, a$entity_id)[a$dataset == "microglia"])
 
   # the proposal must BE the reviewed label, not a replacement for it
   testthat::expect_identical(rev$proposed_final_label, rev$current_active_label)

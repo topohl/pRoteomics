@@ -108,5 +108,8 @@ is the only interface the manuscript repository reads.
   design. Never a dependency of a publication artefact.
 - `90_testing/`, `99_deprecated/`, `*/legacy/` — retained as history. No
   producer layer sources them, and a test enforces that.
-- `audits/wgcna/proteomics_wgcna_downstream_audit.R` — a one-off audit that happens to sit at
-  the repository root. It is in no registry step.
+- `audits/wgcna/proteomics_wgcna_downstream_audit.R` — retired historical audit (2026-07-22,
+  pre-renormalisation network). Its checks pin that state and it reads pre-migration paths, so it is
+  in no registry step and is not an acceptance check; it refuses to run unless
+  PROTEOMICS_RUN_HISTORICAL_AUDIT=1. Its report is kept as
+  `audits/wgcna/proteomics_wgcna_downstream_audit_2026-07-22_report.txt`.

@@ -244,6 +244,11 @@ load_protein_da <- function(dataset) {
 # in ProteinGroupID space. Descriptive context only - see guardrails above.
 load_leading_edge <- function() {
   path <- leading_edge_path()
+  # Optional context, but only from a completed concordance run (manifests/run_status.yml):
+  # a failed rerun leaves the previous run's table in place.
+  if (file.exists(path)) {
+    integration_require_completed_run("test_enrichment_module_concordance", path, consumer = SCRIPT_ID)
+  }
   status <- read_csv_optional(
     path, dataset = "global", evidence_domain = "gsea_wgcna_concordance",
     input_type = "program_specific_leading_edge_module_overlap.csv",

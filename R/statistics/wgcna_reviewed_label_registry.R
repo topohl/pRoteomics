@@ -40,6 +40,15 @@ wgcna_clean_registry_text <- function(x) {
   x
 }
 
+# TRUE for rows marked reviewed whose review is not finished: a placeholder reviewer
+# ("pending review ...", "not yet reviewed", a carry-over) or manual_review_required TRUE.
+wgcna_reviewed_rows_unfinished <- function(registry) {
+  reviewed <- as.character(registry$adjudication_status) %in% "reviewed"
+  placeholder <- grepl("pending|not yet reviewed|carry-over", as.character(registry$reviewer), ignore.case = TRUE)
+  open_flag <- as.logical(registry$manual_review_required) %in% TRUE
+  reviewed & (placeholder | open_flag)
+}
+
 wgcna_normalize_current_member_map <- function(member_map, dataset) {
   if (is.null(member_map) || !is.data.frame(member_map) || !nrow(member_map)) {
     stop("Current WGCNA module-to-supermodule member map is missing or empty.", call. = FALSE)
@@ -137,6 +146,12 @@ wgcna_validate_reviewed_registry <- function(registry, dataset, member_map,
       any(is.na(wgcna_clean_registry_text(registry$proposal_prepared_by)))) {
     stop("Reviewed registry must retain separate reviewer and proposal_prepared_by provenance.", call. = FALSE)
   }
+  # A reviewed row records a finished review: a named reviewer, and no open review flag.
+  unfinished <- wgcna_reviewed_rows_unfinished(registry)
+  if (any(unfinished)) {
+    stop("Reviewed registry rows must name their reviewer and must not still require manual review: ",
+         paste(registry$entity_id[unfinished], collapse = ", "), ".", call. = FALSE)
+  }
   required_text <- c("reviewed_biological_label", "reviewed_short_label", "subcellular_context", "roi_context", "label_confidence", "rationale")
   for (nm in required_text) {
     if (any(is.na(wgcna_clean_registry_text(registry[[nm]])))) stop("Reviewed registry contains empty ", nm, " values.", call. = FALSE)
@@ -195,6 +210,104 @@ wgcna_read_reviewed_registry <- function(dataset, member_map,
   registry <- readr::read_csv(path, show_col_types = FALSE, progress = FALSE)
   wgcna_validate_reviewed_registry(registry, dataset, member_map, allow_provisional = allow_provisional)
   registry
+}
+
+# ------------------------------------------------- partial reviewed registries
+# Datasets whose config/wgcna_labels/<dataset>.csv holds reviewed labels for SOME entities, applied
+# by Stage 07 over the automatic labels (reviewed label mode only). neuron_soma: m01, m03 and SM04
+# (reviewed 2026-10-27). The neuron_neuropil file (m11) feeds the claims and approval tables only.
+wgcna_partial_registry_datasets <- function() "neuron_soma"
+
+# The reviewed-registry columns plus member_ModuleIDs: the member modules a supermodule row was
+# reviewed for (";"-separated, any order); empty on module rows.
+wgcna_partial_registry_columns <- function() c(wgcna_reviewed_registry_columns(), "member_ModuleIDs")
+
+wgcna_canonical_member_set <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  vapply(strsplit(x, ";", fixed = TRUE), function(v) {
+    v <- trimws(v)
+    paste(sort(v[nzchar(v)], method = "radix"), collapse = ";")
+  }, character(1))
+}
+
+wgcna_validate_partial_reviewed_registry <- function(registry, dataset, member_map) {
+  if (!is.data.frame(registry) || !nrow(registry)) stop("Partial reviewed registry is empty.", call. = FALSE)
+  if (!identical(names(registry), wgcna_partial_registry_columns())) {
+    stop("Partial reviewed registry columns must be: ", paste(wgcna_partial_registry_columns(), collapse = ", "), ".", call. = FALSE)
+  }
+  r <- dplyr::mutate(registry, dplyr::across(dplyr::everything(), as.character))
+  current <- wgcna_normalize_current_member_map(member_map, dataset)
+  if (any(r$dataset != dataset)) stop("Partial reviewed registry contains rows for the wrong dataset.", call. = FALSE)
+  if (anyDuplicated(r[c("level", "entity_id")])) stop("Partial reviewed registry has duplicate level + entity_id keys.", call. = FALSE)
+  if (any(r$adjudication_status != "reviewed")) stop("Partial reviewed registry rows must be adjudication_status = reviewed.", call. = FALSE)
+  if (any(is.na(wgcna_clean_registry_text(r$reviewer))) || any(is.na(wgcna_clean_registry_text(r$proposal_prepared_by)))) {
+    stop("Partial reviewed registry must retain separate reviewer and proposal_prepared_by provenance.", call. = FALSE)
+  }
+  unfinished <- wgcna_reviewed_rows_unfinished(registry)
+  if (any(unfinished)) {
+    stop("Partial reviewed registry rows must name their reviewer and must not still require manual review: ",
+         paste(r$entity_id[unfinished], collapse = ", "), ".", call. = FALSE)
+  }
+  if (any(!r$label_confidence %in% c("high", "moderate", "low"))) {
+    stop("Partial reviewed registry label_confidence must be high, moderate or low.", call. = FALSE)
+  }
+  for (nm in c("reviewed_biological_label", "reviewed_short_label", "subcellular_context", "roi_context", "rationale", "review_date")) {
+    if (any(is.na(wgcna_clean_registry_text(r[[nm]])))) stop("Partial reviewed registry contains empty ", nm, " values.", call. = FALSE)
+  }
+  if (any(grepl("\\b(SUS|RES|CON|higher|lower|increased?|decreased?|up-?regulated|down-?regulated)\\b",
+                r$reviewed_biological_label, ignore.case = TRUE, perl = TRUE))) {
+    stop("Biological labels must not include group-effect direction.", call. = FALSE)
+  }
+  if (any(!r$level %in% c("module", "supermodule")) ||
+      any(!r$entity_id[r$level == "module"] %in% current$ModuleID) ||
+      any(!r$entity_id[r$level == "supermodule"] %in% current$SupermoduleID)) {
+    stop("Partial reviewed registry names entities absent from the current member map of ", dataset, ".", call. = FALSE)
+  }
+  declared <- wgcna_canonical_member_set(r$member_ModuleIDs)
+  if (any(r$level == "module" & nzchar(declared))) stop("Module rows must leave member_ModuleIDs empty.", call. = FALSE)
+  sm <- r$level == "supermodule"
+  if (any(sm)) {
+    now <- current |>
+      dplyr::group_by(.data$SupermoduleID) |>
+      dplyr::summarise(now = paste(sort(.data$ModuleID, method = "radix"), collapse = ";"), .groups = "drop")
+    now_sm <- now$now[match(r$entity_id[sm], now$SupermoduleID)]
+    moved <- !nzchar(declared[sm]) | is.na(now_sm) | declared[sm] != now_sm
+    if (any(moved)) {
+      stop("Reviewed supermodule label made for other members: ",
+           paste0(dataset, "/", r$entity_id[sm][moved], " (declared ", declared[sm][moved], "; current ",
+                  now_sm[moved], ")", collapse = ", "), ". Re-review these rows.", call. = FALSE)
+    }
+  }
+  invisible(TRUE)
+}
+
+wgcna_read_partial_reviewed_registry <- function(dataset, member_map,
+                                                 path = file.path("config", "wgcna_labels", paste0(dataset, ".csv"))) {
+  if (!file.exists(path)) stop("Missing partial reviewed WGCNA label registry: ", path, call. = FALSE)
+  registry <- readr::read_csv(path, col_types = readr::cols(.default = readr::col_character()), progress = FALSE)
+  wgcna_validate_partial_reviewed_registry(registry, dataset, member_map)
+  registry
+}
+
+# Reviewed labels replace the automatic label, confidence, review flag and rationale of the listed
+# entities in the automatic Stage 07 lookup (schema wgcna_final_label_lookup); other rows are unchanged.
+wgcna_apply_reviewed_overrides <- function(lookup, registry, member_map, dataset, label_source) {
+  wgcna_validate_partial_reviewed_registry(registry, dataset, member_map)
+  r <- dplyr::mutate(registry, dplyr::across(dplyr::everything(), as.character))
+  k <- match(paste(lookup$level, lookup$entity_id), paste(r$level, r$entity_id))
+  hit <- !is.na(k)
+  if (sum(hit) != nrow(r)) stop("Reviewed overrides name entities absent from the Stage 07 lookup of ", dataset, ".", call. = FALSE)
+  lookup$best_data_driven_label[hit] <- r$reviewed_biological_label[k[hit]]
+  lookup$parent_program[hit] <- r$reviewed_short_label[k[hit]]   # the automatic program would name the retired label
+  lookup$final_plot_label[hit] <- paste0(lookup$entity_id[hit], " · ", r$reviewed_short_label[k[hit]])
+  lookup$label_confidence[hit] <- r$label_confidence[k[hit]]
+  lookup$label_basis[hit] <- paste0("reviewed_registry=", label_source, "; reviewer=", r$reviewer[k[hit]],
+                                    "; review_date=", r$review_date[k[hit]])
+  lookup$label_score[hit] <- NA_real_
+  lookup$manual_review_required[hit] <- as.logical(r$manual_review_required[k[hit]])
+  lookup$label_rationale[hit] <- r$rationale[k[hit]]
+  lookup
 }
 
 # A provisional registry, in the reviewed-registry schema, from this run's automatic labels.

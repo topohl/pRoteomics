@@ -74,6 +74,8 @@ if (isTRUE(run$dry_run)) {
   dry_run_inputs(SCRIPT_ID, inputs)
   quit(status = 0, save = "no")
 }
+# only the tables of a completed inventories run
+integration_require_completed_run("build_display_selection_inventories", unlist(inputs), consumer = SCRIPT_ID)
 
 rd <- function(p) {
   if (!file.exists(p)) {

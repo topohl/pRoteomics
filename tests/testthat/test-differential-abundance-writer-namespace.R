@@ -14,7 +14,7 @@ source(repo_path("R", "differential_abundance_paths.R"))
 # It also holds two artifacts that other domains read as state, the
 # clusterProfiler and compareGO manifests. Those resolve through two central
 # functions, so the whole cross-domain surface turns on those two resolving
-# normalized-first and still finding the historical copy today.
+# normalized-first, with the historical copy only as a fallback.
 
 WRITERS <- c("annotate_neuropil_reference", "audit_gsea_protein_direction",
              "audit_stress_response_biology", "build_go_program_atlas",
@@ -290,17 +290,20 @@ testthat::test_that("an empty normalized directory does not shadow the historica
   })
 })
 
-testthat::test_that("today both shared manifests still resolve to the historical copy", {
+testthat::test_that("where the producer has run, both shared manifests resolve to the normalized copy", {
+  ## The Phase 6G.4 premise (nothing rerun, so the historical copy answers) no
+  ## longer holds. The fallback itself is covered by the synthetic-root tests
+  ## above; on the live tree the normalized copy must win wherever it exists.
   source(repo_path("R", "enrichment_io.R"))
   for (ds in c("neuron_neuropil", "neuron_soma", "microglia")) {
-    p <- canonical_clusterprofiler_manifest_path(ds)
-    q <- canonical_comparego_manifest_path(ds)
-    ## nothing has been rerun, so the historical copy is what exists
-    if (file.exists(p)) {
-      testthat::expect_true(grepl("data/processed", p, fixed = TRUE), info = ds)
-    }
-    if (file.exists(q)) {
-      testthat::expect_true(grepl("data/processed", q, fixed = TRUE), info = ds)
+    for (x in list(
+      list(got = canonical_clusterprofiler_manifest_path(ds), f = "clusterProfiler_manifest.csv",
+           o = "run_clusterprofiler_enrichment", l = "clusterProfiler"),
+      list(got = canonical_comparego_manifest_path(ds), f = "compareGO_input_manifest.csv",
+           o = "compare_go_enrichment", l = "compareGO"))) {
+      norm <- unname(differential_abundance_state_candidates(x$f, x$o, ds, x$l)[["normalized"]])
+      if (!file.exists(norm)) next
+      testthat::expect_identical(x$got, norm, info = paste(ds, x$f))
     }
   }
 })

@@ -30,6 +30,7 @@
 
 source(file.path("R", "paths.R"))
 source(repo_path("R", "normalisation_contract.R"))
+source(repo_path("R", "integration_utils.R"))
 assert_normalisation_decided("tools/export_publication_source_data.R")  # waits for the normalisation decision (config/normalisation.yml)
 
 SOURCE_ROOT <- path_results("source_data", "manuscript")
@@ -88,6 +89,19 @@ for (i in seq_len(nrow(canonical))) {
   files <- list.files(src_dir, recursive = TRUE, full.names = FALSE)
   # Sources older than the analysis version in the working tree belong to the previous version: refuse them.
   assert_sources_current(file.path(src_dir, files), "tools/export_publication_source_data.R")
+  # An integration step's source data are taken only from its completed run (manifests/run_status.yml;
+  # a failed rerun leaves the previous run's files in place), and each file must be a table that run wrote.
+  step <- regmatches(canonical$canonical_source_data[i],
+                     regexec("^results/integration/([^/]+)/([^/]+)/tables/source_data$", canonical$canonical_source_data[i]))[[1]]
+  if (length(step) == 3L) {
+    status <- integration_require_completed_run(step[[2]], consumer = "tools/export_publication_source_data.R",
+                                                scope = step[[3]])
+    for (f in files) {
+      if (!identical(status$tables_sha256[[basename(f)]], unname(tools::sha256sum(file.path(src_dir, f)))))
+        stop("tools/export_publication_source_data.R: ", file.path(src_dir, f),
+             " is not a table of the completed ", step[[2]], " run.", call. = FALSE)
+    }
+  }
   for (f in files) {
     from <- file.path(src_dir, f)
     to <- file.path(dst_dir, f)

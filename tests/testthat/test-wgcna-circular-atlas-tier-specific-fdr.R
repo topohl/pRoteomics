@@ -1,7 +1,19 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
 test_root <- function(...) {
-  testthat::test_path("..", "..", ...)
+  repo_path(...)
+}
+
+# Current canonical producers:
+#   circular atlas sources  analysis/integration/render_module_circular_atlas.R
+#   Stage 07 handoff/lookup analysis/wgcna/summarize_module_interpretation.R
+#   Stage 05 values         analysis/wgcna/test_module_phenotypes.R
+circular_source_dir <- function() {
+  file.path("results", "integration", "render_module_circular_atlas", "global",
+            "tables", "source_data")
+}
+stage07_artifact <- function(dataset, filename) {
+  current_wgcna("summarize_module_interpretation", dataset, filename)
 }
 
 read_circular_csv <- function(...) {
@@ -14,10 +26,14 @@ read_circular_csv <- function(...) {
 }
 
 read_corrected_local_handoff <- function(path) {
-  data <- utils::read.csv(
-    path, check.names = FALSE, stringsAsFactors = FALSE,
-    na.strings = c("", "NA", "NaN", "NULL")
-  )
+  # Read with the producer's parser. utils::read.csv() is not correctly rounded
+  # for long decimals: in the sensitivity tree it returned 0.0062899380388163496
+  # for the text the circular atlas (readr) reads as 0.0062899380388163400, which
+  # breaks the exact (tolerance = 0) comparisons below.
+  data <- as.data.frame(readr::read_csv(
+    path, show_col_types = FALSE, progress = FALSE, guess_max = Inf,
+    na = c("", "NA", "NaN", "NULL")
+  ))
   canonical <- data$independent_hypothesis %in% TRUE &
     data$claim_entity_role != "compatibility_alias" &
     data$test_type != "conditional_interaction_followup"
@@ -64,15 +80,9 @@ testthat::test_that("live handoffs reconstruct explicit supermodule display sema
   source(repo_path("R", "paths.R"))
   source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   for (dataset in c("neuron_neuropil", "neuron_soma", "microglia")) {
-    handoff <- read_corrected_local_handoff(path_results(
-      "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-      "WGCNA_inferential_handoff.csv"
-    ))
+    handoff <- read_corrected_local_handoff(stage07_artifact(dataset, "WGCNA_inferential_handoff.csv"))
     lookup <- readr::read_csv(
-      path_results(
-        "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-        "WGCNA_final_label_lookup.csv"
-      ),
+      stage07_artifact(dataset, "WGCNA_final_label_lookup.csv"),
       show_col_types = FALSE, progress = FALSE
     )
     super <- lookup |>
@@ -110,10 +120,7 @@ testthat::test_that("live handoffs reconstruct explicit supermodule display sema
 })
 
 testthat::test_that("circular group-effect plotting sources retain complete effects and tier metadata", {
-  source_dir <- file.path(
-    "results", "source_data", "10_biological_integration",
-    "wgcna_circular_atlas", "global"
-  )
+  source_dir <- circular_source_dir()
   required <- c(
     "analysis_tier", "contrast", "effect_scope", "spatial_unit",
     "independent_hypothesis", "estimate", "SE", "p_value",
@@ -245,10 +252,7 @@ testthat::test_that("circular heatmap estimates retain exact handoff source rows
   source(repo_path("R", "paths.R"))
   source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
-  source_dir <- file.path(
-    "results", "source_data", "10_biological_integration",
-    "wgcna_circular_atlas", "global"
-  )
+  source_dir <- circular_source_dir()
 
   for (level in c("supermodule", "module")) {
     circular <- read_circular_csv(
@@ -263,19 +267,13 @@ testthat::test_that("circular heatmap estimates retain exact handoff source rows
     )
     source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
       handoff <- read_corrected_local_handoff(
-        path_results(
-          "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-          "WGCNA_inferential_handoff.csv"
-        )
+        stage07_artifact(dataset, "WGCNA_inferential_handoff.csv")
       )
       if (level == "module") {
         handoff[handoff$entity_level == "module", , drop = FALSE]
       } else {
         lookup <- readr::read_csv(
-          path_results(
-            "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-            "WGCNA_final_label_lookup.csv"
-          ),
+          stage07_artifact(dataset, "WGCNA_final_label_lookup.csv"),
           show_col_types = FALSE, progress = FALSE
         )
         super <- lookup |>
@@ -344,10 +342,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
   source(repo_path("R", "paths.R"))
   source(repo_path("R", "wgcna_group_effect_consumer_utils.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
-  source_dir <- file.path(
-    "results", "source_data", "10_biological_integration",
-    "wgcna_circular_atlas", "global"
-  )
+  source_dir <- circular_source_dir()
   circular <- read_circular_csv(
     source_dir, "wgcna_circular_global_supermodule_support_source.csv"
   )
@@ -387,16 +382,10 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
 
   source_rows <- dplyr::bind_rows(lapply(datasets, function(dataset) {
     handoff <- read_corrected_local_handoff(
-      path_results(
-        "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-        "WGCNA_inferential_handoff.csv"
-      )
+      stage07_artifact(dataset, "WGCNA_inferential_handoff.csv")
     )
     lookup <- readr::read_csv(
-      path_results(
-        "tables", "06_modules_WGCNA", "interpretable_summary", dataset,
-        "WGCNA_final_label_lookup.csv"
-      ),
+      stage07_artifact(dataset, "WGCNA_final_label_lookup.csv"),
       show_col_types = FALSE, progress = FALSE
     )
     super <- lookup |>
@@ -478,10 +467,7 @@ testthat::test_that("outer support track uses exact handoff FDR families", {
 testthat::test_that("local standardized effects use exact Stage 05 animal-spatial response subsets", {
   source(repo_path("R", "paths.R"))
   datasets <- c("neuron_neuropil", "neuron_soma", "microglia")
-  source_dir <- file.path(
-    "results", "source_data", "10_biological_integration",
-    "wgcna_circular_atlas", "global"
-  )
+  source_dir <- circular_source_dir()
   circular <- dplyr::bind_rows(lapply(
     c("supermodule", "module"),
     function(level) {
@@ -500,10 +486,8 @@ testthat::test_that("local standardized effects use exact Stage 05 animal-spatia
   )
   response_values <- dplyr::bind_rows(lapply(datasets, function(dataset) {
     readr::read_csv(
-      path_results(
-        "tables", "06_modules_WGCNA", "group_effects", dataset,
-        "WGCNA_group_effect_animal_spatial_unit_values.csv"
-      ),
+      current_wgcna("test_module_phenotypes", dataset,
+                    "WGCNA_group_effect_animal_spatial_unit_values.csv"),
       show_col_types = FALSE, progress = FALSE
     ) |>
       dplyr::filter(
@@ -605,10 +589,7 @@ testthat::test_that("local standardized effects use exact Stage 05 animal-spatia
 })
 
 testthat::test_that("standardized circular SVG and PDF outputs exist", {
-  figure_dir <- test_root(
-    "results", "figures", "10_biological_integration",
-    "wgcna_circular_atlas", "global"
-  )
+  figure_dir <- current_integration("render_module_circular_atlas", child = "plots")
   stems <- c(
     "wgcna_circular_heatmap_all_datasets",
     "wgcna_circular_heatmap_neuron_neuropil",

@@ -1825,6 +1825,12 @@ make_dataset_summary <- function(ds) {
   if (!label_mode %in% c("reviewed", "provisional")) stop("PROTEOMICS_WGCNA_LABEL_MODE must be reviewed or provisional.", call. = FALSE)
   use_registry <- identical(ds, "microglia")
   registry_source <- NA_character_
+  # Reviewed labels for SOME entities of a dataset (wgcna_partial_registry_datasets(): neuron_soma
+  # m01, m03 and SM04 since 2026-10-27) replace those automatic labels in reviewed mode only; in
+  # provisional mode the file names the IDs of the primary network and is not read.
+  partial_registry_source <- file.path("config", "wgcna_labels", paste0(ds, ".csv"))
+  use_partial_registry <- !use_registry && identical(label_mode, "reviewed") &&
+    ds %in% wgcna_partial_registry_datasets() && file.exists(repo_path(partial_registry_source))
   if (use_registry && identical(label_mode, "provisional")) {
     registry_source <- Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY", unset = "")
     if (nzchar(registry_source)) {
@@ -1844,10 +1850,13 @@ make_dataset_summary <- function(ds) {
     reviewed_registry <- wgcna_read_reviewed_registry(ds, current_member_map)
     label_contract_version <- paste0(ds, "_wgcna_reviewed_labels_v1")
   }
-  label_status <- if (!use_registry) "automatic_unreviewed" else unique(reviewed_registry$adjudication_status)
+  label_status <- if (use_registry) unique(reviewed_registry$adjudication_status) else
+    if (use_partial_registry) "automatic_with_reviewed_overrides" else "automatic_unreviewed"
   readr::write_csv(tibble::tibble(
     dataset = ds, label_mode = label_mode, label_review_status = label_status,
-    label_source = if (use_registry) registry_source else "automatic labels (WGCNA_final_label_lookup.csv)"
+    label_source = if (use_registry) registry_source else if (use_partial_registry)
+      paste0("automatic labels with reviewed overrides from ", partial_registry_source) else
+      "automatic labels (WGCNA_final_label_lookup.csv)"
   ), file.path(paths$manifests, "label_review_status.csv"))
   if (use_registry) {
     super_evidence <- super_annot
@@ -1884,6 +1893,13 @@ make_dataset_summary <- function(ds) {
     wgcna_validate_canonical_lookup(final_label_lookup, ds, current_member_map)
   } else {
     final_label_lookup <- wgcna_build_final_label_lookup(label_candidates, module_join, super_join, dataset = ds)
+    if (use_partial_registry) {
+      final_label_lookup <- wgcna_apply_reviewed_overrides(
+        final_label_lookup,
+        wgcna_read_partial_reviewed_registry(ds, current_member_map, path = repo_path(partial_registry_source)),
+        current_member_map, ds, label_source = partial_registry_source
+      )
+    }
     wgcna_validate_label_lookup(final_label_lookup)
   }
   validate_table_schema(label_candidates, "wgcna_label_candidates", strict = TRUE)

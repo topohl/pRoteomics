@@ -4,13 +4,17 @@ source(testthat::test_path("..", "..", "R", "paths.R"))
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_identity_contract_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 identity_test_datasets <- c("neuron_soma", "neuron_neuropil", "microglia")
 
+# Current artifacts only (tests/testthat/helper-wgcna-current-artifacts.R): the
+# contract build_module_identity_contract.R publishes under
+# results/wgcna/build_module_identity_contract/<dataset>/tables/. The hash checks
+# below compare that contract with the current model files; the
+# pre-renormalisation snapshot is checked in tests/historical/.
 identity_output_file <- function(dataset, filename) {
-  path_results(
-    "tables", "06_modules_WGCNA", "identity_contract", dataset, filename
-  )
+  wgcna_test_current_identity_output(dataset, filename)
 }
 
 read_identity_output <- function(dataset, filename) {
@@ -200,7 +204,7 @@ testthat::test_that("identical membership with different labels remains identity
   testthat::expect_identical(status, "label_conflict_same_membership")
 })
 
-testthat::test_that("generated source hashes prove protected frozen states are unchanged", {
+testthat::test_that("recorded frozen-state hashes match the current model files", {
   for (dataset in identity_test_datasets) {
     hashes <- read_identity_output(
       dataset, "WGCNA_identity_source_hashes.csv"
@@ -216,7 +220,7 @@ testthat::test_that("generated source hashes prove protected frozen states are u
   }
 })
 
-testthat::test_that("identity execution did not alter any protected Stage 01 source", {
+testthat::test_that("recorded Stage 01 source hashes match the current model files", {
   protected_roles <- c(
     "frozen_state", "module_definitions", "current_membership_mapping",
     "current_supermodule_summary", "selected_cluster_assignment",
@@ -342,10 +346,13 @@ testthat::test_that("fail-closed validation and status semantics are explicit", 
 
 testthat::test_that("dry-run preserves generated outputs and --dataset all fails", {
   dataset <- "neuron_soma"
-  output_dir <- path_results(
-    "tables", "06_modules_WGCNA", "identity_contract", dataset
+  output_dirs <- wgcna_dirs("build_module_identity_contract", dataset)
+  files <- list.files(
+    unlist(output_dirs[c("tables", "manifests", "reports")], use.names = FALSE),
+    full.names = TRUE, recursive = TRUE
   )
-  files <- list.files(output_dir, full.names = TRUE, recursive = TRUE)
+  ## a dry run over an empty or missing directory would pass vacuously
+  testthat::expect_gt(length(files), 0L)
   before <- stats::setNames(vapply(files, file_hash_sha256, character(1)), files)
   repo_root <- normalizePath(
     testthat::test_path("..", ".."),

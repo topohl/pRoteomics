@@ -5,6 +5,7 @@ source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_downstream_utils.R"))
 source(repo_path("R", "wgcna_identity_contract_utils.R"))
 source(repo_path("R", "wgcna_group_effects_utils.R"))
+source(repo_path("R", "wgcna_paths.R"))
 
 valid_fixture <- function(...) {
   defaults <- list(
@@ -673,6 +674,14 @@ testthat::test_that("consumer scan is deterministic and excludes nonactive roots
   testthat::expect_true(any(grepl(
     "^tests/testthat/", first$consumer_script
   )))
+  ## repository-relative under a declared root, also on a drive-root checkout
+  testthat::expect_true(all(grepl(
+    "^(R|inst/schemas|analysis|tests/testthat)/|^[^/]+$", first$consumer_script
+  )))
+  testthat::expect_true(any(
+    first$consumer_kind == "runtime_stage" & grepl("^analysis/", first$consumer_script)
+  ))
+  testthat::expect_false(any(grepl("^tests/testthat/(_problems|_snaps)/", first$consumer_script)))
   testthat::expect_false(any(first$consumer_script %in% c(
     "R/statistics/wgcna_group_effects_utils.R",
     "analysis/wgcna/test_module_phenotypes.R",
@@ -688,35 +697,51 @@ testthat::test_that("consumer scan is deterministic and excludes nonactive roots
   testthat::expect_true(all(nzchar(first$scan_excluded_path_rules)))
 })
 
-testthat::test_that("consumer audit exhaustively matches deterministic local scan", {
-  root <- normalizePath(repo_root(), winslash = "/", mustWork = TRUE)
-  top_dirs <- list.dirs(root, recursive = FALSE, full.names = FALSE)
-  active_stage_dirs <- top_dirs[
-    grepl("^(0[0-9]|[1-8][0-9]|9[0-8])_", top_dirs)
-  ]
-  roots <- c(
-    file.path(root, "R"),
-    file.path(root, "inst", "schemas"),
-    file.path(root, "tests", "testthat"),
-    file.path(root, active_stage_dirs)
-  )
-  files <- unlist(lapply(roots[dir.exists(roots)], function(path) {
-    list.files(
-      path, pattern = "\\.(R|r|ya?ml)$", recursive = TRUE,
-      full.names = TRUE, include.dirs = FALSE, all.files = TRUE, no.. = TRUE
-    )
-  }), use.names = FALSE)
-  files <- unique(c(
-    files,
-    list.files(
-      root, pattern = "\\.(R|r|ya?ml)$", recursive = FALSE,
-      full.names = TRUE, include.dirs = FALSE, all.files = TRUE, no.. = TRUE
-    )
+testthat::test_that("consumer scan covers analysis/ and keeps repository-relative paths", {
+  root <- withr::local_tempdir()
+  put <- function(rel, text) {
+    path <- file.path(root, rel)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    writeLines(text, path)
+  }
+  put("analysis/integration/reads_group_effects.R", "keep <- x$claim_allowed_model")
+  put("analysis/wgcna/test_module_phenotypes.R", "x$FDR_global")
+  put("R/statistics/helper.R", "x$evidence_status")
+  put("R/statistics/wgcna_group_effects_utils.R", "x$FDR_global")
+  put("inst/schemas/example.yml", "  FDR_global: {type: numeric}")
+  put("tests/testthat/test-reader.R", "x$primary_model_stable")
+  put("tests/testthat/_problems/test-reader-1.R", "x$FDR_global")
+  put("tests/testthat/fixtures/legacy.R", "x$FDR_global")
+  put("archive/old_stage.R", "x$FDR_global")
+  put("results/generated.R", "x$FDR_global")
+  put("tools/review.R", "x$FDR_global")
+  scan <- wgcna_group_scan_downstream_consumers(root)
+  kinds <- unique(scan[c("consumer_script", "consumer_kind")])
+  kinds <- kinds[order(kinds$consumer_script, method = "radix"), , drop = FALSE]
+  testthat::expect_identical(kinds$consumer_script, c(
+    "R/statistics/helper.R", "analysis/integration/reads_group_effects.R",
+    "inst/schemas/example.yml", "tests/testthat/test-reader.R"
   ))
-  files <- normalizePath(files, winslash = "/", mustWork = FALSE)
-  relative <- gsub(
-    "\\\\", "/", substring(files, nchar(root) + 2L)
-  )
+  testthat::expect_identical(kinds$consumer_kind, c(
+    "runtime_helper", "runtime_stage", "schema", "test"
+  ))
+  testthat::expect_true(all(scan$runtime_execution_consumer[scan$consumer_kind == "runtime_stage"]))
+})
+
+testthat::test_that("consumer audit exhaustively matches deterministic local scan", {
+  ## Rebuilt independently of the scanner: repository-relative paths from
+  ## list.files(full.names = FALSE) under each declared root, never substring
+  ## arithmetic on the root (a drive root such as "R:/" keeps its slash).
+  root <- normalizePath(repo_root(), winslash = "/", mustWork = TRUE)
+  pattern <- "[.](R|r|ya?ml)$"
+  relative <- unlist(lapply(c("R", "inst/schemas", "analysis", "tests/testthat"), function(sub) {
+    found <- list.files(file.path(root, sub), pattern = pattern, recursive = TRUE,
+                        full.names = FALSE, all.files = TRUE, no.. = TRUE)
+    if (length(found)) paste(sub, found, sep = "/") else character()
+  }), use.names = FALSE)
+  top <- list.files(root, pattern = pattern, recursive = FALSE,
+                    full.names = FALSE, all.files = TRUE, no.. = TRUE)
+  relative <- unique(c(relative, top[!dir.exists(file.path(root, top))]))
   explicit_exclusions <- c(
     "R/statistics/wgcna_group_effects_utils.R",
     "analysis/wgcna/test_module_phenotypes.R",
@@ -724,10 +749,9 @@ testthat::test_that("consumer audit exhaustively matches deterministic local sca
     "tests/testthat/test-wgcna-group-effects-contract.R",
     "tests/testthat/test-schema-validation.R"
   )
-  keep <- !relative %in% explicit_exclusions &
-    !grepl("^tests/(fixtures|testthat/fixtures)/", relative)
-  files <- files[keep]
-  relative <- relative[keep]
+  relative <- relative[!relative %in% explicit_exclusions &
+    !grepl("^tests/(fixtures|testthat/fixtures|testthat/_problems|testthat/_snaps)/", relative)]
+  files <- file.path(sub("/+$", "", root), relative)
   tokens <- wgcna_group_consumer_tokens()
   expected <- character()
   for (i in seq_along(files)) {
@@ -750,6 +774,7 @@ testthat::test_that("consumer audit exhaustively matches deterministic local sca
     observed$line_number, sep = "||"
   )
   testthat::expect_setequal(observed_keys, expected)
+  testthat::expect_true(any(startsWith(observed$consumer_script, "analysis/")))
 })
 
 testthat::test_that("Stage 05 status separates completion from readiness", {
@@ -784,11 +809,9 @@ testthat::test_that("Stage 05 status separates completion from readiness", {
 })
 
 testthat::test_that("Stage 05 source hashes cannot omit a direct dependency", {
+  ## the state Stage 05 hashes (analysis/wgcna/test_module_phenotypes.R)
   required <- wgcna_group_stage05_source_dependencies(
-    path_processed(
-      "06_modules_WGCNA", "01_WGCNA", "microglia",
-      "wgcna_final_model_state.rds"
-    ),
+    wgcna_test_current_state("microglia"),
     wgcna_group_contract_paths("microglia")
   )
   relative_required <- vapply(required, relative_to, character(1))

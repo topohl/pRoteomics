@@ -262,13 +262,18 @@ all_rows$evidence_class[is_mixed & all_rows$is_curated] <- "mixed_biology"
 all_rows$evidence_class[is_unresolved & all_rows$is_curated] <- "unresolved"
 
 # (b) the inverse. Where manual adjudication RESOLVED an entity the algorithm had
-#     called mixed, the row must stop being blocked as mixed - otherwise the table
+#     called mixed, or peripheral (an algorithmic theme without hub support, e.g. soma
+#     m03, whose adopted label is a different, hub-supported signal), the row must stop
+#     being blocked - otherwise the table
 #     reports high confidence and refuses activation for the same entity.
 resolved_by_hand <- all_rows$is_curated & !is_mixed & !is_unresolved &
-  (grepl("mixed|unresolved", tolower(all_rows$evidence_class)) |
+  (grepl("mixed|unresolved|peripheral", tolower(all_rows$evidence_class)) |
      toupper(all_rows$adjudication_action) %in% c("MIXED", "UNRESOLVED"))
 all_rows$adjudication_action[resolved_by_hand] <- "REFINE_WORDING"
 all_rows$evidence_class[resolved_by_hand] <- "manually_adjudicated_coherent"
+# (c) a curated compound label names two member components, not one coherent pathway
+is_compound <- all_rows$is_curated & startsWith(lab, "compound: ")
+all_rows$evidence_class[is_compound] <- "manually_adjudicated_compound"
 
 # ------------------------------------------------- hierarchy redundancy
 

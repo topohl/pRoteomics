@@ -81,9 +81,18 @@ if (isTRUE(run$dry_run)) {
   quit(save = "no", status = 0L)
 }
 
+integration_mark_run_started(paths, SCRIPT_ID)
 missing_required <- required_inputs[!file.exists(required_inputs)]
 if (length(missing_required)) {
   stop("Required input(s) missing: ", paste(names(missing_required), missing_required, sep = " = ", collapse = "; "), call. = FALSE)
+}
+# Only a completed concordance run on these same inputs is read, and the curated mapping overlay
+# must still name the current supermodule members (gww_read_theme_entity_mapping()).
+integration_require_completed_run("test_enrichment_module_concordance", theme_table_file,
+  c(required_inputs, optional_inputs, manuscript_theme_registry = registry_file), consumer = SCRIPT_ID)
+if (file.exists(mapping_file)) {
+  invisible(gww_read_theme_entity_mapping(mapping_file, gww_read_supermodule_membership(
+    vapply(dataset_inputs, function(x) x[["membership_contract"]], character(1)))))
 }
 suppressPackageStartupMessages({ library(data.table) })
 
@@ -313,4 +322,6 @@ write_integration_manifest(
        partition_permutations = 1000L, theme_registry_version = unique(primary$registry_version)),
   "Structural composition of curated GSEA themes in WGCNA modules and supermodules. Phenotype-blind; no theme-level phenotype test; no source value recomputed.")
 
+integration_mark_run_completed(paths, c(output_files, "theme_composition_summary_all_variants.csv"),
+                               c(required_inputs, optional_inputs))
 message("Theme x WGCNA composition complete: ", paths$tables)

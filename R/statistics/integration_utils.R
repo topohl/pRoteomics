@@ -407,6 +407,67 @@ program_key <- function(x) {
   out
 }
 
+# ---------------------------------------------------------------- run status
+# Integration steps are optional launcher steps, and a failed run leaves the previous run's tables in
+# place. A step whose tables others read writes manifests/run_status.yml: "started" before it reads its
+# inputs and "completed" after its last table, with each table's SHA-256 and each input's MD5. A reader
+# calls integration_require_completed_run(), which refuses an unfinished run, a table that is not the one
+# that run wrote, and an input it shares with that run (same name) whose content changed since.
+integration_run_status_path <- function(owner, scope = "global") {
+  canonical_result_path("integration", owner, scope, "manifests", "run_status.yml")
+}
+
+integration_mark_run_started <- function(paths, script_id) {
+  dir_create(paths$manifests)
+  yaml::write_yaml(list(script = script_id, status = "started",
+                        started_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"),
+                        git_commit = git_commit_sha()),
+                   file.path(paths$manifests, "run_status.yml"))
+  invisible(TRUE)
+}
+
+integration_mark_run_completed <- function(paths, tables, inputs) {
+  status_path <- file.path(paths$manifests, "run_status.yml")
+  status <- yaml::read_yaml(status_path)
+  if (!identical(status$status, "started")) stop("No started run to complete: ", status_path, call. = FALSE)
+  files <- file.path(paths$tables, tables)
+  if (!all(file.exists(files))) {
+    stop("Run cannot complete without: ", paste(tables[!file.exists(files)], collapse = ", "), call. = FALSE)
+  }
+  inputs <- unlist(inputs)
+  inputs <- inputs[!is.na(inputs) & file.exists(inputs)]
+  status$status <- "completed"
+  status$completed_at <- format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z")
+  status$tables_sha256 <- as.list(stats::setNames(unname(tools::sha256sum(files)), tables))
+  status$input_md5 <- as.list(vapply(inputs, file_hash, character(1)))
+  yaml::write_yaml(status, status_path)
+  invisible(TRUE)
+}
+
+integration_require_completed_run <- function(owner, files = character(), current_inputs = character(),
+                                              consumer = Sys.getenv("PROTEOMICS_SCRIPT_ID", "reader"),
+                                              scope = "global") {
+  status_path <- integration_run_status_path(owner, scope)
+  refuse <- function(...) stop(consumer, " cannot use ", owner, " outputs: ", ..., call. = FALSE)
+  if (!file.exists(status_path)) refuse("no run status (", status_path, "); rerun ", owner, ".")
+  status <- yaml::read_yaml(status_path)
+  if (!identical(status$status, "completed")) {
+    refuse("its last run (started ", status$started_at %||% "?", ") did not complete; rerun it.")
+  }
+  for (f in files) {
+    rec <- status$tables_sha256[[basename(f)]]
+    if (is.null(rec) || !file.exists(f) || !identical(unname(tools::sha256sum(f)), rec)) {
+      refuse(f, " is not the table its completed run wrote.")
+    }
+  }
+  current_inputs <- unlist(current_inputs)
+  shared <- intersect(names(current_inputs), names(status$input_md5))
+  changed <- shared[vapply(shared, function(r) !identical(file_hash(current_inputs[[r]]), status$input_md5[[r]]),
+                           logical(1))]
+  if (length(changed)) refuse("input(s) changed since its run: ", paste(changed, collapse = ", "), "; rerun ", owner, ".")
+  invisible(status)
+}
+
 write_integration_manifest <- function(paths, inputs, outputs, parameters, notes) {
   write_run_manifest(
     file.path(paths$logs, "run_manifest.yml"),

@@ -12,10 +12,9 @@ source(repo_path("R", "migration_gate_utils.R"))
 # namespace. And it owns the one remaining stage13 output name that Phase 6F
 # adjudicated as genuine chronology.
 #
-# It is also the domain whose upstream is mostly still unmigrated: sixty of its
-# input edges come from WGCNA. Those must keep naming the historical tree,
-# because inventing a normalized path for a producer that has not adopted one
-# would be a fabricated dependency.
+# Its WGCNA inputs migrated in Phase 6G.8; every historical edge must carry a
+# normalized sibling (see below), and inventing a normalized path for a
+# producer that has not adopted one would still be a fabricated dependency.
 
 WRITERS <- c("audit_animal_id_integrity", "build_candidate_protein_shortlist",
              "build_cross_compartment_atlas", "build_evidence_priority_matrix",
@@ -351,13 +350,8 @@ testthat::test_that("the renamed audit is declared and its old name is not writt
   testthat::expect_false(grepl(STAGE13_OLD, txt, fixed = TRUE))
 })
 
-testthat::test_that("the historical stage13 artifact is left untouched on disk", {
-  ## Section 30 is explicit that the historical filename must not disappear.
-  hist <- path_results("reports", "10_biological_integration",
-                       "wgcna_circular_atlas", "global", STAGE13_OLD)
-  testthat::skip_if_not(file.exists(hist), "historical audit not generated here")
-  testthat::expect_true(file.exists(hist))
-})
+## The historical stage13 audit file survives only in pre-migration trees and the
+## pre-renormalisation archive; the test above enforces that nothing writes it.
 
 testthat::test_that("the two publication_source_data stage13 names are untouched", {
   s <- registry_steps()
@@ -392,8 +386,6 @@ testthat::test_that("inputs from unmigrated producers are not given invented pat
       info = paste("claims a normalized path for unmigrated", dom, ":",
                    paste(invented, collapse = ", ")))
   }
-  ## and the historical WGCNA inputs are still declared
-  testthat::expect_gt(sum(grepl("06_modules_WGCNA", deps, fixed = TRUE)), 0L)
 })
 
 testthat::test_that("every migrated-domain input has a normalized sibling declared", {

@@ -15,7 +15,8 @@
 #   label_carry_decisions.csv       one row per reviewed old label: carried or not, and why
 #   theme_mapping_carry.csv         one row per old theme-to-entity mapping: carried or not, and why
 #   provisional_label_registry.csv  (microglia) reviewed-registry schema, all provisional_unreviewed
-# and, across datasets, provisional_theme_module_mapping.csv (gww schema) in .../global/tables/.
+# and, across datasets, provisional_theme_module_mapping.csv (gww schema; supermodule rows list their
+# member_module_ids, which the mapping reader checks against the identity contract) in .../global/tables/.
 #
 # Classes (old module o, best new module n by Jaccard):
 #   retained   o and n are each other's best match and Jaccard >= 0.5
@@ -273,7 +274,12 @@ for (ds in DATASETS) {
                   entity_id = best_new,
                   mapping_status = "provisional_supported",
                   annotation_source = "tools/map_wgcna_module_lineage.R", confidence, mapping_role,
-                  approved_for_manuscript_interpretation = FALSE) |>
+                  approved_for_manuscript_interpretation = FALSE,
+                  # the member set the row was carried for; the mapping reader checks it
+                  member_module_ids = if_else(entity_level == "supermodule",
+                    vapply(best_new, function(sm) paste(sort(unique(new$smap$ModuleID[new$smap$SupermoduleID == sm]),
+                                                             method = "radix"), collapse = ";"), character(1)),
+                    NA_character_)) |>
         distinct(dataset, theme_id, entity_level, entity_id, .keep_all = TRUE)
     }
   }

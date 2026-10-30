@@ -12,10 +12,17 @@
 # of pseudoreplication, and that every displayed effect equals its canonical
 # source exactly.
 
-repo <- function(...) file.path(testthat::test_path("..", ".."), ...)
-SRC <- repo("results", "source_data", "10_biological_integration",
-            "immunostaining_candidate_comparison")
-FIG <- repo("results", "figures", "manuscript", "immunostaining_candidates")
+repo <- function(...) repo_path(...)
+# Current canonical producers (source data only; the figures are rendered and
+# tested in Exp9_manuscript):
+#   analysis/integration/build_immunostaining_candidates.R
+#   analysis/integration/screen_immunostaining_panel.R
+#   analysis/integration/screen_immunostaining_separation.R
+# and the canonical per-unit SUS-RES DA tables they copy from
+# (analysis/preprocessing/map_protein_identifiers.R).
+SRC <- current_integration("build_immunostaining_candidates", "source_data")
+CANONICAL_DA_DIR <- current_artifact("preprocessing", "map_protein_identifiers",
+                                     "neuron_neuropil", "mapped", "forward", "per_file")
 have_src <- dir.exists(SRC) &&
   file.exists(file.path(SRC, "immunostaining_candidates_mapping.csv"))
 rd <- function(f) utils::read.csv(file.path(SRC, f), stringsAsFactors = FALSE)
@@ -55,8 +62,7 @@ test_that("displayed SUS-RES effects equal the canonical DA output exactly", {
   skip_if_not(have_src, "candidate source data not built")
   e <- rd("immunostaining_candidates_sus_res_effects.csv")
   m <- rd("immunostaining_candidates_mapping.csv")
-  da_dir <- repo("data", "processed", "02_id_mapping", "mapped",
-                 "neuron_neuropil", "forward", "per_file")
+  da_dir <- CANONICAL_DA_DIR
   skip_if_not(dir.exists(da_dir), "canonical DA inputs not present")
   for (u in unique(e$spatial_unit)) {
     key <- tolower(gsub("_", "", u))
@@ -92,28 +98,9 @@ test_that("all three proteins share one identical spatial ordering", {
                  "CA3_so", "CA3_sr", "DG_mo", "DG_po"))
 })
 
-test_that("the vector outputs exist, are non-empty and are not rasterised", {
-  skip_if_not(dir.exists(FIG), "figure not rendered")
-  svgs <- c("immunostaining_candidates_spatial_comparison.svg",
-            "immunostaining_candidates_abundance.svg",
-            "immunostaining_candidates_sus_res_log2fc.svg")
-  for (s in svgs) {
-    p <- file.path(FIG, s)
-    expect_true(file.exists(p))
-    expect_gt(file.size(p), 0)
-    txt <- readLines(p, warn = FALSE)
-    expect_true(any(grepl("</svg>", txt, fixed = TRUE)))
-    # live text, no embedded bitmap
-    expect_true(any(grepl("<text", txt, fixed = TRUE)))
-    expect_false(any(grepl("<image", txt, fixed = TRUE)))
-  }
-})
-
 # ---------------------------------------------- the ten-candidate screen
 
-PSRC <- repo("results", "source_data", "10_biological_integration",
-             "immunostaining_candidate_panel")
-PFIG <- repo("results", "figures", "manuscript", "immunostaining_candidate_panel")
+PSRC <- current_integration("screen_immunostaining_panel", "source_data")
 have_panel <- dir.exists(PSRC) &&
   file.exists(file.path(PSRC, "candidate_panel_selection.csv"))
 prd <- function(f) utils::read.csv(file.path(PSRC, f), stringsAsFactors = FALSE)
@@ -156,8 +143,7 @@ test_that("no CA2-SLM-only candidate enters without robustness qualification", {
 test_that("panel effects equal the canonical DA output exactly", {
   skip_if_not(have_panel, "candidate panel not built")
   e <- prd("candidate_panel_sus_res_effects.csv")
-  da_dir <- repo("data", "processed", "02_id_mapping", "mapped",
-                 "neuron_neuropil", "forward", "per_file")
+  da_dir <- CANONICAL_DA_DIR
   skip_if_not(dir.exists(da_dir), "canonical DA inputs not present")
   for (u in unique(e$spatial_unit)) {
     key <- tolower(gsub("_", "", u))
@@ -166,8 +152,9 @@ test_that("panel effects equal the canonical DA output exactly", {
     d <- utils::read.csv(f, stringsAsFactors = FALSE)
     ee <- e[e$spatial_unit == u, , drop = FALSE]
     i <- match(ee$ProteinGroupID, d$ProteinGroupID)
-    expect_equal(ee$log2FC, d$log2fc[i], tolerance = 0)
-    expect_equal(ee$fdr_bh, d$padj[i], tolerance = 0)
+    # the panel is written with utils::write.csv (15 significant digits)
+    expect_equal(ee$log2FC, d$log2fc[i], tolerance = 1e-14)
+    expect_equal(ee$fdr_bh, d$padj[i], tolerance = 1e-14)
   }
 })
 
@@ -180,21 +167,6 @@ test_that("the panel abundance table carries no pseudoreplication", {
   expect_true(all(a$biological_unit == "animal"))
 })
 
-test_that("the panel vector outputs exist and are not rasterised", {
-  skip_if_not(dir.exists(PFIG), "panel figure not rendered")
-  for (s in c("immunostaining_panel_spatial_comparison.svg",
-              "immunostaining_panel_abundance.svg",
-              "immunostaining_panel_sus_res_log2fc.svg")) {
-    p <- file.path(PFIG, s)
-    expect_true(file.exists(p))
-    expect_gt(file.size(p), 0)
-    txt <- readLines(p, warn = FALSE)
-    expect_true(any(grepl("</svg>", txt, fixed = TRUE)))
-    expect_true(any(grepl("<text", txt, fixed = TRUE)))
-    expect_false(any(grepl("<image", txt, fixed = TRUE)))
-  }
-})
-
 # ------------------------------------------- the separation screen
 #
 # This screen exists because the FDR screen answers the wrong question for
@@ -204,10 +176,7 @@ test_that("the panel vector outputs exist and are not rasterised", {
 # score computed over imputed cells, which are artificially tight. These tests
 # pin the gates that prevent that.
 
-SSRC <- repo("results", "source_data", "10_biological_integration",
-             "immunostaining_separation_screen")
-SFIG <- repo("results", "figures", "manuscript",
-             "immunostaining_separation_panel")
+SSRC <- current_integration("screen_immunostaining_separation", "source_data")
 have_sep <- dir.exists(SSRC) &&
   file.exists(file.path(SSRC, "separation_candidate_panel.csv"))
 sepd <- function(f) utils::read.csv(file.path(SSRC, f), stringsAsFactors = FALSE)
@@ -215,15 +184,18 @@ sepd <- function(f) utils::read.csv(file.path(SSRC, f), stringsAsFactors = FALSE
 test_that("the separation panel is ranked and unambiguously targetable", {
   skip_if_not(have_sep, "separation screen not built")
   s <- sepd("separation_candidate_panel.csv")
-  expect_equal(nrow(s), 10L)
+  q <- sepd("separation_qualifying_cells.csv")
+  n <- length(unique(q$ProteinGroupID))
+  expect_gt(n, 0L)
+  expect_equal(nrow(s), n)
   expect_equal(anyDuplicated(s$ProteinGroupID), 0L)
-  expect_equal(sort(s$rank), 1:10)
+  expect_equal(sort(s$rank), seq_len(n))
   # Ranked on breadth then separation strength - never on fold change and never
   # on any p-value - with housekeeping candidates pushed last rather than
   # dropped. Reproduce that exact key from the recorded columns.
   key <- order(as.logical(s$housekeeping_flag), -s$n_units_qualifying,
                -abs(s$best_ssmd))
-  expect_equal(s$rank[key], 1:10)
+  expect_equal(s$rank[key], seq_len(n))
   expect_true(all(s$selection_contract == "immunostaining_separation_screen_v1"))
   # the three already nominated must not reappear
   expect_false(any(toupper(s$GeneSymbol) %in% c("OGA", "SLC22A23", "ANXA2")))
@@ -261,7 +233,7 @@ test_that("no candidate rests on imputed data", {
   win <- merge(s[, c("ProteinGroupID", "best_unit")], e,
                by.x = c("ProteinGroupID", "best_unit"),
                by.y = c("ProteinGroupID", "spatial_unit"))
-  expect_equal(nrow(win), 10L)
+  expect_equal(nrow(win), nrow(s))
   expect_true(all(as.logical(win$fully_observed)))
   expect_true(all(as.logical(win$complete_separation)))
 })
@@ -282,13 +254,14 @@ test_that("the separation measures reproduce from the animal-level values", {
   w$log2FC <- w$m_S - w$m_R
   w$ssmd <- w$log2FC / sqrt(w$s_S^2 + w$s_R^2)
   chk <- merge(w, e, by = c("ProteinGroupID", "spatial_unit"))
-  expect_equal(nrow(chk), 100L)
+  n_panel <- nrow(sepd("separation_candidate_panel.csv"))
+  expect_equal(nrow(chk), n_panel * length(unique(e$spatial_unit)))
+  expect_equal(length(unique(e$spatial_unit)), 10L)
   expect_equal(chk$log2FC.x, chk$log2FC.y, tolerance = 1e-9)
   expect_equal(chk$ssmd.x, chk$ssmd.y, tolerance = 1e-9)
   # and the group-mean difference equals the canonical DA log2FC, so this panel
   # is a different ranking of the same effects, not a different effect estimate
-  da_dir <- repo("data", "processed", "02_id_mapping", "mapped",
-                 "neuron_neuropil", "forward", "per_file")
+  da_dir <- CANONICAL_DA_DIR
   skip_if_not(dir.exists(da_dir), "canonical DA inputs not present")
   for (u in unique(e$spatial_unit)) {
     key <- tolower(gsub("_", "", u))
@@ -323,21 +296,8 @@ test_that("the separation abundance table carries no pseudoreplication", {
   a <- sepd("separation_panel_animal_abundance.csv")
   key <- paste(a$ProteinGroupID, a$AnimalID, a$spatial_unit, sep = "|")
   expect_equal(anyDuplicated(key), 0L)
-  expect_equal(nrow(a), 10L * 9L * 10L)
+  # panel proteins x 9 animals x 10 spatial units
+  expect_equal(nrow(a), nrow(sepd("separation_candidate_panel.csv")) * 9L * 10L)
   expect_true(all(a$biological_unit == "animal"))
 })
 
-test_that("the separation vector outputs exist and are not rasterised", {
-  skip_if_not(dir.exists(SFIG), "separation figure not rendered")
-  for (s in c("immunostaining_separation_spatial_comparison.svg",
-              "immunostaining_separation_abundance.svg",
-              "immunostaining_separation_sus_res_log2fc.svg")) {
-    p <- file.path(SFIG, s)
-    expect_true(file.exists(p))
-    expect_gt(file.size(p), 0)
-    txt <- readLines(p, warn = FALSE)
-    expect_true(any(grepl("</svg>", txt, fixed = TRUE)))
-    expect_true(any(grepl("<text", txt, fixed = TRUE)))
-    expect_false(any(grepl("<image", txt, fixed = TRUE)))
-  }
-})

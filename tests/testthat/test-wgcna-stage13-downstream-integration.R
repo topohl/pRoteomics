@@ -1,8 +1,6 @@
 source(testthat::test_path("..", "..", "R", "paths.R"))
 
-stage13_repo_root <- normalizePath(
-  testthat::test_path("..", ".."), winslash = "/", mustWork = TRUE
-)
+stage13_repo_root <- normalizePath(repo_root(), winslash = "/", mustWork = TRUE)
 stage13_test_path <- function(...) file.path(stage13_repo_root, ...)
 
 read_required_csv <- function(path) {
@@ -10,18 +8,20 @@ read_required_csv <- function(path) {
   utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
 }
 
+# Current canonical producers:
+#   Stage 13 readiness  analysis/wgcna/audit_module_claim_readiness.R
+#   Stage 07 handoff    analysis/wgcna/summarize_module_interpretation.R
+stage13_readiness_file <- function() {
+  current_wgcna("audit_module_claim_readiness", "microglia", "WGCNA_entity_claim_readiness.csv")
+}
+stage07_file <- function(dataset, filename) {
+  current_wgcna("summarize_module_interpretation", dataset, filename)
+}
+
 require_stage13_generated_inputs <- function(datasets = "microglia") {
   paths <- c(
-    stage13_test_path(
-      "results", "tables", "06_modules_WGCNA", "claim_readiness",
-      "microglia", "WGCNA_entity_claim_readiness.csv"
-    ),
-    vapply(datasets, function(dataset) {
-      stage13_test_path(
-        "results", "tables", "06_modules_WGCNA", "interpretable_summary",
-        dataset, "WGCNA_inferential_handoff.csv"
-      )
-    }, character(1))
+    stage13_readiness_file(),
+    vapply(datasets, stage07_file, character(1), filename = "WGCNA_inferential_handoff.csv")
   )
   missing <- paths[!file.exists(paths)]
   testthat::skip_if(
@@ -33,12 +33,26 @@ require_stage13_generated_inputs <- function(datasets = "microglia") {
   )
 }
 
+# The Stage 13 roles the current network implies, and the claim decisions the
+# current readiness table made. Downstream consumers must reproduce these; they
+# are never pinned.
+stage13_expected <- function() {
+  shape <- current_network_shape("microglia")
+  x <- read_required_csv(stage13_readiness_file())
+  claimable <- x$separate_manuscript_claim_allowed %in% TRUE
+  list(
+    shape = shape,
+    readiness = x,
+    claimable_modules = sort(x$entity_id[claimable & x$claim_entity_role == "canonical_module"]),
+    claimable_blocks = sort(x$entity_id[claimable & x$claim_entity_role == "higher_order_block"]),
+    unclaimable_blocks = sort(x$entity_id[!claimable & x$claim_entity_role == "higher_order_block"]),
+    n_fdr_supported = sum(x$group_effect_status == "FDR_supported", na.rm = TRUE)
+  )
+}
+
 testthat::test_that("Stage 13 helper enforces the finalized microglia identity contract", {
   require_stage13_generated_inputs("microglia")
-  generated_stage13 <- read_required_csv(stage13_test_path(
-    "results", "tables", "06_modules_WGCNA", "claim_readiness",
-    "microglia", "WGCNA_entity_claim_readiness.csv"
-  ))
+  generated_stage13 <- read_required_csv(stage13_readiness_file())
   testthat::skip_if_not(
     all(c(
       "group_effect_handoff_file", "group_effect_source_artifact",
@@ -50,44 +64,48 @@ testthat::test_that("Stage 13 helper enforces the finalized microglia identity c
   source(repo_path("R", "wgcna_claim_readiness_utils.R"))
   contract <- load_microglia_wgcna_claim_readiness()
   x <- contract$all
+  shape <- current_network_shape("microglia")
 
-  expected_aliases <- c(
-    SM02 = "WGCNA_m03", SM04 = "WGCNA_m09", SM05 = "WGCNA_m13",
-    SM06 = "WGCNA_m01", SM07 = "WGCNA_m02", SM08 = "WGCNA_m06"
-  )
   aliases <- x[x$claim_entity_role == "compatibility_alias", ]
   blocks <- x[x$claim_entity_role == "higher_order_block", ]
   modules <- x[x$claim_entity_role == "canonical_module", ]
 
-  testthat::expect_equal(nrow(x), 22L)
-  testthat::expect_equal(nrow(modules), 13L)
-  testthat::expect_equal(nrow(blocks), 3L)
-  testthat::expect_equal(nrow(aliases), 6L)
-  testthat::expect_equal(stats::setNames(aliases$canonical_claim_entity_id, aliases$entity_id)[names(expected_aliases)], expected_aliases)
+  testthat::expect_equal(nrow(x), shape$n_identities)
+  testthat::expect_setequal(modules$entity_id, shape$modules)
+  testthat::expect_setequal(blocks$entity_id, shape$blocks)
+  testthat::expect_setequal(aliases$entity_id, names(shape$singletons))
+  testthat::expect_equal(
+    stats::setNames(aliases$canonical_claim_entity_id, aliases$entity_id)[names(shape$singletons)],
+    shape$singletons
+  )
   testthat::expect_false(any(aliases$separate_manuscript_claim_allowed))
-  testthat::expect_setequal(blocks$entity_id[blocks$separate_manuscript_claim_allowed], "SM09")
-  testthat::expect_equal(sum(modules$separate_manuscript_claim_allowed), 10L)
-  testthat::expect_false(any(x$group_effect_status == "FDR_supported"))
+  # support status follows the tier-specific FDR of the independent endpoint
+  independent <- x$claim_entity_role != "compatibility_alias" & !is.na(x$group_effect_tier_specific_fdr)
+  testthat::expect_false(any(x$group_effect_status[independent] == "FDR_supported" &
+                               x$group_effect_tier_specific_fdr[independent] > 0.05))
+  # the helper resolved the CURRENT canonical table, not a historical one
   testthat::expect_identical(contract$source_path, normalizePath(microglia_wgcna_claim_readiness_path(), winslash = "/", mustWork = TRUE))
+  testthat::expect_identical(contract$source_path, normalizePath(stage13_readiness_file(), winslash = "/", mustWork = TRUE))
 })
 
 testthat::test_that("integration separates validated, diagnostic, annotation, unavailable, and neuronal WGCNA roles", {
-  atlas <- read_required_csv(stage13_test_path(
-    "results", "tables", "10_biological_integration", "cross_compartment_program_atlas",
-    "global", "cross_compartment_program_atlas_long.csv"
+  # current canonical atlas (analysis/integration/build_cross_compartment_atlas.R)
+  atlas <- read_required_csv(current_integration(
+    "build_cross_compartment_atlas", "cross_compartment_program_atlas_long.csv"
   ))
+  exp <- stage13_expected()
   micro <- atlas[atlas$dataset == "microglia" & nzchar(atlas$claim_entity_role), ]
   aliases <- micro[micro$claim_entity_role == "compatibility_alias", ]
   blocks <- micro[micro$claim_entity_role == "higher_order_block", ]
 
-  testthat::expect_equal(nrow(micro), 22L)
-  testthat::expect_equal(nrow(aliases), 6L)
+  testthat::expect_equal(nrow(micro), exp$shape$n_identities)
+  testthat::expect_equal(nrow(aliases), length(exp$shape$singletons))
   testthat::expect_false(any(aliases$counts_toward_convergence))
-  testthat::expect_false(any(blocks$counts_toward_convergence[blocks$entity_id %in% c("SM01", "SM03")]))
-  testthat::expect_false(blocks$counts_toward_convergence[blocks$entity_id == "SM09"])
+  testthat::expect_false(any(blocks$counts_toward_convergence))
   testthat::expect_false(any(micro$evidence_semantic_class == "wgcna_stress_group_effect"))
   testthat::expect_equal(sum(micro$counts_toward_convergence), 0L)
-  testthat::expect_equal(sum(micro$evidence_role == "validated_wgcna_architecture"), 16L)
+  testthat::expect_equal(sum(micro$evidence_role == "validated_wgcna_architecture"),
+                         length(exp$shape$modules) + length(exp$shape$blocks))
   micro_context <- atlas[
     atlas$dataset == "microglia" & atlas$evidence_domain %in% c(
       "microenvironment_marker", "complex_organelle", "robustness_sensitivity",
@@ -137,9 +155,9 @@ testthat::test_that("integration separates validated, diagnostic, annotation, un
   testthat::expect_identical(placeholder$evidence_role, "unavailable_evidence")
   testthat::expect_false(placeholder$counts_toward_convergence)
 
-  summary <- read_required_csv(stage13_test_path(
-    "results", "tables", "10_biological_integration", "manuscript_program_summary",
-    "global", "manuscript_program_summary.csv"
+  # current canonical summary (analysis/integration/summarize_programs_for_manuscript.R)
+  summary <- read_required_csv(current_integration(
+    "summarize_programs_for_manuscript", "manuscript_program_summary.csv"
   ))
   testthat::expect_true(all(summary$n_evidence_rows_counting_toward_convergence <= summary$n_evidence_rows_total))
   expected_counting <- aggregate(
@@ -155,12 +173,15 @@ testthat::test_that("neuronal WGCNA architecture remains descriptive and disallo
   require_stage13_generated_inputs(c(
     "microglia", "neuron_soma", "neuron_neuropil"
   ))
-  claims <- read_required_csv(stage13_test_path("results", "tables", "biological_claims_table.csv"))
+  claims <- read_required_csv(current_claims_table())
   architecture <- claims[
     claims$dataset %in% c("neuron_soma", "neuron_neuropil") & claims$claim_type == "wgcna_architecture",
   ]
-  testthat::expect_equal(sum(architecture$dataset == "neuron_soma"), 7L)
-  testthat::expect_equal(sum(architecture$dataset == "neuron_neuropil"), 15L)
+  # one architecture row per current module
+  testthat::expect_equal(sum(architecture$dataset == "neuron_soma"),
+                         length(current_network_shape("neuron_soma")$modules))
+  testthat::expect_equal(sum(architecture$dataset == "neuron_neuropil"),
+                         length(current_network_shape("neuron_neuropil")$modules))
   testthat::expect_false(any(architecture$claim_allowed))
   testthat::expect_true(all(architecture$claim_gate_status == "disallowed"))
   testthat::expect_true(all(architecture$claim_use_class == "annotation_only"))
@@ -176,84 +197,94 @@ testthat::test_that("neuronal WGCNA architecture remains descriptive and disallo
 
 testthat::test_that("microglia biological claims use Stage 13 stable identities without aliases", {
   require_stage13_generated_inputs("microglia")
-  claims <- read_required_csv(stage13_test_path("results", "tables", "biological_claims_table.csv"))
+  exp <- stage13_expected()
+  claims <- read_required_csv(current_claims_table())
   w <- claims[
     claims$dataset == "microglia" &
       claims$claim_type %in% c("wgcna_architecture", "wgcna_group_effect", "wgcna_convergent_overlap", "wgcna_compatibility_provenance"),
   ]
 
   testthat::expect_false(any(w$wgcna_claim_entity_role == "compatibility_alias", na.rm = TRUE))
-  testthat::expect_false(any(w$wgcna_entity_id %in% c("SM01", "SM03"), na.rm = TRUE))
+  testthat::expect_false(any(w$wgcna_entity_id %in% exp$unclaimable_blocks, na.rm = TRUE))
   group_effects <- w[w$claim_type == "wgcna_group_effect", ]
   testthat::expect_true(nrow(group_effects) > 0L)
   testthat::expect_false(any(group_effects$claim_allowed))
-  testthat::expect_true(all(group_effects$wgcna_group_effect_status == "not_FDR_supported"))
+  # no claims-table row may report support that Stage 13 does not: each row's status is its
+  # entity's Stage 13 status (build_biological_claims_table.R joins it by dataset, level, entity)
+  readiness <- read_required_csv(current_wgcna("audit_module_claim_readiness", "microglia",
+                                               "WGCNA_entity_claim_readiness.csv"))
+  status_col <- intersect(c("group_effect_status", "wgcna_group_effect_status"), names(readiness))[1]
+  testthat::expect_false(is.na(status_col))
+  k <- match(group_effects$wgcna_entity_id, readiness$entity_id)
+  testthat::expect_false(anyNA(k))
+  supported_here <- group_effects$wgcna_group_effect_status == "FDR_supported"
+  testthat::expect_true(all(readiness[[status_col]][k][supported_here] == "FDR_supported"))
 
   architecture <- w[w$claim_type == "wgcna_architecture", ]
-  testthat::expect_setequal(unique(architecture$wgcna_entity_id[architecture$wgcna_level == "supermodule"]), "SM09")
-  testthat::expect_equal(length(unique(architecture$wgcna_entity_id[architecture$wgcna_level == "module"])), 10L)
+  testthat::expect_setequal(unique(architecture$wgcna_entity_id[architecture$wgcna_level == "supermodule"]), exp$claimable_blocks)
+  testthat::expect_setequal(unique(architecture$wgcna_entity_id[architecture$wgcna_level == "module"]), exp$claimable_modules)
   testthat::expect_false(all(architecture$claim_use_class == "supporting_claim"))
   testthat::expect_false(any(grepl("supports? (stress-dependent regulation|broad network remodelling|cell-intrinsic|caus)", architecture$safe_interpretation, ignore.case = TRUE)))
   testthat::expect_true(any(grepl("covariance|spatial|architecture", architecture$safe_interpretation, ignore.case = TRUE)))
 
-  cardinality <- read_required_csv(stage13_test_path("results", "reviewer_audit", "wgcna_stage13_claim_cardinality_audit.csv"))
+  cardinality <- read_required_csv(current_claims_table("wgcna_stage13_claim_cardinality_audit.csv"))
   testthat::expect_true(all(cardinality$duplicate_key_is_explicit_endpoints))
 })
 
 testthat::test_that("descriptive overviews preserve complete identities while claim selection is canonical", {
-  segments <- read_required_csv(stage13_test_path(
-    "results", "source_data", "10_biological_integration", "wgcna_circular_atlas",
-    "global", "wgcna_circular_atlas_segments.csv"
+  # current canonical circular atlas (analysis/integration/render_module_circular_atlas.R)
+  segments <- read_required_csv(current_integration(
+    "render_module_circular_atlas", "source_data", "wgcna_circular_atlas_segments.csv"
   ))
+  exp <- stage13_expected()
   micro <- segments[segments$dataset == "microglia", ]
   expected_segments <- sum(vapply(
-    c("neuron_neuropil", "neuron_soma", "microglia"),
+    wgcna_test_datasets,
     function(dataset) {
-      lookup <- read_required_csv(stage13_test_path(
-        "results", "tables", "06_modules_WGCNA", "interpretable_summary",
-        dataset, "WGCNA_final_label_lookup.csv"
-      ))
+      lookup <- read_required_csv(stage07_file(dataset, "WGCNA_final_label_lookup.csv"))
       sum(lookup$level == "supermodule")
     },
     integer(1)
   ))
   testthat::expect_equal(nrow(segments), expected_segments)
-  testthat::expect_equal(nrow(micro), 9L)
+  testthat::expect_equal(nrow(micro), length(exp$shape$supermodules))
   testthat::expect_equal(length(unique(segments$dataset)), 3L)
-  testthat::expect_setequal(micro$supermodule_id[micro$selected_for_manuscript_claim], "SM09")
+  testthat::expect_setequal(micro$supermodule_id[micro$selected_for_manuscript_claim], exp$claimable_blocks)
   testthat::expect_false(any(micro$claim_entity_role[micro$selected_for_manuscript_claim] == "compatibility_alias"))
   testthat::expect_true(all(!is.na(micro$claim_entity_role)))
   neuronal <- segments[segments$dataset %in% c("neuron_soma", "neuron_neuropil"), ]
   testthat::expect_false(any(neuronal$selected_for_manuscript_claim[grepl("(^|;)\\s*disallowed\\s*(;|$)", neuronal$claim_display_status)]))
 
-  metrics <- read_required_csv(stage13_test_path(
-    "results", "tables", "10_biological_integration", "wgcna_cross_compartment_overview",
-    "global", "wgcna_cross_compartment_metrics.csv"
+  # current canonical overview (analysis/integration/summarize_module_cross_compartment.R)
+  metrics <- read_required_csv(current_integration(
+    "summarize_module_cross_compartment", "wgcna_cross_compartment_metrics.csv"
   ))
   m <- metrics[metrics$dataset == "microglia", ]
-  testthat::expect_equal(m$n_stage13_technical_identities, 22L)
-  testthat::expect_equal(m$n_canonical_modules, 13L)
-  testthat::expect_equal(m$n_higher_order_blocks, 3L)
-  testthat::expect_equal(m$n_compatibility_aliases, 6L)
-  testthat::expect_equal(m$n_independently_eligible_modules, 10L)
-  testthat::expect_equal(m$n_independently_eligible_blocks, 1L)
-  testthat::expect_equal(m$n_FDR_supported_stage13_group_effects, 0L)
+  testthat::expect_equal(m$n_stage13_technical_identities, exp$shape$n_identities)
+  testthat::expect_equal(m$n_canonical_modules, length(exp$shape$modules))
+  testthat::expect_equal(m$n_higher_order_blocks, length(exp$shape$blocks))
+  testthat::expect_equal(m$n_compatibility_aliases, length(exp$shape$singletons))
+  testthat::expect_equal(m$n_independently_eligible_modules, length(exp$claimable_modules))
+  testthat::expect_equal(m$n_independently_eligible_blocks, length(exp$claimable_blocks))
+  testthat::expect_equal(m$n_FDR_supported_stage13_group_effects, exp$n_fdr_supported)
 })
 
 testthat::test_that("final bundle preserves all Stage 13 rows and filters manuscript candidates", {
-  bundle <- stage13_test_path("results", "tables", "10_biological_integration", "final_evidence_bundle", "global")
+  # current canonical bundle (analysis/integration/build_evidence_priority_matrix.R)
+  bundle <- current_integration("build_evidence_priority_matrix", "final_evidence_bundle")
   readiness <- read_required_csv(file.path(bundle, "microglia_wgcna_claim_readiness.csv"))
   modules <- read_required_csv(file.path(bundle, "wgcna_key_modules.csv"))
   supermodules <- read_required_csv(file.path(bundle, "wgcna_key_supermodules.csv"))
+  exp <- stage13_expected()
   micro_modules <- modules[modules$dataset == "microglia", ]
   micro_supermodules <- supermodules[supermodules$dataset == "microglia", ]
 
-  testthat::expect_equal(nrow(readiness), 22L)
-  testthat::expect_equal(sum(readiness$claim_entity_role == "compatibility_alias"), 6L)
-  testthat::expect_equal(length(unique(micro_modules$module_id)), 10L)
+  testthat::expect_equal(nrow(readiness), exp$shape$n_identities)
+  testthat::expect_equal(sum(readiness$claim_entity_role == "compatibility_alias"), length(exp$shape$singletons))
+  testthat::expect_setequal(unique(micro_modules$module_id), exp$claimable_modules)
   testthat::expect_false(any(micro_modules$claim_entity_role == "compatibility_alias"))
-  testthat::expect_setequal(unique(micro_supermodules$supermodule_id), "SM09")
-  testthat::expect_false(any(micro_supermodules$supermodule_id %in% c("SM01", "SM03")))
+  testthat::expect_setequal(stats::na.omit(unique(micro_supermodules$supermodule_id)), exp$claimable_blocks)
+  testthat::expect_false(any(micro_supermodules$supermodule_id %in% exp$unclaimable_blocks))
 
   neuronal_modules <- modules[modules$dataset %in% c("neuron_soma", "neuron_neuropil"), ]
   neuronal_supermodules <- supermodules[supermodules$dataset %in% c("neuron_soma", "neuron_neuropil"), ]
@@ -263,41 +294,61 @@ testthat::test_that("final bundle preserves all Stage 13 rows and filters manusc
     ), fixed = TRUE)),
     "Generated final bundle predates the Stage 07 inferential-handoff wording"
   )
-  testthat::expect_equal(nrow(neuronal_modules), 2L)
-  testthat::expect_equal(nrow(neuronal_supermodules), 3L)
-  testthat::expect_true(all(neuronal_modules$status == "no_validated_neuronal_wgcna_key_rows"))
-  testthat::expect_setequal(
-    neuronal_supermodules$supermodule_id[neuronal_supermodules$dataset == "neuron_soma"],
-    c("SM01", "SM02")
-  )
-  testthat::expect_true(all(
-    is.na(neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_soma"]) |
-      !nzchar(neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_soma"])
-  ))
-  testthat::expect_true(all(
-    neuronal_supermodules$status[neuronal_supermodules$dataset == "neuron_neuropil"] ==
-      "no_validated_neuronal_wgcna_key_rows"
-  ))
-  testthat::expect_true(all(neuronal_modules$reason == "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"))
-  testthat::expect_true(all(
-    neuronal_supermodules$reason[neuronal_supermodules$dataset == "neuron_neuropil"] ==
-      "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"
-  ))
+  no_key <- "neuronal readiness contract unavailable and all current Stage 07 inferential rows are claim-ineligible"
+  # each neuronal dataset carries either its validated key rows (current
+  # supermodule IDs, empty status) or exactly one explicit no-key status row
+  for (ds in c("neuron_soma", "neuron_neuropil")) {
+    for (tab in list(neuronal_modules, neuronal_supermodules)) {
+      rows <- tab[tab$dataset == ds, , drop = FALSE]
+      testthat::expect_gt(nrow(rows), 0L)
+      placeholder <- rows$status %in% "no_validated_neuronal_wgcna_key_rows"
+      if (any(placeholder)) {
+        testthat::expect_equal(nrow(rows), 1L, info = ds)
+        testthat::expect_identical(rows$reason, no_key)
+      }
+    }
+    key_sm <- neuronal_supermodules$supermodule_id[neuronal_supermodules$dataset == ds &
+      !neuronal_supermodules$status %in% "no_validated_neuronal_wgcna_key_rows"]
+    testthat::expect_true(all(key_sm %in% current_network_shape(ds)$supermodules), info = ds)
+    # key rows are exactly the validated primary SUS-RES rows of the current handoff
+    handoff <- read_required_csv(stage07_file(ds, "WGCNA_inferential_handoff.csv"))
+    primary <- handoff[handoff$entity_level == "supermodule" &
+                         handoff$analysis_tier == "primary_wgcna_global" &
+                         handoff$contrast == "SUS - RES" &
+                         handoff$result_scope == "primary_global_vulnerability", , drop = FALSE]
+    fdr <- suppressWarnings(as.numeric(primary$tier_specific_fdr))
+    model_text <- tolower(paste(primary$model_type, primary$support_class, primary$model_warning))
+    validated <- !is.na(fdr) & fdr <= 0.10 &
+      primary$claim_gate == "eligible_for_readiness_assessment" &
+      !grepl("diagnostic|unstable|failed", primary$model_stability_status) &
+      !grepl("fallback|diagnostic|model_unstable", model_text)
+    testthat::expect_setequal(key_sm, unique(primary$supermodule_id[validated]))
+  }
 })
 
-testthat::test_that("circular claim parsing uses exact status tokens and frozen neuronal states are unchanged", {
+testthat::test_that("circular claim parsing uses exact status tokens", {
   circular_script <- paste(readLines(stage13_test_path("analysis/integration", "render_module_circular_atlas.R"), warn = FALSE), collapse = "\n")
   testthat::expect_match(circular_script, 'tokens == "disallowed"', fixed = TRUE)
   testthat::expect_match(circular_script, 'tokens %in% c("allowed", "downgraded")', fixed = TRUE)
   testthat::expect_false(grepl('grepl("allowed|downgraded", .data$claim_display_status)', circular_script, fixed = TRUE))
+})
 
-  sha256_file <- function(path) {
-    raw <- readBin(path, "raw", n = file.info(path)$size)
-    paste(format(openssl::sha256(raw)), collapse = "")
+testthat::test_that("current network states match the hashes their identity contracts recorded", {
+  # Current model-contract consistency (the literal historical neuronal SHA-256
+  # snapshot is kept in tests/historical/). The identity contract
+  # (analysis/wgcna/build_module_identity_contract.R) records the sha256 of every
+  # source it accepted; the current Stage 01 state must still be that file.
+  for (ds in wgcna_test_datasets) {
+    hashes <- read_required_csv(current_wgcna("build_module_identity_contract", ds,
+                                              "WGCNA_identity_source_hashes.csv"))
+    state <- hashes[hashes$source_role == "frozen_state", , drop = FALSE]
+    testthat::expect_equal(nrow(state), 1L, info = ds)
+    testthat::expect_identical(
+      state$source_path,
+      paste0("results/wgcna/build_wgcna_modules/", ds, "/models/wgcna_final_model_state.rds"),
+      info = ds)
+    path <- current_wgcna("build_wgcna_modules", ds, "wgcna_final_model_state.rds", child = "models")
+    testthat::expect_true(file.exists(path), info = ds)
+    testthat::expect_identical(digest::digest(file = path, algo = "sha256"), state$sha256, info = ds)
   }
-  soma_state <- stage13_test_path("data", "processed", "06_modules_WGCNA", "01_WGCNA", "neuron_soma", "wgcna_final_model_state.rds")
-  neuropil_state <- stage13_test_path("data", "processed", "06_modules_WGCNA", "01_WGCNA", "neuron_neuropil", "wgcna_final_model_state.rds")
-  testthat::skip_if_not(file.exists(soma_state) && file.exists(neuropil_state), "Frozen neuronal WGCNA states are unavailable")
-  testthat::expect_identical(sha256_file(soma_state), "e218b20c97644a8b6ad07dd7697ace00f2270006b35458be61a5efb5fe243292")
-  testthat::expect_identical(sha256_file(neuropil_state), "0fca92a64d52cb55758a6c6a47dbcdabb4422aade57c6ea4de4e903a32c5c0de")
 })

@@ -3690,17 +3690,51 @@ wgcna_group_supermodule_values <- function(
   long
 }
 
+wgcna_group_consumer_scan_roots <- function() c("R", "inst/schemas", "analysis", "tests/testthat")
+
+wgcna_group_consumer_scan_exclusions <- function() c(
+  "R/statistics/wgcna_group_effects_utils.R",
+  "analysis/wgcna/test_module_phenotypes.R",
+  "tests/testthat/test-wgcna-group-effects-phase2b.R",
+  "tests/testthat/test-wgcna-group-effects-contract.R",
+  "tests/testthat/test-schema-validation.R"
+)
+
+# Repository-relative paths of the scanned files, from list.files(full.names = FALSE) under each
+# declared root, never from substring arithmetic on the root: normalizePath() keeps the trailing
+# slash of a drive root ("R:/"), and the former substring(files, nchar(root) + 2L) cut the first
+# character of every path on the subst-drive working trees.
+wgcna_group_consumer_scan_files <- function(root) {
+  pattern <- "\\.(R|r|ya?ml)$"
+  relative <- unlist(lapply(wgcna_group_consumer_scan_roots(), function(sub) {
+    dir <- file.path(root, sub)
+    if (!dir.exists(dir)) return(character())
+    found <- list.files(dir, pattern = pattern, recursive = TRUE, full.names = FALSE,
+                        include.dirs = FALSE, all.files = TRUE, no.. = TRUE)
+    if (length(found)) paste(sub, found, sep = "/") else character()
+  }), use.names = FALSE)
+  top <- list.files(root, pattern = pattern, recursive = FALSE, full.names = FALSE,
+                    include.dirs = FALSE, all.files = TRUE, no.. = TRUE)
+  top <- top[!dir.exists(file.path(root, top))]
+  relative <- unique(gsub("\\\\", "/", c(relative, top)))
+  excluded <- relative %in% wgcna_group_consumer_scan_exclusions() |
+    grepl("^tests/(fixtures|testthat/fixtures|testthat/_problems|testthat/_snaps)/", relative)
+  relative <- relative[!excluded]
+  relative[order(relative, method = "radix")]
+}
+
 wgcna_group_consumer_scan_rules <- function() {
   list(
     included = paste(
-      "roots: R/, inst/schemas/, numbered active stage directories 00_-98_,",
-      "tests/testthat/, and repository-root .R/.r/.yml/.yaml files; extensions:",
+      "roots: R/, inst/schemas/, analysis/ (active stage scripts), tests/testthat/,",
+      "and repository-root .R/.r/.yml/.yaml files; extensions:",
       ".R, .r, .yml, .yaml"
     ),
     excluded = paste(
-      "not included by root selection: .git/, 99_deprecated/, results/, data/,",
-      "tmp/, docs/, review bundles, generated outputs, tests/fixtures/, and",
-      "tests/testthat/fixtures/; explicitly excluded producers, registry, and",
+      "not included by root selection: .git/, archive/, audits/, tools/, work/,",
+      "results/, data/, tmp/, docs/, review bundles, generated outputs,",
+      "tests/fixtures/, tests/testthat/fixtures/, tests/testthat/_problems/ and",
+      "tests/testthat/_snaps/; explicitly excluded producers, registry, and",
       "Stage 05 fixtures containing deliberate legacy tokens:",
       "R/statistics/wgcna_group_effects_utils.R and",
       "analysis/wgcna/test_module_phenotypes.R;",
@@ -3764,51 +3798,15 @@ wgcna_group_consumer_tokens <- function() {
 
 wgcna_group_scan_downstream_consumers <- function(root = repo_root()) {
   root <- normalizePath(root, winslash = "/", mustWork = TRUE)
-  top_dirs <- list.dirs(root, recursive = FALSE, full.names = FALSE)
-  numbered_dirs <- top_dirs[
-    grepl("^(0[0-9]|[1-8][0-9]|9[0-8])_", top_dirs)
-  ]
-  scan_roots <- c(
-    file.path(root, "R"),
-    file.path(root, "inst", "schemas"),
-    file.path(root, "tests", "testthat"),
-    file.path(root, numbered_dirs)
-  )
-  scan_roots <- scan_roots[dir.exists(scan_roots)]
-  files <- unlist(lapply(scan_roots, function(path) {
-    list.files(
-      path, pattern = "\\.(R|r|ya?ml)$", recursive = TRUE,
-      full.names = TRUE, include.dirs = FALSE, all.files = TRUE, no.. = TRUE
-    )
-  }), use.names = FALSE)
-  root_files <- list.files(
-    root, pattern = "\\.(R|r|ya?ml)$", recursive = FALSE,
-    full.names = TRUE, include.dirs = FALSE, all.files = TRUE, no.. = TRUE
-  )
-  files <- unique(c(files, root_files))
-  files <- normalizePath(files, winslash = "/", mustWork = FALSE)
-  relative <- substring(files, nchar(root) + 2L)
-  relative <- gsub("\\\\", "/", relative)
-  excluded <- relative %in% c(
-    "R/statistics/wgcna_group_effects_utils.R",
-    "analysis/wgcna/test_module_phenotypes.R",
-    "tests/testthat/test-wgcna-group-effects-phase2b.R",
-    "tests/testthat/test-wgcna-group-effects-contract.R",
-    "tests/testthat/test-schema-validation.R"
-  ) | grepl("^tests/(fixtures|testthat/fixtures)/", relative)
-  keep <- !excluded
-  files <- files[keep]
-  relative <- relative[keep]
-  ordering <- order(relative)
-  files <- files[ordering]
-  relative <- relative[ordering]
+  relative <- wgcna_group_consumer_scan_files(root)
+  files <- file.path(sub("/+$", "", root), relative)
   tokens <- wgcna_group_consumer_tokens()
   rules <- wgcna_group_consumer_scan_rules()
   rows <- list()
   for (i in seq_along(files)) {
     text <- readLines(files[[i]], warn = FALSE, encoding = "UTF-8")
     consumer_kind <- dplyr::case_when(
-      grepl("^([0-9]{2})_[^/]+/", relative[[i]]) ~ "runtime_stage",
+      grepl("^analysis/[^/]+/", relative[[i]]) ~ "runtime_stage",
       grepl("^R/", relative[[i]]) ~ "runtime_helper",
       identical(relative[[i]], "pipeline.yml") ~ "pipeline_registry",
       grepl("^inst/schemas/", relative[[i]]) ~ "schema",
@@ -3833,7 +3831,7 @@ wgcna_group_scan_downstream_consumers <- function(root = repo_root()) {
         rows[[length(rows) + 1L]] <- data.frame(
           consumer_script = relative[[i]],
           consumed_file = paste0(
-            "results/tables/06_modules_WGCNA/group_effects/<dataset>/",
+            "results/wgcna/test_module_phenotypes/<dataset>/tables/",
             "{module_group_effects.csv|supermodule_group_effects.csv}"
           ),
           legacy_token = tokens$consumed_column[[j]],
