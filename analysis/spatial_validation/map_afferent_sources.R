@@ -309,6 +309,34 @@ contrasts$role <- ifelse(contrasts$animal_set == CONTRAST_GROUP, "primary (contr
 contrasts$method <- paste0("per animal: excess difference between the laminae (class score minus the abundance-matched ",
                            "random-set mean, ", N_DRAWS, " draws); one-sample t test over animals; BH over the ",
                            length(specs), " contrasts of each animal set")
+# Context in the DG (added 2026-11-04): astrocyte and vascular proteins DG mo - po, and the entorhinal excess minus each,
+# the comparison the Results make for the perforant-path target outside the fissure. Computed after the BH step, so the
+# pre-declared contrasts and their adjusted P are unchanged; post hoc, not corrected (p_adjust NA).
+CONTEXT_SPECS <- list(list(class = "astrocyte", minus = NA_character_, a = "DG_mo", b = "DG_po", expectation = "context (DG, post hoc)"),
+                      list(class = "vascular", minus = NA_character_, a = "DG_mo", b = "DG_po", expectation = "context (DG, post hoc)"),
+                      list(class = "entorhinal", minus = "astrocyte", a = "DG_mo", b = "DG_po", expectation = "entorhinal minus context (DG, post hoc)"),
+                      list(class = "entorhinal", minus = "vascular", a = "DG_mo", b = "DG_po", expectation = "entorhinal minus context (DG, post hoc)"))
+context <- list()
+for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
+  gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
+  s <- scores[scores$group %in% gs, , drop = FALSE]
+  for (sp in CONTEXT_SPECS) {
+    v <- excess_diff(s, sp$class, sp$a, sp$b)
+    if (!is.na(sp$minus)) v <- v - excess_diff(s, sp$minus, sp$a, sp$b)[names(v)]
+    tt <- stats::t.test(v)
+    context[[length(context) + 1L]] <- data.frame(
+      animal_set = set_name, origin_class = sp$class, minus_class = sp$minus, origin_label = CLASSES[[sp$class]],
+      lamina_a = sp$a, lamina_b = sp$b, expectation = sp$expectation, estimate = mean(v),
+      std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
+      df = unname(tt$parameter), t_value = unname(tt$statistic), p_value = tt$p.value, n_animals = length(v),
+      animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]),
+      animals = paste(sort(names(v)), collapse = "; "), p_adjust = NA_real_,
+      role = if (set_name == CONTRAST_GROUP) "context (control animals; post hoc, not corrected)" else "context (stressed animals; post hoc, not corrected)",
+      method = paste0("per animal: excess difference between the laminae (class score minus the abundance-matched random-set mean, ",
+                      N_DRAWS, " draws); one-sample t test over animals; post hoc context, not corrected"), stringsAsFactors = FALSE)
+  }
+}
+contrasts <- rbind(contrasts, do.call(rbind, context))
 
 utils::write.csv(set_rows, OUT$sets, row.names = FALSE)
 utils::write.csv(scores, OUT$scores, row.names = FALSE)

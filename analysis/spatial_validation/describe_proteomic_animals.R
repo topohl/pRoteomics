@@ -11,11 +11,12 @@
 # Stage: networks
 # Scope: global
 # Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv; +1 more
-# Produces: results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv; results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv; +3 more
+# Produces: results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv; results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv; +4 more
 # Dataset behavior: global; reads the joint acquisition bundle and the three animal-level matrices.
 # Notes: Descriptive: no test. Missingness before imputation per acquisition, within-compartment PCA with the share of
 #        each PC explained by anatomy, animal, group, plate and hemisphere, the design of the nine animals with their
-#        behaviour, and the animal-level values of the 21 exemplar proteins of Figure 3e-g.
+#        behaviour, and the animal-level values of the 21 exemplar proteins of Figure 3e-g. (2026-11-04) CA2 SLM
+#        missingness by group, with exact permutation tests of the group labels over the animals.
 #
 # MISSINGNESS: the raw quantities of the joint feature table (5,741 protein groups x 323 acquisitions). Per compartment
 # the analysed proteins are those missing in at most 70% of its acquisitions (the imputation filter; gate: 5,054
@@ -59,7 +60,8 @@ OUT <- list(
   pca_terms   = file.path(CANONICAL_PATHS$tables, "compartment_pca_terms.csv"),
   pca_scores  = file.path(CANONICAL_PATHS$tables, "compartment_pca_scores.csv"),
   design      = file.path(CANONICAL_PATHS$tables, "proteomic_animal_design.csv"),
-  exemplars   = file.path(CANONICAL_PATHS$tables, "exemplar_proteins_by_animal.csv")
+  exemplars   = file.path(CANONICAL_PATHS$tables, "exemplar_proteins_by_animal.csv"),
+  ca2_groups  = file.path(CANONICAL_PATHS$tables, "ca2_slm_missingness_by_group.csv")
 )
 MANIFEST <- file.path(CANONICAL_PATHS$manifests, "run_manifest.yml")
 DATASETS <- c(neuron_neuropil = "Neuropil", neuron_soma = "Neuronal soma", microglia = "Microglia-enriched ROI")
@@ -121,6 +123,38 @@ for (ds in names(DATASETS)) {
                                 n_quantified_all_features = unname(colSums(!is.na(V[, s, drop = FALSE]))), stringsAsFactors = FALSE)
 }
 missingness <- do.call(rbind, miss_rows)
+
+# ---- CA2 SLM missingness by group (added 2026-11-04) ----------------------------------------------------------------
+# Per animal the mean fraction missing over its CA2 SLM acquisitions (the unit of the robustness screen); per group the
+# mean and range of the animal means. SUS - RES by exact permutation of the group labels over those six animals
+# (two-sided on |difference|, 20 assignments, smallest attainable P 0.1) and the three groups by the between-group sum
+# of squares over all 1,680 assignments of the nine animals (upper tail). A check of the statement that missingness was
+# unequal between the groups.
+ca2 <- missingness[missingness$unit == "CA2_slm", , drop = FALSE]
+am <- stats::aggregate(fraction_missing ~ animal_id + group, data = ca2, FUN = mean)
+if (nrow(am) != 9L || any(table(am$group) != 3L)) stop("CA2 SLM missingness: expected three animals per group.", call. = FALSE)
+ss_between <- function(v, g) sum(tapply(v, g, function(x) length(x) * (mean(x) - mean(v))^2))
+v <- am$fraction_missing; idx <- seq_along(v); obs_ss <- ss_between(v, am$group); null_ss <- numeric()
+for (a in utils::combn(idx, 3L, simplify = FALSE)) for (b in utils::combn(setdiff(idx, a), 3L, simplify = FALSE)) {
+  g <- character(length(v)); g[a] <- "A"; g[b] <- "B"; g[setdiff(idx, c(a, b))] <- "C"; null_ss <- c(null_ss, ss_between(v, g)) }
+sr <- am[am$group %in% c("SUS", "RES"), , drop = FALSE]
+d_obs <- mean(sr$fraction_missing[sr$group == "SUS"]) - mean(sr$fraction_missing[sr$group == "RES"])
+null_d <- vapply(utils::combn(nrow(sr), 3L, simplify = FALSE), function(k) mean(sr$fraction_missing[k]) - mean(sr$fraction_missing[-k]), 0)
+ca2_groups <- rbind(
+  do.call(rbind, lapply(c("CON", "RES", "SUS"), function(g) { x <- am$fraction_missing[am$group == g]
+    data.frame(row_type = "group", comparison = g, n_animals = length(x), n_acquisitions = sum(ca2$group == g), mean_fraction_missing = mean(x),
+               min_animal_mean = min(x), max_animal_mean = max(x), estimate = NA_real_, statistic = NA_real_, p_exact = NA_real_,
+               n_assignments = NA_integer_, test = NA_character_, stringsAsFactors = FALSE) })),
+  data.frame(row_type = "test", comparison = c("SUS - RES", "CON / RES / SUS"), n_animals = c(nrow(sr), nrow(am)),
+             n_acquisitions = c(sum(ca2$group %in% c("SUS", "RES")), nrow(ca2)), mean_fraction_missing = NA_real_, min_animal_mean = NA_real_,
+             max_animal_mean = NA_real_, estimate = c(d_obs, NA_real_), statistic = c(d_obs, obs_ss),
+             p_exact = c(mean(abs(null_d) >= abs(d_obs) - 1e-12), mean(null_ss >= obs_ss - 1e-12)), n_assignments = c(length(null_d), length(null_ss)),
+             test = c("exact permutation of the group labels over the six animals, two-sided on |difference| (smallest attainable P 0.1)",
+                      "exact permutation of the group labels over the nine animals, between-group sum of squares, upper tail"),
+             stringsAsFactors = FALSE))
+ca2_groups$unit <- "CA2_slm"
+ca2_groups$measure <- paste0("animal mean of the fraction of the ", FILTER_N[["neuron_neuropil"]], " analysed neuropil protein groups missing before imputation")
+if (length(null_ss) != 1680L || length(null_d) != 20L) stop("CA2 SLM missingness: wrong number of assignments.", call. = FALSE)
 
 # ---- PCA within each compartment -----------------------------------------------------------------------------------
 eta2 <- function(y, g) { g <- factor(g); if (nlevels(g) < 2L) return(NA_real_); ss <- sum((y - mean(y))^2)
@@ -189,6 +223,7 @@ utils::write.csv(pca_terms, OUT$pca_terms, row.names = FALSE)
 utils::write.csv(pca_scores, OUT$pca_scores, row.names = FALSE)
 utils::write.csv(design, OUT$design, row.names = FALSE)
 utils::write.csv(exemplars, OUT$exemplars, row.names = FALSE)
+utils::write.csv(ca2_groups, OUT$ca2_groups, row.names = FALSE)
 write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO),
                                         as.list(stats::setNames(vapply(unique(EXEMPLARS$unit), function(u)
                                           mapped_unit_table_path(EXEMPLARS$dataset[match(u, EXEMPLARS$unit)], u), ""), unique(EXEMPLARS$unit)))),
@@ -196,5 +231,6 @@ write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(joint_bundle = 
                    parameters = list(missing_filter = MISSING_FILTER, filter_n = as.list(FILTER_N), n_pc = N_PC, pca_terms = as.list(PCA_TERMS),
                                      exemplars = "Figure 3e-g, seven top-ranked leading-edge proteins each (Figure 3 export, pRoteomics 83ace9b)",
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
-                   notes = "Descriptive; no test. Behaviour outcomes from the frozen behaviour bundles (data/external/behaviour_outcomes).")
+                   notes = paste("Descriptive; the one test is the CA2 SLM missingness by group (exact permutation, added 2026-11-04).",
+                                 "Behaviour outcomes from the frozen behaviour bundles (data/external/behaviour_outcomes)."))
 message("Proteomic animals described: ", nrow(missingness), " acquisitions, ", nrow(design), " animals, ", nrow(exemplars) / 9L, " exemplar proteins")

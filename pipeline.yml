@@ -1072,6 +1072,7 @@ stages:
           - "results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_scores.csv"
           - "results/spatial_validation/describe_proteomic_animals/global/tables/proteomic_animal_design.csv"
           - "results/spatial_validation/describe_proteomic_animals/global/tables/exemplar_proteins_by_animal.csv"
+          - "results/spatial_validation/describe_proteomic_animals/global/tables/ca2_slm_missingness_by_group.csv"
         consumes_required:
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
