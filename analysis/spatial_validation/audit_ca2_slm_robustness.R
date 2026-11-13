@@ -128,7 +128,8 @@ neuro <- meta[keep, , drop = FALSE]
 ca2 <- neuro[neuro$region == "CA2" & neuro$layer == "slm", , drop = FALSE]
 ca2$StressGroup <- csr_expgroup_to_stress(ca2$ExpGroup)
 ca2$Hemi <- ifelse(tolower(ca2$ReplicateGroup) == "left", "L", "R")
-if (nrow(ca2) != 18L) stop("expected 18 CA2_slm samples, found ", nrow(ca2), call. = FALSE)
+n_ca2_expected <- 2L * length(unique(neuro$AnimalID))
+if (nrow(ca2) != n_ca2_expected) stop("expected ", n_ca2_expected, " CA2_slm samples, found ", nrow(ca2), call. = FALSE)
 
 qc_flag <- stats::setNames(rep("PASS", nrow(ca2)), ca2$sample_id)
 if (file.exists(QC)) {

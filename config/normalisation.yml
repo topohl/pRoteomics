@@ -1,3 +1,7 @@
+# DESIGN RERUN TREE (Analysis/proteomics_rerun_332, branch design-332-search2-2026-11-13): second DIA-NN search
+# delivered 2026-11-13 without A764 (286 runs), 3/3/2 design, re-imputed on 8 animals. Never a source for exports,
+# freezes, deposits or Exp9_manuscript imports, hence decision: pending below.
+#
 # Per-sample centring applied by archive/01_preprocessing/01_impute.r after log2 and before the 70% missingness
 # filter and the down-shift imputation. This is the only setting that separates the two analysis versions: every
 # downstream matrix, model, enrichment, network and figure inherits it through the imputed workbooks. (The joint
@@ -31,5 +35,5 @@
 # This worktree (branch original-centring-2026-10-24) holds the primary version, regenerated with the corrected
 # pipeline of 8819a00 and its later fixes.
 sample_centring: all_observed_median
-decision: approved
+decision: pending
 approved_sample_centring: all_observed_median

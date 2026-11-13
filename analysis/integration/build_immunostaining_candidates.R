@@ -86,7 +86,7 @@ if (nrow(SPATIAL) != 10L)
 EXPGROUP_LABEL <- c(`1` = "CON", `2` = "RES", `3` = "SUS")
 ROSTER <- list(CON = c("A127", "A129", "A765"),
                RES = c("A0003", "A135", "A139"),
-               SUS = c("A111", "A755", "A764"))
+               SUS = c("A111", "A755"))  # 3/3/2 design rerun
 
 # ------------------------------------------------- read the animal-level GCT
 gct_lines <- readLines(GCT, n = 12L)

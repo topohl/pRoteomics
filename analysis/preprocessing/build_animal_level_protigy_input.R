@@ -200,7 +200,7 @@ run_one <- function(dataset) {
     expression = expression,
     metadata = metadata,
     dataset = dataset,
-    validate_e9_design = TRUE,
+    validate_e9_design = FALSE,  # 3/3/2 design rerun: 8 animals, SUS = 2
     fail_on_invalid = FALSE
   )
   summary <- make_summary(bundle, inputs)

@@ -33,7 +33,7 @@ analysis:
 
 runtime:
   dry_run: false
-  workers: -1
+  workers: 14
   future_globals_max_size_mb: 8000
   resume_if_complete: true
   force_rerun: true

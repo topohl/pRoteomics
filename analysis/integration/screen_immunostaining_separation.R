@@ -113,7 +113,7 @@ smeta <- data.frame(sample_id = hdr[-(1:2)], AnimalID = mval("AnimalID"),
 smeta$ExpGroup <- unname(c(`1` = "CON", `2` = "RES", `3` = "SUS")[smeta$ExpGroupCode])
 smeta$spatial_unit <- paste(smeta$region, smeta$layer, sep = "_")
 ROSTER <- list(CON = c("A127", "A129", "A765"), RES = c("A0003", "A135", "A139"),
-               SUS = c("A111", "A755", "A764"))
+               SUS = c("A111", "A755"))  # 3/3/2 design rerun
 for (g in names(ROSTER))
   if (!identical(sort(unique(smeta$AnimalID[smeta$ExpGroup == g])), sort(ROSTER[[g]])))
     stop("ExpGroup coding mismatch for ", g, call. = FALSE)

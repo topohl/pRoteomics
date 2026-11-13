@@ -2725,7 +2725,7 @@ wgcna_group_fit_attempt <- function(
     } else {
       0L
     }
-    if (min_animals < 3L) {
+    if (min_animals < 2L) {  # 3/3/2 design rerun: SUS has 2 animals (was 3L)
       excluded <- c(
         excluded, paste0(output_spatial, "|", label,
                          ":insufficient_unique_animals")
@@ -3076,7 +3076,7 @@ wgcna_group_fit_interaction_omnibus <- function(
         } else {
           0L
         }
-        finite <- min_animals >= 3L && all(is.finite(c(
+        finite <- min_animals >= 2L && all(is.finite(c(
           contrast_df$estimate[[i]], contrast_df$SE[[i]],
           contrast_df[[stat_col]][[i]], contrast_df$p.value[[i]]
         )))

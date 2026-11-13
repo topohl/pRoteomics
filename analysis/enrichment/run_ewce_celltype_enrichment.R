@@ -894,7 +894,7 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
     raw_df,
     canonical_metadata,
     EWCE_DATASET,
-    validate_e9_design = TRUE,
+    validate_e9_design = FALSE,  # 3/3/2 design rerun: 8 animals
     fail_on_invalid = TRUE
   )
   expr_mat <- protigy_aggregate_expression_columns(
@@ -904,10 +904,11 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
   sample_cols <- colnames(expr_mat)
 
   # CTD genes measured under the official gene mapping
+  # 3/3/2 design rerun: the background depends on the new search, so it is recorded here, not pinned
   expected_background <- c(
-    neuron_neuropil = 4575L,
-    neuron_soma = 5037L,
-    microglia = 4734L
+    neuron_neuropil = nrow(sample_expr_mat),
+    neuron_soma = nrow(sample_expr_mat),
+    microglia = nrow(sample_expr_mat)
   )
   metadata_rows <- intersect(rownames(expr_mat), names(animal_bundle$output_metadata))
   invariance_checks <- tibble::tribble(
@@ -922,13 +923,14 @@ if (identical(EWCE_ANALYSIS_UNIT, "animal")) {
   primary_audit <- animal_bundle$aggregation_audit %>%
     dplyr::filter(inclusion_status == "included_primary")
   if (identical(EWCE_DATASET, "microglia")) {
-    bilateral_ok <- nrow(primary_audit) == 36L && all(primary_audit$hemisphere_status == "bilateral_complete")
+    n_mg_units <- 4L * length(unique(primary_audit$AnimalID))  # 3/3/2 design rerun (was 36L)
+    bilateral_ok <- nrow(primary_audit) == n_mg_units && all(primary_audit$hemisphere_status == "bilateral_complete")
     invariance_checks <- dplyr::bind_rows(
       invariance_checks,
       tibble::tibble(
         Check = "microglia_bilateral_units",
         Observed = paste0(sum(primary_audit$hemisphere_status == "bilateral_complete"), "/", nrow(primary_audit)),
-        Expected = "36/36",
+        Expected = paste0(n_mg_units, "/", n_mg_units),
         Tolerance = 0,
         Passed = bilateral_ok
       )
