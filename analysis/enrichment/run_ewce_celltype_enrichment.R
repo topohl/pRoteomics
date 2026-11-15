@@ -286,7 +286,7 @@ if (is_dry_run()) {
       metadata_dry <- as.data.frame(readxl::read_excel(sample_metadata_path), stringsAsFactors = FALSE, check.names = FALSE)
       bundle_dry <- protigy_prepare_animal_level(
         raw_dry, metadata_dry, EWCE_DATASET,
-        validate_e9_design = TRUE, fail_on_invalid = TRUE
+        validate_e9_design = FALSE, fail_on_invalid = TRUE  # 3/3/2 design rerun: 8 animals
       )
       animal_meta_dry <- animal_sample_metadata(bundle_dry$output_metadata, EWCE_DATASET)
       list(summary = animal_bundle_summary(bundle_dry), group_counts = animal_meta_dry)
@@ -609,9 +609,11 @@ run_limma_stratum <- function(expr_mat, sample_meta, stratum) {
     return(tibble::tibble())
   }
 
-  if (identical(EWCE_ANALYSIS_UNIT, "animal") && any(group_sizes != 3L)) {
+  # 3/3/2 design rerun: SUS has 2 animals, so the rule is at least 2 animals per condition (was exactly 3),
+  # as for the WGCNA group effects
+  if (identical(EWCE_ANALYSIS_UNIT, "animal") && any(group_sizes < 2L)) {
     stop(
-      "Animal-level EWCE requires 3 animals in each condition for ", stratum,
+      "Animal-level EWCE requires at least 2 animals in each condition for ", stratum,
       "; observed con/res/sus = ", paste(as.integer(group_sizes), collapse = "/"),
       call. = FALSE
     )
