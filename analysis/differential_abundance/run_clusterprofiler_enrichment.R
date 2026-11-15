@@ -1700,6 +1700,17 @@ analyze_comparison <- function(cell_types, working_base, mapped_data_base, organ
                       pvalueCutoff = analysis_params$pvalue_cutoff,
                       OrgDb = org_db_obj,
                       pAdjustMethod = analysis_params$p_adjust_method)
+      if (is.null(ora)) {
+        # enrichGO returns NULL when none of the input genes' GO sets lies inside the size limits
+        # (e.g. a single input gene): no term can be tested, which is a zero-term result, not a failure.
+        write.csv(data.frame(result_type = "no_testable_terms", ORA_direction = ora_direction,
+                             n_input_genes = length(ora_genes), input_genes = paste(head(ora_genes, 20), collapse = ";"),
+                             min_gs_size = analysis_params$min_gs_size, max_gs_size = analysis_params$max_gs_size),
+                  file.path(dirs$ora, paste0("ORA_", ont, "_", ora_direction, "_no_testable_terms.csv")), row.names = FALSE)
+        print_progress_step(comparison_name, "ORA", paste0(ora_direction, " terms=0 (no testable term for ",
+                            length(ora_genes), " input gene(s))"), runtime_params$show_step_progress)
+        next
+      }
       ora_results <- enrichment_result_table(ora, paste("GO ORA", ora_direction), required = TRUE)
 
       # Simplify ONLY if requested
