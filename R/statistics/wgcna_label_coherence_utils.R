@@ -257,8 +257,12 @@ wcl_module_label_evidence <- function(members, label_terms, top_n_hub = 10L) {
       module_size = nrow(mem),
       stringsAsFactors = FALSE
     )
+    # A module without a label term keeps the term columns as NA, so every module row has the same columns.
+    term_cols <- setdiff(names(label_terms), c("ModuleID", "label_go_gene_ids"))
     if (nrow(term)) {
-      out <- cbind(out, term[, setdiff(names(term), c("ModuleID", "label_go_gene_ids")), drop = FALSE])
+      out <- cbind(out, term[, term_cols, drop = FALSE])
+    } else {
+      for (cc in term_cols) out[[cc]] <- label_terms[[cc]][NA_integer_]
     }
     out$n_label_term_genes <- mapped$n_terms
     out$n_label_contributors_mapped <- length(mapped$rows)

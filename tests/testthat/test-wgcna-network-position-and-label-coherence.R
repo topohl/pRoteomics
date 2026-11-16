@@ -238,6 +238,18 @@ testthat::test_that("module evidence has one row per module and correct hub coun
   testthat::expect_gt(ev$contributor_centrality_auc, 0.5)
 })
 
+testthat::test_that("a module without a label term gets NA term columns instead of breaking the table", {
+  members <- wcl_fixture_members()
+  extra <- members; extra$ModuleID <- "WGCNA_m03"; extra$ProteinGroupID <- sub("PG:d:", "PG:d:x", extra$ProteinGroupID)
+  lt <- wcl_label_defining_terms(wcl_fixture_go(), "BP", "all")
+  testthat::expect_false("WGCNA_m03" %in% lt$ModuleID)
+  ev <- wcl_module_label_evidence(rbind(members, extra), lt)
+  testthat::expect_identical(ev$ModuleID, c("WGCNA_m01", "WGCNA_m03"))
+  testthat::expect_true(is.na(ev$label_go_description[ev$ModuleID == "WGCNA_m03"]))
+  testthat::expect_equal(ev$n_label_term_genes[ev$ModuleID == "WGCNA_m03"], 0)
+  testthat::expect_identical(ev$label_go_description[ev$ModuleID == "WGCNA_m01"], "synapse organization")
+})
+
 testthat::test_that("top-10/top-25 hub flags follow the frozen kME ordering", {
   members <- wcl_fixture_members()
   lt <- wcl_label_defining_terms(wcl_fixture_go(), "BP", "all")
