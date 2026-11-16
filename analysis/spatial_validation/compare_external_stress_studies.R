@@ -32,11 +32,13 @@
 # only (descriptive). Omnibus per contrast and level: the mean over the primary
 # signatures that carry the contrast.
 #
-# NULL: our t recomputed for all 1,680 assignments of the nine animals to three
-# groups of three; one-sided p = share of assignments with a correlation at least
-# as large. Contrast-specific p: only the assignments that keep the third group
-# fixed (20; floor 0.05), and all 84 splits for stressed - CON. BH over signature x
-# contrast within each level (primary set).
+# NULL: our t recomputed for every assignment of the animals to the three groups with
+# the observed group sizes (1,680 for nine animals in groups of three, 560 for the
+# 3/3/2 design); one-sided p = share of assignments with a correlation at least as
+# large. Contrast-specific p: only the assignments that keep the third group fixed
+# (20 with 3/3/3; 10 or 20 with 3/3/2), and all splits for stressed - CON. BH over
+# signature x contrast within each level (primary set). The p columns keep their
+# names (p_all_1680) for compatibility; n_relabellings gives the actual count.
 #
 # AGREEMENT: Spearman correlation between every pair of published signatures,
 # per contrast (shared genes) - how much the published studies agree with each other.
@@ -78,7 +80,7 @@ ALL_UNITS <- c("CA1so", "CA1sr", "CA1slm", "CA2so", "CA2sr", "CA2slm", "CA3so", 
 
 gct_paths <- vapply(STRESS_DATASETS, animal_level_gct_path, "")
 if (isTRUE(cli$dry_run)) {
-  cat("[DRY-RUN] Concordance with published stress signatures (1,680 relabellings).\n")
+  cat("[DRY-RUN] Concordance with published stress signatures (all relabellings with the observed group sizes).\n")
   dry_run_inputs(SCRIPT_ID, c(as.list(gct_paths), list(signature_info = SIG_INFO, theme_registry = THEME_REGISTRY)))
   quit(save = "no", status = 0L)
 }
@@ -110,7 +112,7 @@ go_bp_sets <- function(genes) {
 
 run_dataset <- function(ds) {
   d <- stress_gene_frame(ds)
-  L <- stress_all_labellings(d$animals)
+  L <- stress_all_labellings(d$animals, d$true_group)
   true_idx <- which(apply(L, 1, function(l) identical(unname(l), unname(d$true_group))))
   stopifnot(length(true_idx) == 1L)
   sets_all <- go_bp_sets(d$genes)
@@ -173,7 +175,8 @@ for (k in unique(key)) {
   byc <- vapply(STRESS_DATASETS, function(d) { w <- sel & comp == d; if (any(w)) mean(V[ti, w]) else NA_real_ }, 0)
   rows[[k]] <- data.frame(level = lv, signature = sg, set = sigs[[sg]]$set, contrast = ct, n_units = sum(sel),
                           units_positive = sum(V[ti, sel] > 0), mean_rho = s[["rho"]], null_median = s[["null_median"]],
-                          null_q95 = s[["null_q95"]], p_all_1680 = s[["p_all"]], p_contrast_specific = s[["p_specific"]],
+                          null_q95 = s[["null_q95"]], p_all_1680 = s[["p_all"]], n_relabellings = nrow(lab),
+                          p_contrast_specific = s[["p_specific"]],
                           n_contrast_specific = s[["n_specific"]], rho_neuropil = byc[["neuron_neuropil"]],
                           rho_soma = byc[["neuron_soma"]], rho_microglia = byc[["microglia"]], stringsAsFactors = FALSE)
 }
@@ -189,7 +192,8 @@ for (lv in unique(parts[, "level"])) for (ct in STRESS_CONTRASTS) {
   S <- rowMeans(do.call(cbind, series[ks])); s <- summ(S, ct)
   om[[length(om) + 1L]] <- data.frame(level = lv, contrast = ct, n_signatures = length(ks), signatures = paste(sub("^[^|]*[|]([^|]*)[|].*$", "\\1", ks), collapse = "; "),
                                        mean_rho = s[["rho"]], null_median = s[["null_median"]], null_q95 = s[["null_q95"]],
-                                       p_all_1680 = s[["p_all"]], p_contrast_specific = s[["p_specific"]], stringsAsFactors = FALSE)
+                                       p_all_1680 = s[["p_all"]], n_relabellings = nrow(lab), p_contrast_specific = s[["p_specific"]],
+                                       stringsAsFactors = FALSE)
 }
 omnibus <- do.call(rbind, om)
 
@@ -219,7 +223,8 @@ write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(signature_info 
                    parameters = list(our_model = "Figure 3 per-unit model on the animal-level values; gene level = one protein group per symbol",
                                      statistic = "Spearman of our t with the published statistic over shared genes; mean over matched units",
                                      levels = c("gene", sprintf("GO-BP term means (%d-%d shared genes)", GO_MIN, GO_MAX), "Figure 3 theme terms (descriptive)"),
-                                     null = "all 1,680 assignments of the nine animals to three groups of three; contrast-specific subsets (20 / 84)",
+                                     null = sprintf("all %d assignments of the %d animals to the groups with the observed sizes (%s); contrast-specific subsets keep the third group fixed",
+                                                    nrow(lab), ncol(lab), paste(names(table(lab[ti, ])), table(lab[ti, ]), sep = " ", collapse = ", ")),
                                      primary_signatures = primary, workers = N_WORKERS,
                                      runtime_minutes = round(as.numeric(difftime(Sys.time(), t0, units = "mins")), 1),
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),

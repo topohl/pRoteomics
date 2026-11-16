@@ -21,6 +21,19 @@ testthat::test_that("the relabelling null holds every assignment of nine animals
   testthat::expect_true(all(apply(L, 1, function(l) all(table(factor(l, c("CON", "RES", "SUS"))) == 3L))))
 })
 
+testthat::test_that("with eight animals (3/3/2) the null holds every assignment with the observed group sizes once", {
+  a <- paste0("a", 1:8)
+  truth <- stats::setNames(c("CON", "CON", "CON", "RES", "RES", "RES", "SUS", "SUS"), a)
+  L <- stress_all_labellings(a, truth)
+  testthat::expect_equal(nrow(L), 560L)   # 8! / (3! 3! 2!)
+  testthat::expect_equal(anyDuplicated(apply(L, 1, paste, collapse = "")), 0L)
+  testthat::expect_true(all(apply(L, 1, function(l) identical(as.integer(table(factor(l, c("CON", "RES", "SUS")))), c(3L, 3L, 2L)))))
+  testthat::expect_equal(sum(apply(L, 1, function(l) identical(unname(l), unname(truth)))), 1L)
+  # giving the 3/3/3 truth reproduces the original enumeration exactly
+  a9 <- paste0("a", 1:9)
+  testthat::expect_identical(stress_all_labellings(a9, stats::setNames(rep(c("CON", "RES", "SUS"), each = 3), a9)), stress_all_labellings(a9))
+})
+
 testthat::test_that("the relabelling fit reproduces the official Figure 3 t at the true labels", {
   testthat::skip_if(!file.exists(animal_level_gct_path("neuron_neuropil")), "animal-level matrices not present")
   d <- stress_gene_frame("neuron_neuropil")

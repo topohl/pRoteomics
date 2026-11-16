@@ -44,7 +44,7 @@ canonical_protein_identity <- function(dataset, unit, n_rows) {
   t
 }
 
-# Gene-level t of the Figure 3 model for every unit and contrast under any labelling of the nine animals
+# Gene-level t of the Figure 3 model for every unit and contrast under any labelling of the animals
 # (compare_external_stress_studies). One protein group per official symbol (claim-eligible, highest mean),
 # fixed for every labelling.
 STRESS_CONTRASTS <- c("SUS_vs_CON", "RES_vs_CON", "SUS_vs_RES", "stressed_vs_CON")
@@ -74,15 +74,20 @@ stress_contrast_t <- function(d, labels) {
   rownames(t) <- d$genes
   t
 }
-# All 1,680 assignments of nine animals to three groups of three (rows), in a fixed order.
-stress_all_labellings <- function(animals) {
-  stopifnot(length(animals) == 9L)
+# Every assignment of the animals to SUS, RES and CON with the observed group sizes (rows), in a fixed order:
+# 1,680 for nine animals in groups of three, 560 for the 3/3/2 design (two SUS). `true_group` (named by animal)
+# gives the sizes; without it the groups are three of each, as in the original design.
+stress_all_labellings <- function(animals, true_group = NULL) {
+  n <- length(animals)
+  sizes <- if (is.null(true_group)) c(SUS = 3L, RES = 3L, CON = 3L) else
+    c(SUS = sum(true_group == "SUS"), RES = sum(true_group == "RES"), CON = sum(true_group == "CON"))
+  stopifnot(sum(sizes) == n, all(sizes >= 2L))
   out <- list()
-  s1 <- utils::combn(9, 3)
+  s1 <- utils::combn(n, sizes[["SUS"]])
   for (i in seq_len(ncol(s1))) {
-    s2 <- utils::combn(setdiff(1:9, s1[, i]), 3)
+    s2 <- utils::combn(setdiff(seq_len(n), s1[, i]), sizes[["RES"]])
     for (j in seq_len(ncol(s2))) {
-      lab <- rep("CON", 9); lab[s1[, i]] <- "SUS"; lab[s2[, j]] <- "RES"
+      lab <- rep("CON", n); lab[s1[, i]] <- "SUS"; lab[s2[, j]] <- "RES"
       out[[length(out) + 1L]] <- stats::setNames(lab, animals)
     }
   }
