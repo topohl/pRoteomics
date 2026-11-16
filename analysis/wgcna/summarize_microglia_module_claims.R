@@ -80,6 +80,7 @@ artifact <- jsonlite::read_json(file.path(output_dir, "WGCNA_nature_readiness_re
 n_modules <- nrow(utils::read.csv(file.path(output_dir, "module_robustness_consensus.csv"), check.names = FALSE))
 n_blocks <- nrow(utils::read.csv(file.path(output_dir, "higher_order_block_readiness_summary.csv"), check.names = FALSE))
 n_iterations <- length(unique(bootstrap$bootstrap_iteration))
+n_animals <- length(unique(loao$omitted_AnimalID))  # nine in the 3/3/3 design, eight in the 3/3/2 rerun
 
 checks <- data.frame(
   check_id = c(
@@ -93,7 +94,7 @@ checks <- data.frame(
     all(file.exists(required_paths)) && all(file.info(required_paths)$size > 0),
     !any(grepl("\\.tmp-|\\.part$|\\.incomplete$", list.files(output_dir, all.files = TRUE))),
     nrow(robustness) == 3L * n_modules && !anyDuplicated(robustness[c("sensitivity_id", "ModuleID")]),
-    nrow(loao) == 9L * n_modules && !anyDuplicated(loao[c("omitted_AnimalID", "ModuleID")]),
+    n_animals >= 6L && nrow(loao) == n_animals * n_modules && !anyDuplicated(loao[c("omitted_AnimalID", "ModuleID")]),
     nrow(loro) == 4L * n_modules && !anyDuplicated(loro[c("omitted_region", "ModuleID")]),
     nrow(bootstrap) == n_iterations * n_modules && all(bootstrap$resampling_unit == "AnimalID_cluster") && length(unique(bootstrap$ModuleID)) == n_modules && n_iterations == 500L,
     nrow(blocks) == 4L * n_blocks && !anyDuplicated(blocks[c("sensitivity_id", "SupermoduleID")]),
@@ -107,7 +108,7 @@ checks <- data.frame(
     "all required audit artifacts have nonzero size",
     "no .tmp, .part or .incomplete files",
     paste0("3 sensitivity matrices x ", n_modules, " stable modules"),
-    paste0("9 animals x ", n_modules, " stable modules"),
+    paste0(n_animals, " animals x ", n_modules, " stable modules"),
     paste0("4 regions x ", n_modules, " stable modules"),
     paste0("500 AnimalID-cluster iterations x ", n_modules, " stable modules; no ROI-row bootstrap"),
     paste0("4 matrices x ", n_blocks, " multi-module blocks"),

@@ -158,8 +158,8 @@ protected_before <- data.frame(
 state <- readRDS(state_path)
 expression_primary <- as.matrix(state$expression.data)
 storage.mode(expression_primary) <- "double"
-if (nrow(expression_primary) != 72L) {
-  stop("Current primary expression matrix does not hold the 72 microglia ROI observations")
+if (nrow(expression_primary) < 16L || nrow(expression_primary) %% 8L != 0L) {
+  stop("Current primary expression matrix does not hold eight microglia ROI observations per animal")
 }
 n_features <- ncol(expression_primary)
 if (anyDuplicated(colnames(expression_primary))) stop("Primary ProteinGroupID keys are duplicated")
@@ -281,9 +281,13 @@ if (anyNA(metadata)) stop("Sample metadata could not be reconstructed determinis
 rownames(metadata) <- sample_names
 metadata[] <- lapply(metadata, function(x) if (is.character(x)) x else x)
 for (nm in setdiff(names(metadata), "Sample")) metadata[[nm]] <- factor(metadata[[nm]])
-if (length(unique(metadata$AnimalID)) != 9L || any(table(metadata$AnimalID) != 8L)) {
-  stop("Repeated-measures contract is not 9 animals x 8 ROIs")
+# Every animal contributes its eight ROIs (nine animals in the original 3/3/3 design, eight in the 3/3/2 rerun).
+n_animals <- length(unique(metadata$AnimalID))
+if (any(table(metadata$AnimalID) != 8L) || nrow(metadata) != 8L * n_animals) {
+  stop("Repeated-measures contract is not every animal x 8 ROIs")
 }
+group_sizes <- table(unique(as.data.frame(lapply(metadata[c("AnimalID", "StressGroup")], as.character)))$StressGroup)
+group_size_text <- paste(sprintf("%s %d", names(group_sizes), as.integer(group_sizes)), collapse = ", ")
 
 current_me <- state$mergedMEs[, module_map$module_eigengene, drop = FALSE]
 colnames(current_me) <- module_map$ModuleID
@@ -291,7 +295,7 @@ if (!identical(rownames(current_me), sample_names)) stop("Primary module eigenge
 
 super_values <- utils::read.csv(super_values_path, check.names = FALSE)
 super_values <- super_values[super_values$dataset == "microglia", , drop = FALSE]
-if (nrow(super_values) != 72L * length(observed_members) || anyDuplicated(super_values[c("Sample", "supermodule_id")])) {
+if (nrow(super_values) != nrow(expression_primary) * length(observed_members) || anyDuplicated(super_values[c("Sample", "supermodule_id")])) {
   stop("Stage 05 supermodule eigengene table is not one row per sample and SM identity")
 }
 super_ids <- sort(names(observed_members))
@@ -348,7 +352,7 @@ estimability_base <- data.frame(
     "variance_component_reported"
   ),
   limitation = c(
-    "nine biological units; ROI observations are repeated measures",
+    paste0(n_animals, " biological units; ROI observations are repeated measures"),
     "four hippocampal regions observed within animals",
     "three group levels; group is constant within animal and estimates are descriptive",
     "two levels observed within animal",
@@ -382,7 +386,7 @@ fit_variance_partition <- function(me_matrix, level_name, entity_ids) {
                                      "not_applicable_non_estimable"),
       model_formula = vp_formula_text,
       method = "variancePartition::fitExtractVarPartModel; categorical random-intercept variance fractions",
-      biological_unit = "AnimalID (n=9)",
+      biological_unit = paste0("AnimalID (n=", n_animals, ")"),
       stringsAsFactors = FALSE
     )
   }))
@@ -437,8 +441,8 @@ fit_fixed_group_partition <- function(me_matrix, level_name, entity_ids) {
       negative_estimate_detected = negative,
       model_formula = fixed_group_formula_text,
       method = "lme4::lmer; fixed-effect fitted-contribution variance plus AnimalID random-intercept and residual variance; non-orthogonal descriptive allocation",
-      biological_unit = "AnimalID (n=9)",
-      stress_group_interpretation = "fixed between-animal effect with three animals per group; low-powered descriptive contribution, not evidence of absence when near zero",
+      biological_unit = paste0("AnimalID (n=", n_animals, ")"),
+      stress_group_interpretation = paste0("fixed between-animal effect with ", group_size_text, " animals; low-powered descriptive contribution, not evidence of absence when near zero"),
       acquisition_batch_handling = "not included: acquisition date is nested within AnimalID and cannot be independently attributed",
       singular_fit = lme4::isSingular(fit, tol = 1e-5),
       model_warning = if (length(warnings)) paste(unique(warnings), collapse = " | ") else "none",
@@ -580,7 +584,7 @@ sensitivity_audit <- data.frame(
   sensitivity_id = c("primary", "hemisphere_collapsed", "spatial_adjusted", "within_animal_spatial_adjusted"),
   purpose = c("immutable reference", "bilateral sensitivity", "spatial nuisance sensitivity preserving animal/group", "strict within-animal spatial sensitivity"),
   n_samples = c(nrow(expression_primary), nrow(expression_collapsed), nrow(expression_spatial), nrow(expression_strict)),
-  n_animals = c(9L, 9L, 9L, 9L),
+  n_animals = rep(n_animals, 4L),
   n_features = c(ncol(expression_primary), ncol(expression_collapsed), ncol(expression_spatial), ncol(expression_strict)),
   feature_order_exact = c(TRUE, identical(colnames(expression_primary), colnames(expression_collapsed)),
                           identical(colnames(expression_primary), colnames(expression_spatial)),
@@ -617,7 +621,7 @@ residualization_estimability <- data.frame(
     "not_estimable_after_orthogonalization_to_AnimalID", "estimable_full_rank",
     "estimable_as_fixed_effect_design", "estimable_conditional_on_AnimalID"
   ),
-  degrees_of_freedom = c(8L, 3L, 3L, 1L, 0L, 9L, 9L, 3L),
+  degrees_of_freedom = c(n_animals - 1L, 3L, 3L, 1L, 0L, n_animals, n_animals, 3L),
   included_in_residualization = c(FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, TRUE, TRUE),
   handling = c(
     "left/right averaged within AnimalID+Region", "left/right averaged within AnimalID+Region",
@@ -977,7 +981,7 @@ bootstrap_summary <- do.call(rbind, lapply(split(bootstrap_rows, bootstrap_rows$
 write_csv_atomic(bootstrap_summary, file.path(output_dir, "module_animal_cluster_bootstrap_summary.csv"))
 bootstrap_estimability <- data.frame(
   dataset = "microglia", resampling_unit = "AnimalID_cluster", requested_iterations = n_animal_bootstrap,
-  completed_iterations = length(unique(bootstrap_rows$bootstrap_iteration)), n_animals = 9L, roi_rows_per_cluster = 8L,
+  completed_iterations = length(unique(bootstrap_rows$bootstrap_iteration)), n_animals = n_animals, roi_rows_per_cluster = 8L,
   duplicate_draw_identity = "Sample__boot###_draw#", ROI_row_bootstrap_used = FALSE,
   membership_redefinition = FALSE, reference_state_md5 = reference_state_md5,
   status = if (all(table(bootstrap_rows$ModuleID) == n_animal_bootstrap)) "complete" else "incomplete", stringsAsFactors = FALSE
@@ -986,7 +990,7 @@ write_csv_atomic(bootstrap_estimability, file.path(output_dir, "animal_cluster_b
 
 # Variance-partition uncertainty is based on leave-one-AnimalID-out refits.
 # Cluster-bootstrap confidence intervals for the mixed variance allocation are
-# reported only when all fixed design levels remain estimable; with nine
+# reported only when all fixed design levels remain estimable; with eight or nine
 # clusters and three groups, many resamples omit a group, so no misleading
 # percentile interval is manufactured for that allocation.
 fixed_group_values <- function(y, d) {
@@ -1591,7 +1595,7 @@ recommendations <- data.frame(
   ),
   rationale = c(
     paste0(robust_n, " spatially independent, ", region_organized_n, " reproducible spatially organized, ", suggestive_n, " suggestive, ", animal_sensitive_n, " animal-sensitive and ", technical_n, " technically unstable"),
-    "descriptive mixed-model decomposition respects nine animal units and exposes spatial dominance",
+    paste0("descriptive mixed-model decomposition respects the ", n_animals, " animal units and exposes spatial dominance"),
     "full numerical robustness evidence is necessary for reproducibility but too detailed for the main narrative",
     paste0("only ", length(expected_blocks), " identities are multi-module blocks; support is evaluated on the resolved historical cut and a non-optimized grid"),
     "distinguishes process from ROI/cellular context and limits intrinsic-cell claims",
@@ -1645,12 +1649,12 @@ validation <- data.frame(
     identical(sort(unique(as.character(module_long$ModuleID))), module_ids),
     identical(sort(unique(module_map$SupermoduleID)), super_ids),
     !anyDuplicated(module_long$ProteinGroupID),
-    length(unique(metadata$AnimalID)) == 9L && all(table(metadata$AnimalID) == 8L),
-    identical(c(nrow(expression_collapsed), nrow(expression_spatial), nrow(expression_strict)), c(36L, 72L, 72L)),
+    length(unique(metadata$AnimalID)) == n_animals && all(table(metadata$AnimalID) == 8L),
+    identical(c(nrow(expression_collapsed), nrow(expression_spatial), nrow(expression_strict)), c(4L, 8L, 8L) * n_animals),
     all(sensitivity_audit$feature_order_exact),
     all(abs(aggregate(variance_fraction ~ level + entity_id, rbind(module_vp, super_vp), sum, na.rm = TRUE)$variance_fraction - 1) < 1e-8),
     nrow(module_robustness) == 3L * n_modules && all(module_robustness$preservation_metric_reason == "available") && all(!module_robustness$claim_gate_eligible) && all(module_robustness$preservation_permutation_unit == "ROI_row_unblocked"),
-    nrow(loao) == 9L * n_modules && all(table(loao$ModuleID) == 9L),
+    nrow(loao) == n_animals * n_modules && all(table(loao$ModuleID) == n_animals),
     nrow(loro) == 4L * n_modules && all(table(loro$ModuleID) == 4L),
     nrow(bootstrap_rows) == n_animal_bootstrap * n_modules && all(bootstrap_rows$resampling_unit == "AnimalID_cluster") && !bootstrap_estimability$ROI_row_bootstrap_used,
     cut_height_provenance_status %in% c("resolved_0.40", "resolved_0.45", "resolved_other", "unresolved_historical_provenance") && (cut_height_provenance_status != "resolved_0.40" || isTRUE(all.equal(selected_cut_height, .40))),
@@ -1663,12 +1667,12 @@ validation <- data.frame(
   detail = c(
     paste0("exact WGCNA_m01..WGCNA_m", sprintf("%02d", n_modules)), paste0("exact ", paste(range(super_ids), collapse = "..")),
     "one immutable module assignment per active ProteinGroupID",
-    "nine animals with eight repeated ROI observations each",
-    "36 hemisphere-collapsed; 72 spatial-adjusted; 72 strict residualized",
+    paste0(n_animals, " animals with eight repeated ROI observations each"),
+    paste0(4L * n_animals, " hemisphere-collapsed; ", 8L * n_animals, " spatial-adjusted; ", 8L * n_animals, " strict residualized"),
     paste0("all matrices retain the exact ordered ", n_features, "-feature universe"),
     "estimable components sum to one per eigengene; non-estimable batch is NA",
     paste0(3L * n_modules, " module-matrix rows; ", n_permutations, " conventional unblocked ROI-row preservation permutations; descriptive only"),
-    "nine omissions for every module", "four omissions for every module",
+    paste0(n_animals, " omissions for every module"), "four omissions for every module",
     paste0(n_animal_bootstrap, " AnimalID-cluster draws; no ROI-row bootstrap"), paste0(cut_height_provenance_status, "; selected=", selected_cut_height), paste0(paste(names(expected_blocks), collapse = "/"), " match current membership"),
     "all module context rows contain explicit claim limitations",
     "concordance not run because matching contract is incomplete",
@@ -1692,7 +1696,7 @@ report_lines <- c(
   "",
   "## Answer first",
   "",
-  paste0("The current fixed network contains ", n_modules, " modules from 72 ROI observations nested within nine animals. The corrected classification identifies **", robust_n, " robust spatially independent**, **", region_organized_n, " reproducible spatially organized**, **", suggestive_n, " suggestive**, **", animal_sensitive_n, " animal-sensitive**, and **", technical_n, " technically unstable** modules. The strict within-animal nonspatial result is diagnostic only and does not automatically invalidate a primary architecture."),
+  paste0("The current fixed network contains ", n_modules, " modules from ", nrow(expression_primary), " ROI observations nested within ", n_animals, " animals. The corrected classification identifies **", robust_n, " robust spatially independent**, **", region_organized_n, " reproducible spatially organized**, **", suggestive_n, " suggestive**, **", animal_sensitive_n, " animal-sensitive**, and **", technical_n, " technically unstable** modules. The strict within-animal nonspatial result is diagnostic only and does not automatically invalidate a primary architecture."),
   "",
   paste0("Only ", paste(names(expected_blocks), collapse = ", "), " are evaluated as multi-module higher-order blocks. Historical cut-height provenance is **", cut_height_provenance_status, "** (selected ", ifelse(is.finite(selected_cut_height), formatC(selected_cut_height, format = "f", digits = 2), "unresolved"), "). The non-optimized grid is 0.25, 0.35, 0.40, 0.45, 0.50, 0.55 and 0.65; grid support was: ", paste(names(block_all_support), ifelse(block_all_support, "supported", "not consistently supported"), sep = "=", collapse = "; "), "."),
   "",
@@ -1700,7 +1704,7 @@ report_lines <- c(
   "",
   "## Repeated-measures and estimability",
   "",
-  paste0("The all-random-effects sensitivity uses `", vp_formula_text, "`; the design-aware decomposition uses `", fixed_group_formula_text, "`. AnimalID is the biological unit. StressGroup is a low-powered fixed between-animal term (three animals per group); a near-zero allocation is not evidence of no stress effect. Acquisition date is nested within AnimalID, so it is never assigned an independent variance component. Boundary/negative estimates and leave-one-animal-out uncertainty are recorded."),
+  paste0("The all-random-effects sensitivity uses `", vp_formula_text, "`; the design-aware decomposition uses `", fixed_group_formula_text, "`. AnimalID is the biological unit. StressGroup is a low-powered fixed between-animal term (", group_size_text, " animals); a near-zero allocation is not evidence of no stress effect. Acquisition date is nested within AnimalID, so it is never assigned an independent variance component. Boundary/negative estimates and leave-one-animal-out uncertainty are recorded."),
   "",
   "## Sensitivity design",
   "",

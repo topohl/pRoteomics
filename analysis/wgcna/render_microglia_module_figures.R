@@ -92,9 +92,12 @@ save(p_arch, "corrected_all_supermodule_architecture", 8.2, 4.3)
 
 # Global panels: ROI points are faint; one prominent mean per AnimalID is the biological-unit summary.
 animal_means <- values |> dplyr::group_by(.data$supermodule_id, .data$canonical_plot_label, .data$StressGroup, .data$AnimalID) |> dplyr::summarise(animal_mean_eigengene = mean(.data$eigengene), n_roi = dplyr::n(), .groups = "drop")
+n_animals <- dplyr::n_distinct(values$AnimalID)
+group_n <- values |> dplyr::distinct(.data$StressGroup, .data$AnimalID) |> dplyr::count(.data$StressGroup)
+group_n_text <- paste(group_n$n, collapse = "/")
 global_source <- values |> dplyr::select(supermodule_id, canonical_plot_label, StressGroup, AnimalID, roi, roi_eigengene = eigengene) |> dplyr::left_join(animal_means, by = c("supermodule_id", "canonical_plot_label", "StressGroup", "AnimalID"), relationship = "many-to-one")
 write_source(global_source, "corrected_all_supermodule_global_eigengenes")
-p_global <- ggplot2::ggplot(global_source, ggplot2::aes(.data$StressGroup, .data$roi_eigengene, colour = .data$StressGroup)) + ggplot2::geom_point(position = ggplot2::position_jitter(width = .12, height = 0, seed = 1), alpha = .22, size = .55) + ggplot2::geom_point(data = animal_means, ggplot2::aes(y = .data$animal_mean_eigengene), inherit.aes = TRUE, shape = 21, fill = "white", size = 1.75, stroke = .35) + ggplot2::facet_wrap(~canonical_plot_label, ncol = 3, scales = "free_y") + ggplot2::scale_colour_manual(values = c(CON = "#3E3C6F", RES = "#9E9A92", SUS = "#D7303F")) + ggplot2::labs(x = NULL, y = "Eigengene; faint ROI observations, n=3 animal means/group") + theme_pub(7.2) + ggplot2::theme(legend.position = "none")
+p_global <- ggplot2::ggplot(global_source, ggplot2::aes(.data$StressGroup, .data$roi_eigengene, colour = .data$StressGroup)) + ggplot2::geom_point(position = ggplot2::position_jitter(width = .12, height = 0, seed = 1), alpha = .22, size = .55) + ggplot2::geom_point(data = animal_means, ggplot2::aes(y = .data$animal_mean_eigengene), inherit.aes = TRUE, shape = 21, fill = "white", size = 1.75, stroke = .35) + ggplot2::facet_wrap(~canonical_plot_label, ncol = 3, scales = "free_y") + ggplot2::scale_colour_manual(values = c(CON = "#3E3C6F", RES = "#9E9A92", SUS = "#D7303F")) + ggplot2::labs(x = NULL, y = paste0("Eigengene; faint ROI observations, n=", group_n_text, " animal means/group")) + theme_pub(7.2) + ggplot2::theme(legend.position = "none")
 save(p_global, "corrected_all_supermodule_global_eigengenes", 7.2, 2.03 * ceiling(length(sm_order) / 3))
 
 global <- effects_std |> dplyr::filter(.data$effect_scope == "spatial_adjusted_global", .data$contrast == "SUS - RES") |> dplyr::mutate(plot_label = factor(.data$canonical_plot_label, levels = rev(labels$canonical_plot_label)), claim_symbol = dplyr::case_when(!.data$stable ~ "none", !(.data$display_is_independent_endpoint %in% TRUE) ~ "none", !(.data$independent_hypothesis %in% TRUE) ~ "none", .data$q_value <= .05 ~ "FDR05", .data$q_value <= .10 ~ "FDR10", TRUE ~ "none"))
@@ -131,7 +134,7 @@ p_ready <- ggplot2::ggplot(readiness_long, ggplot2::aes(.data$check, .data$Modul
 save(p_ready, "wgcna_readiness_summary", 7.5, 5.0)
 validation <- tibble::tribble(~check, ~status, ~detail,
  "all_supermodules_in_architecture", if (dplyr::n_distinct(architecture$supermodule_id) == length(sm_order)) "pass" else "fail", as.character(dplyr::n_distinct(architecture$supermodule_id)),
- "nine_animal_means_per_supermodule", if (all(table(animal_means$supermodule_id) == 9)) "pass" else "fail", "3 groups x 3 animals",
+ "one_mean_per_animal_per_supermodule", if (all(table(animal_means$supermodule_id) == n_animals)) "pass" else "fail", paste0(n_animals, " animals (", paste(group_n$StressGroup, group_n$n, collapse = ", "), ")"),
  "raw_and_standardized_effects", if (all(c("estimate", "raw_SE", "response_SD", "standardized_estimate", "standardized_SE", "standardized_CI_low", "standardized_CI_high") %in% names(effects_std))) "pass" else "fail", "denominators retained",
  "no_singular_claim_symbols", if (!any(global$claim_symbol != "none" & !global$stable)) "pass" else "fail", "diagnostic rows unpromoted",
  "strict_nonspatial_separate", if ("strict_nonspatial" %in% unique(readiness_long$check)) "pass" else "fail", "shown separately")
