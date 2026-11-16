@@ -2,9 +2,10 @@
 # Step 3: can the observed peptides tell the candidate genes of an accession apart?
 #   Rscript tools/gene_annotation_review/03_peptide_gene_specificity.R --out <dir of steps 1-2> [--fasta <search FASTA>[,<more>]]
 # Every observed peptide (Stripped.Sequence, I read as L) is searched in every RefSeq protein of every candidate
-# gene. A peptide found in the proteins of exactly one candidate gene is gene-unique; one found in several is shared.
-# With --fasta (the FASTA the search used, e.g. the UniProt proteome plus contaminants) each peptide is also searched
-# in every FASTA entry, which tells whether the search itself could have assigned it to another gene.
+# gene, and with --fasta in every entry of a whole-proteome FASTA (the search FASTA if available, otherwise the
+# complete UniProt mouse proteome). A peptide is gene-unique if it occurs in exactly one candidate gene's proteins
+# and in no FASTA entry of another gene (entries of the same gene under older names or aliases do not count);
+# every other peptide is shared.
 # Writes peptide_gene_matches.csv, candidate_gene_products.csv and peptide_specificity_summary.csv.
 source(file.path(dirname(sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])), "review_helpers.R"))
 a <- review_args("out")
