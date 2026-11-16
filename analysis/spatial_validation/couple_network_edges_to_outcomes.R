@@ -16,16 +16,17 @@
 #        whose model contained the outcome group) by the current ones from the frozen behaviour bundles.
 #
 # EDGES: the animal-level edge scores of test_network_behaviour_coupling.R (Spearman correlation of the two units' protein
-# profiles within an animal; eight declared edges; nine animals), as that run stored them (SHA-256 pinned below, run of
-# 2026-10-26 on this tree). Nothing about the edges is recomputed.
+# profiles within an animal; eight declared edges; every proteomic animal), as that run stored them (SHA-256 pinned below,
+# run of 2026-10-26 on this tree). Nothing about the edges is recomputed. A rerun on other data (the 3/3/2 rerun on the
+# second search) sets PROTEOMICS_EDGES_UNPINNED=true: the pin is then not enforced and the manifest records the hash used.
 #
 # OUTCOMES (group-free; data/external/behaviour_outcomes): the integrated stress score (ISS = CombZ), the corticosterone
 # rise, sucrose preference, early movement (Stage 09: first active phase after the first cage change) and mean first-night
 # movement over the four cage changes (post hoc run 29f).
 #
-# TEST: Pearson r of each edge with each outcome over the nine animals, with the Fisher-z 95% interval, as the earlier
-# coupling; Benjamini-Hochberg within each outcome (eight edges) and across all 40 tests. Nine animals give very little
-# power: a null here is not evidence of absence.
+# TEST: Pearson r of each edge with each outcome over the animals (nine, or eight in the 3/3/2 rerun), with the Fisher-z
+# 95% interval, as the earlier coupling; Benjamini-Hochberg within each outcome (eight edges) and across all 40 tests.
+# So few animals give very little power: a null here is not evidence of absence.
 #
 #
 
@@ -58,7 +59,9 @@ if (isTRUE(cli$dry_run)) {
   quit(save = "no", status = 0L)
 }
 for (f in c(EDGES, OUTCOMES, OUTCOME_INFO)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
-if (!identical(unname(tools::sha256sum(EDGES)), EDGES_SHA256))
+edges_sha256_used <- unname(tools::sha256sum(EDGES))
+edges_unpinned <- identical(tolower(Sys.getenv("PROTEOMICS_EDGES_UNPINNED", "")), "true")
+if (!identical(edges_sha256_used, EDGES_SHA256) && !edges_unpinned)
   stop("The stored edge scores differ from the pinned table of the 2026-10-26 coupling run.", call. = FALSE)
 info <- utils::read.csv(OUTCOME_INFO, stringsAsFactors = FALSE)
 if (!identical(info$sha256[info$item == "output"], unname(tools::sha256sum(OUTCOMES))))
@@ -67,10 +70,11 @@ invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
 
 edges <- utils::read.csv(EDGES, stringsAsFactors = FALSE, colClasses = c(AnimalID = "character"))
 beh <- utils::read.csv(OUTCOMES, stringsAsFactors = FALSE, colClasses = c(animal_id = "character", AnimalNum = "character"))
-if (length(unique(edges$AnimalID)) != 9L || length(unique(edges$Edge)) != 8L || nrow(edges) != 72L)
-  stop("Expected eight edges for each of nine animals.", call. = FALSE)
+n_animals <- length(unique(edges$AnimalID))
+if (length(unique(edges$Edge)) != 8L || nrow(edges) != 8L * n_animals || any(table(edges$AnimalID) != 8L))
+  stop("Expected eight edges for each of the ", n_animals, " animals.", call. = FALSE)
 d <- merge(edges[, c("AnimalID", "ExpGroup", "Edge", "EdgeR")], beh, by.x = "AnimalID", by.y = "animal_id")
-if (nrow(d) != 72L) stop("Not every proteomic animal has a behaviour row.", call. = FALSE)
+if (nrow(d) != nrow(edges)) stop("Not every proteomic animal has a behaviour row.", call. = FALSE)
 if (any(d$ExpGroup != d$Group)) stop("Proteomic and behaviour group labels differ.", call. = FALSE)
 
 fisher_ci <- function(r, n) { z <- atanh(r); h <- stats::qnorm(0.975) / sqrt(n - 3); tanh(c(z - h, z + h)) }
@@ -86,14 +90,15 @@ for (o in names(OUTCOME_LABELS)) for (e in sort(unique(d$Edge))) {
 cor_tbl <- do.call(rbind, rows)
 cor_tbl$p.adj_BH_within_outcome <- stats::ave(cor_tbl$p.value, cor_tbl$Outcome, FUN = function(p) stats::p.adjust(p, "BH"))
 cor_tbl$p.adj_BH_all <- stats::p.adjust(cor_tbl$p.value, "BH")
-cor_tbl$note <- "nine animals: very low power; a null is not evidence of absence"
+cor_tbl$note <- sprintf("%d animals: very low power; a null is not evidence of absence", n_animals)
 values <- d[order(d$Edge, d$AnimalID), c("Edge", "AnimalID", "AnimalNum", "Group", "EdgeR", names(OUTCOME_LABELS))]
 
 utils::write.csv(cor_tbl, OUT$correlations, row.names = FALSE)
 utils::write.csv(values, OUT$values, row.names = FALSE)
 write_run_manifest(MANIFEST, inputs = list(edges = EDGES, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO), outputs = OUT,
                    parameters = list(test = "Pearson r, Fisher-z 95% interval; BH within outcome (8 edges) and across all 40 tests",
-                                     edges_sha256 = EDGES_SHA256, outcomes = as.list(OUTCOME_LABELS),
+                                     edges_sha256 = edges_sha256_used, edges_sha256_pinned = EDGES_SHA256,
+                                     edges_pin_enforced = !edges_unpinned, n_animals = n_animals, outcomes = as.list(OUTCOME_LABELS),
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = "Rerun of the edge-behaviour coupling (Extended Data 8c) on the current, group-free behaviour outcomes.")
 message("Edge-outcome coupling: ", nrow(cor_tbl), " tests; smallest BH within outcome ", signif(min(cor_tbl$p.adj_BH_within_outcome), 2))
