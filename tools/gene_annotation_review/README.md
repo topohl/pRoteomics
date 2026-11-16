@@ -24,8 +24,8 @@ For each accession:
    - an I/L variant in another gene does not count either.
 
    Always supply a whole-proteome FASTA. Without it, a peptide is only compared with the candidate genes. For
-   example, Cbx3's IIGATDSSGELMFLMK matches Cbx1 once I and L are equated, which only the proteome check
-   reveals.
+   example, Cbx3's IIGATDSSGELMFLMK occurs unchanged in Cbx1 (P83917, residues 122–137, same flanking
+   residues). DIA-NN listed only Cbx3 for it, and only the proteome check reveals the match.
 3. **How much of the measured amount is gene-specific?** The protein-group value in `report.pg_matrix.tsv` is a
    MaxLFQ over all precursors of the group. The script recomputes MaxLFQ from all, gene-unique-only and
    shared-only precursors. It reports:
