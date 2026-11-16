@@ -179,7 +179,8 @@ build_mouse_gene_annotation_maps <- function(org_db_obj, accessions = NULL) {
 }
 
 normalize_manual_gene_annotation_overrides <- function(overrides) {
-  empty <- data.frame(lookup_value = character(), official_gene_symbol = character(), official_entrez_id = character(), stringsAsFactors = FALSE)
+  empty <- data.frame(lookup_value = character(), official_gene_symbol = character(), official_entrez_id = character(),
+    shared_gene_reason = character(), stringsAsFactors = FALSE)
   if (is.null(overrides) || !is.data.frame(overrides) || !nrow(overrides)) return(empty)
   nms <- tolower(gsub("[^a-z0-9]+", "_", names(overrides)))
   names(overrides) <- nms
@@ -187,12 +188,62 @@ normalize_manual_gene_annotation_overrides <- function(overrides) {
   symbol_col <- intersect(c("official_gene_symbol", "resolved_gene_symbol", "symbol"), nms)
   entrez_col <- intersect(c("official_entrez_id", "entrezid", "entrez_id"), nms)
   if (!length(lookup_col) || !length(symbol_col)) return(empty)
+  reason <- if ("shared_gene_reason" %in% nms) trimws(as.character(overrides$shared_gene_reason)) else rep("", nrow(overrides))
+  reason[is.na(reason)] <- ""
   data.frame(
     lookup_value = toupper(trimws(as.character(overrides[[lookup_col[[1]]]]))),
     official_gene_symbol = trimws(as.character(overrides[[symbol_col[[1]]]])),
     official_entrez_id = if (length(entrez_col)) trimws(as.character(overrides[[entrez_col[[1]]]])) else NA_character_,
+    shared_gene_reason = reason,
     stringsAsFactors = FALSE
   )
+}
+
+# The override table is versioned and keyed by exact UniProt accession only (format of 2026-11-16). Only rows with
+# override_status "approved" are applied; "proposed" and "held" rows document decisions and are checked but not used.
+# The analysis symbol must be the installed org.Mm.eg.db symbol of the given Entrez ID, because GO joins by that
+# symbol (clusterProfiler keyType SYMBOL) and EWCE joins to its reference by symbol. Several accessions may share
+# one Entrez ID (isoforms, members of one protein group) only when each such row states shared_gene_reason.
+manual_gene_annotation_override_statuses <- function() c("approved", "proposed", "held")
+
+validate_manual_gene_annotation_overrides <- function(raw, org_db_obj = NULL, path = "manual gene annotation overrides") {
+  if (is.null(raw) || !is.data.frame(raw) || !nrow(raw)) return(invisible(TRUE))
+  fail <- function(...) stop(path, ": ", ..., call. = FALSE)
+  names(raw) <- tolower(gsub("[^a-z0-9]+", "_", names(raw)))
+  required <- c("member_accession", "official_gene_symbol", "official_entrez_id", "override_status", "annotation_release")
+  missing <- setdiff(required, names(raw))
+  if (length(missing)) fail("missing column(s) ", paste(missing, collapse = ", "), " (accession-keyed, versioned format required)")
+  other_keys <- intersect(c("lookup_value", "uniprot", "submitted_gene_symbol", "gene_symbol"), names(raw))
+  if (length(other_keys)) fail("only member_accession may key an override; remove column(s) ", paste(other_keys, collapse = ", "))
+  chr <- function(x) { x <- trimws(as.character(x)); x[is.na(x)] <- ""; x }
+  acc <- toupper(chr(raw$member_accession)); sym <- chr(raw$official_gene_symbol); ent <- chr(raw$official_entrez_id)
+  status <- tolower(chr(raw$override_status)); release <- chr(raw$annotation_release)
+  reason <- if ("shared_gene_reason" %in% names(raw)) chr(raw$shared_gene_reason) else rep("", length(acc))
+  bad <- !is_uniprot_ac(sub("-[0-9]+$", "", acc))
+  if (any(bad)) fail("not a UniProt accession: ", paste(unique(acc[bad]), collapse = ", "))
+  if (anyDuplicated(acc)) fail("duplicated accession(s): ", paste(unique(acc[duplicated(acc)]), collapse = ", "))
+  bad <- !status %in% manual_gene_annotation_override_statuses()
+  if (any(bad)) fail("override_status must be one of ", paste(manual_gene_annotation_override_statuses(), collapse = "/"),
+    "; found ", paste(unique(status[bad]), collapse = ", "))
+  bad <- !nzchar(sym) | !grepl("^[0-9]+$", ent)
+  if (any(bad)) fail("every row needs an analysis symbol and a numeric Entrez ID: ", paste(acc[bad], collapse = ", "))
+  if (!is.null(org_db_obj)) {
+    installed <- paste0("org.Mm.eg.db ", as.character(utils::packageVersion("org.Mm.eg.db")))
+    bad <- release != installed
+    if (any(bad)) fail("annotation_release ", paste(unique(release[bad]), collapse = ", "), " does not match the installed ", installed,
+      "; re-check the symbols for this release before use")
+    keys_sym <- AnnotationDbi::keys(org_db_obj, keytype = "SYMBOL")
+    bad <- !sym %in% keys_sym
+    if (any(bad)) fail("symbol(s) unknown to the installed ", installed, ": ", paste(paste0(acc[bad], "=", sym[bad]), collapse = ", "))
+    m <- suppressMessages(AnnotationDbi::select(org_db_obj, keys = unique(ent), keytype = "ENTREZID", columns = "SYMBOL"))
+    bad <- sym != m$SYMBOL[match(ent, m$ENTREZID)] | is.na(m$SYMBOL[match(ent, m$ENTREZID)])
+    if (any(bad)) fail("symbol does not belong to the Entrez ID in ", installed, ": ", paste(paste0(acc[bad], "=", sym[bad], "/", ent[bad]), collapse = ", "))
+  }
+  use <- status == "approved"
+  shared <- ent[use][duplicated(ent[use]) | duplicated(ent[use], fromLast = TRUE)]
+  bad <- use & ent %in% shared & !nzchar(reason)
+  if (any(bad)) fail("Entrez ID(s) assigned to several accessions without shared_gene_reason: ", paste(paste0(acc[bad], "=", ent[bad]), collapse = ", "))
+  invisible(TRUE)
 }
 
 read_manual_gene_annotation_overrides <- function(path = Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = "")) {
@@ -208,16 +259,55 @@ read_manual_gene_annotation_overrides <- function(path = Sys.getenv("PROTEOMICS_
   ext <- tolower(tools::file_ext(path))
   raw <- if (ext %in% c("xlsx", "xls")) {
     if (!requireNamespace("readxl", quietly = TRUE)) stop("readxl is required for manual gene annotation workbooks.", call. = FALSE)
-    readxl::read_excel(path, sheet = 1)
+    readxl::read_excel(path, sheet = 1, col_types = "text")
   } else if (requireNamespace("readr", quietly = TRUE)) {
-    readr::read_csv(path, show_col_types = FALSE)
+    readr::read_csv(path, show_col_types = FALSE, col_types = readr::cols(.default = readr::col_character()))
   } else {
-    utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
+    utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE, colClasses = "character")
   }
-  out <- normalize_manual_gene_annotation_overrides(as.data.frame(raw))
+  raw <- as.data.frame(raw)
+  org_db_obj <- if (requireNamespace("org.Mm.eg.db", quietly = TRUE) && requireNamespace("AnnotationDbi", quietly = TRUE)) {
+    getExportedValue("org.Mm.eg.db", "org.Mm.eg.db")
+  } else NULL
+  validate_manual_gene_annotation_overrides(raw, org_db_obj, path = path)
+  names(raw) <- tolower(gsub("[^a-z0-9]+", "_", names(raw)))
+  status <- tolower(trimws(as.character(raw$override_status)))
+  out <- normalize_manual_gene_annotation_overrides(raw[status %in% "approved", , drop = FALSE])
   attr(out, "path") <- path
-  attr(out, "status") <- if (nrow(out)) "loaded" else "empty_or_invalid"
+  attr(out, "status") <- if (nrow(out)) "loaded" else "no_approved_rows"
+  attr(out, "rows_not_applied") <- sum(!status %in% "approved")
+  attr(out, "sha256") <- if (exists("file_hash_sha256", mode = "function")) file_hash_sha256(path) else unname(tools::md5sum(path))
   out
+}
+
+# Gene-level protein groups that share an official Entrez ID with another gene-level group. Shares that exist without
+# any override (e.g. Tpm3, two separate protein groups in the search) are reported and allowed; a share created by an
+# override stops the run unless the override rows for that Entrez ID state shared_gene_reason. Abundances are never
+# combined here; this only guards which groups carry a gene.
+audit_override_gene_duplicates <- function(wide, bridge, overrides = NULL) {
+  empty <- data.frame(official_entrez_id = character(), official_gene_symbol = character(), ProteinGroupID = character(),
+    member_accessions = character(), override_involved = logical(), allowed_reason = character(), stringsAsFactors = FALSE)
+  if (is.null(wide) || !nrow(wide) || !all(c("gene_level_claim_allowed", "official_entrez_id") %in% names(wide))) return(empty)
+  gl <- wide[wide$gene_level_claim_allowed %in% TRUE & !is.na(wide$official_entrez_id) & nzchar(wide$official_entrez_id), , drop = FALSE]
+  shared_ids <- unique(gl$official_entrez_id[duplicated(gl$official_entrez_id)])
+  if (!length(shared_ids)) return(empty)
+  rows <- gl[gl$official_entrez_id %in% shared_ids, intersect(c("official_entrez_id", "official_gene_symbol", "ProteinGroupID", "member_accessions"), names(gl)), drop = FALSE]
+  used <- if (!is.null(bridge) && "gene_annotation_manual_override_used" %in% names(bridge)) {
+    unique(bridge$ProteinGroupID[bridge$gene_annotation_manual_override_used %in% TRUE])
+  } else character()
+  rows$override_involved <- rows$ProteinGroupID %in% used
+  ov <- normalize_manual_gene_annotation_overrides(overrides)
+  reasons <- tapply(ov$shared_gene_reason, ov$official_entrez_id, function(x) paste(unique(x[nzchar(x)]), collapse = "; "))
+  rows$allowed_reason <- ifelse(rows$official_entrez_id %in% names(reasons), as.character(reasons[rows$official_entrez_id]), "")
+  rows$allowed_reason[is.na(rows$allowed_reason)] <- ""
+  involved <- tapply(rows$override_involved, rows$official_entrez_id, any)
+  explained <- tapply(nzchar(rows$allowed_reason), rows$official_entrez_id, all)
+  problem <- names(involved)[involved & !explained]
+  if (length(problem)) {
+    stop("A manual gene annotation override makes Entrez ID(s) ", paste(problem, collapse = ", "),
+      " shared by several gene-level protein groups without shared_gene_reason; this would duplicate gene-level statistics.", call. = FALSE)
+  }
+  rows
 }
 
 resolve_mouse_gene_annotation <- function(member_accession, submitted_gene_symbol,
@@ -1123,10 +1213,13 @@ build_canonical_protein_group_tables <- function(df_raw, dataset, source_file,
       "gene_annotation_secondary_conflict", "gene_annotation_manual_override_used",
       "gene_annotation_contract_version", "uniprot_mapping_file_hash", "orgdb_package_version")))
 
+  shared_gene_audit <- audit_override_gene_duplicates(wide, bridge, manual_gene_annotation_overrides)
+
   list(wide = wide, bridge = bridge, summary = summary, collision_audit = collisions,
     accession_annotation_audit = accession_annotation_audit,
     protein_group_annotation_audit = protein_group_annotation_audit,
-    deprecated_dropped_log = deprecated_dropped_log)
+    deprecated_dropped_log = deprecated_dropped_log,
+    shared_gene_audit = shared_gene_audit)
 }
 
 wgcna_feature_display_label <- function(feature_table) {

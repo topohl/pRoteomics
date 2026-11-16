@@ -48,7 +48,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/summaries/*.csv"]
         consumes_required: ["results/preprocessing/extract_protigy_contrasts/<dataset>/tables/forward/*.csv", "data/external/MOUSE_10090_idmapping.dat"]
-        consumes_optional: ["data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv", "data/metadata/manual_mapping.xlsx"]
+        consumes_optional: ["data/processed/01_preprocessing/gct_extractR/<dataset>/forward/*.csv", "data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
         recomputes_core_state: true
         safe_downstream_rerun: false
         notes: "Maps GCT-derived protein IDs to UniProt/gene symbols; enrichment and WGCNA consume these mapped files."
@@ -385,7 +385,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/wgcna/build_wgcna_modules/<dataset>/tables/modules", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_summary.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_GO_term_support_audit.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_biological_coherence.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_supermodule_validation_summary.csv", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/supermodule_clustering_sensitivity.csv"]
         consumes_required: ["data/processed/01_preprocessing/impute/*_pgmatrix_imputed_<dataset>_*_missing70pct.xlsx", "data/metadata/TPE9_sample_metadata_males.xlsx", "data/external/MOUSE_10090_idmapping.dat"]
-        consumes_optional: ["data/metadata/manual_mapping.xlsx"]
+        consumes_optional: ["data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
         recomputes_core_state: true
         safe_downstream_rerun: false
         notes: "Network/module construction from the canonical post-filter quantitative matrix. Supermodules are signed eigengene meta-modules keyed by dataset + SupermoduleID; GO naming uses recurring all-protein module terms at FDR <= 0.05 and hub overlap is audit-only. This is the only stage entry that recomputes core WGCNA state; downstream annotation/reporting should use modules_downstream."

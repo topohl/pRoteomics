@@ -182,12 +182,18 @@ if (!dir.exists(raw_dir)) stop("Raw contrast directory not found: ", raw_dir, ca
 if (inherits(input_count_validation, "error")) stop(conditionMessage(input_count_validation), call. = FALSE)
 mapping_legacy_mode <- tolower(Sys.getenv("PROTEOMICS_MAPPING_BRANCH", unset = "canonical")) %in% c("legacy", "comparison")
 gct_provenance <- if (mapping_legacy_mode) NULL else validate_canonical_gct_extract_provenance(mapping_roots$gct_extract_root, mapped_comparisons)
+# A changed override file must recompute the tables; "absent" when there is no file.
+manual_gene_annotation_sha256 <- local({
+    p <- Sys.getenv("PROTEOMICS_MANUAL_GENE_ANNOTATION_FILE", unset = path_metadata("manual_gene_annotation_overrides.csv"))
+    if (file.exists(p)) file_hash_sha256(p) else "absent"
+})
 if (!mapping_legacy_mode) {
     prior_mapping_provenance <- canonical_mapping_provenance_path(mapping_paths)
     prior <- if (file.exists(prior_mapping_provenance)) tryCatch(utils::read.csv(prior_mapping_provenance, stringsAsFactors = FALSE), error = function(e) NULL) else NULL
     current_mapping_contract <- is.data.frame(prior) && nrow(prior) == 1L &&
         identical(prior$source_gct_sha256[[1]], gct_provenance$source_gct_sha256[[1]]) &&
-        identical(prior$mapping_contract_version[[1]], "canonical_mapping_from_animal_level_gct_v1")
+        identical(prior$mapping_contract_version[[1]], "canonical_mapping_from_animal_level_gct_v1") &&
+        identical(as.character(prior$manual_gene_annotation_sha256[[1]]), manual_gene_annotation_sha256)
     if (!current_mapping_contract) force_rerun <- TRUE
 }
 
@@ -659,7 +665,8 @@ openxlsx::saveWorkbook(wb, report_file, overwrite = TRUE)
 
 cat("Saved master QC workbook to:", report_file, "\n")
 if (!mapping_legacy_mode) {
-    utils::write.csv(cbind(gct_provenance, map_direction = map_direction, mapping_contract_version = "canonical_mapping_from_animal_level_gct_v1"),
+    utils::write.csv(cbind(gct_provenance, map_direction = map_direction, mapping_contract_version = "canonical_mapping_from_animal_level_gct_v1",
+        manual_gene_annotation_sha256 = manual_gene_annotation_sha256),
         canonical_mapping_provenance_path(mapping_paths), row.names = FALSE)
 }
 cat("====================================================\n")
