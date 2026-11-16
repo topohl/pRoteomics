@@ -13,6 +13,9 @@
 #   The three-group omnibus has 1680 assignments. Its floor is not 1/1680:
 #   with equal group sizes the 3! = 6 relabellings of the same partition all
 #   give the same statistic, so the smallest attainable p is 6/1680 = 0.0036.
+#   In the 3/3/2 rerun SUS vs RES is 3 vs 2 (10 assignments, floor 0.10) and the
+#   omnibus has 560 assignments (floor 2/560 = 0.0036). The counts are taken from
+#   the data, so the printed resolution follows the design actually present.
 #
 # USAGE
 #   Rscript analysis/spatial_validation/test_network_group_organization.R
@@ -274,8 +277,8 @@ for (ds in DATASETS) {
       exact_n_assignments = ex$n_assignments,
       min_attainable_two_sided_p = ex$min_attainable_two_sided_p,
       inference_note = paste0(
-        "EXACT but COARSE. With 3 vs 3 the smallest attainable two-sided p is ",
-        "0.10, so no edge can reach conventional significance. No FDR is ",
+        "EXACT but COARSE. With ", sum(g == "SUS"), " vs ", sum(g == "RES"), " the smallest attainable two-sided p is ",
+        signif(ex$min_attainable_two_sided_p, 2), ", so no edge can reach conventional significance. No FDR is ",
         "computed from these values and no bootstrap sign frequency is reported ",
         "as a p-value."),
       stringsAsFactors = FALSE)
@@ -444,8 +447,11 @@ if (!is.null(protein_net_ctx)) {
 
 cat("\n===== Network group organisation =====\n")
 cat("\n--- exact test resolution ---\n")
-cat("  SUS vs RES : 20 assignments, minimum attainable two-sided p = 0.10\n")
-cat(sprintf("  3-group    : 1680 assignments, minimum attainable p = %.4f\n",
+cat(sprintf("  SUS vs RES : %s assignments, minimum attainable two-sided p = %.2f\n",
+            if (nrow(edge_groups)) max(edge_groups$exact_n_assignments) else NA_integer_,
+            if (nrow(edge_groups)) max(edge_groups$min_attainable_two_sided_p) else NA_real_))
+cat(sprintf("  3-group    : %s assignments, minimum attainable p = %.4f\n",
+            if (nrow(multivariate)) max(multivariate$n_assignments) else NA_integer_,
             if (nrow(multivariate)) max(multivariate$min_attainable_p) else NA_real_))
 
 cat("\n--- whole-network multivariate test (one per dataset) ---\n")

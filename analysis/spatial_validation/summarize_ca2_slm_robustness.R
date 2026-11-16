@@ -306,20 +306,23 @@ add("post_imputation_matrix_has_no_missing", FALSE,
     if (is.na(nas_after) || nas_after == 0L) "PASS" else "FAIL",
     "the post-imputation matrix carries no NA, which is why it cannot supply imputation status")
 
-loo_ok <- !is.null(loo) &&
+# Every protein has one leave-one-out row per animal: nine in the 3/3/3 design, eight in the 3/3/2 rerun.
+n_loo_animals <- if (is.null(loo)) NA_integer_ else length(unique(loo$omitted_AnimalID))
+loo_ok <- !is.null(loo) && n_loo_animals >= 6L &&
   all(tapply(loo$omitted_AnimalID, loo$original_identifier,
-             function(z) length(unique(z)) == 9L))
+             function(z) length(z) == n_loo_animals && length(unique(z)) == n_loo_animals))
 add("LOO_removes_exactly_one_animal", TRUE,
     if (loo_ok) "PASS" else "FAIL",
-    "each protein has exactly one leave-one-out row per AnimalID, 9 in total")
+    paste0("each protein has exactly one leave-one-out row per AnimalID, ", n_loo_animals, " in total"))
 
+# A764 is not part of the 3/3/2 rerun; the QC-failed animals expected are those of 755 and 764 that are in the design.
+qc_fail_expected <- if (is.null(sctx)) character(0) else intersect(c("755", "764"), as.character(sctx$AnimalID))
 add("A755_A764_identities_correct", TRUE,
-    if (!is.null(sctx) &&
-        all(c("755", "764") %in% as.character(sctx$AnimalID)) &&
+    if (!is.null(sctx) && "755" %in% qc_fail_expected &&
         identical(sort(unique(as.character(
-          sctx$AnimalID[sctx$qc_flag == "FAIL"]))), c("755", "764")))
+          sctx$AnimalID[sctx$qc_flag == "FAIL"]))), qc_fail_expected))
       "PASS" else "FAIL",
-    "the QC-FAILED CA2-SLM samples belong to animals 755 and 764, both SUS")
+    paste0("the QC-FAILED CA2-SLM samples belong to the SUS animal(s) ", paste(qc_fail_expected, collapse = " and ")))
 
 add("A755_out_excludes_only_A755", TRUE,
     if (!is.null(loo) && all(loo$omitted_AnimalID[loo$omitted_AnimalID == "755"] == "755"))
