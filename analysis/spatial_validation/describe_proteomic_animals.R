@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 #
 #
-# The nine proteomic animals and their acquisitions, for Extended Data (added 2026-10-30, figure review: show the
+# The proteomic animals and their acquisitions, for Extended Data (added 2026-10-30, figure review: show the
 # proteomic design openly, quality control across every unit, and every animal's values of the exemplar proteins).
 #
 # USAGE (from the repository root)
@@ -14,13 +14,15 @@
 # Produces: results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv; results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv; +4 more
 # Dataset behavior: global; reads the joint acquisition bundle and the three animal-level matrices.
 # Notes: Descriptive: no test. Missingness before imputation per acquisition, within-compartment PCA with the share of
-#        each PC explained by anatomy, animal, group, plate and hemisphere, the design of the nine animals with their
+#        each PC explained by anatomy, animal, group, plate and hemisphere, the design of the animals with their
 #        behaviour, and the animal-level values of the 21 exemplar proteins of Figure 3e-g. (2026-11-04) CA2 SLM
 #        missingness by group, with exact permutation tests of the group labels over the animals.
 #
-# MISSINGNESS: the raw quantities of the joint feature table (5,741 protein groups x 323 acquisitions). Per compartment
-# the analysed proteins are those missing in at most 70% of its acquisitions (the imputation filter; gate: 5,054
-# neuropil, 5,538 soma, 5,229 microglia-enriched ROI). Per acquisition: the fraction of those missing before imputation.
+# MISSINGNESS: the raw quantities of the joint feature table (5,741 protein groups x 323 acquisitions in the original
+# design; 287 acquisitions of eight animals in the 3/3/2 rerun). Per compartment the analysed proteins are those missing
+# in at most 70% of its acquisitions (the imputation filter; gate: the rows of the compartment's imputed matrix, 5,054
+# neuropil, 5,538 soma, 5,229 microglia-enriched ROI originally). Per acquisition: the fraction of those missing before
+# imputation.
 #
 # PCA PER COMPARTMENT: the 4,242 protein groups quantified in every compartment (the matrix of Figure 2c), restricted
 # to one compartment's acquisitions, each protein centred; prcomp. For PC1-PC5 the share of the PC's variance explained
@@ -65,7 +67,6 @@ OUT <- list(
 )
 MANIFEST <- file.path(CANONICAL_PATHS$manifests, "run_manifest.yml")
 DATASETS <- c(neuron_neuropil = "Neuropil", neuron_soma = "Neuronal soma", microglia = "Microglia-enriched ROI")
-FILTER_N <- c(neuron_neuropil = 5054L, neuron_soma = 5538L, microglia = 5229L)
 MISSING_FILTER <- 0.70
 N_PC <- 5L
 PCA_TERMS <- c(unit = "region_layer", animal = "animal_id", group = "experimental_group", plate = "plate", hemisphere = "ReplicateGroup")
@@ -91,19 +92,28 @@ EXEMPLARS <- data.frame(
 
 gct_paths <- vapply(names(DATASETS), animal_level_gct_path, "")
 if (isTRUE(cli$dry_run)) {
-  cat("[DRY-RUN] The nine proteomic animals: missingness, compartment PCA terms, design with behaviour, exemplar proteins.\n")
+  cat("[DRY-RUN] The proteomic animals: missingness, compartment PCA terms, design with behaviour, exemplar proteins.\n")
   dry_run_inputs(SCRIPT_ID, c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO)))
   quit(save = "no", status = 0L)
 }
 for (f in c(gct_paths, JOINT_BUNDLE, OUTCOMES, OUTCOME_INFO)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
 invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
+# the analysed proteins per compartment = the rows of its imputed matrix (the 70%-missingness filter); the joint
+# bundle's filter below must keep exactly these (5,054 / 5,538 / 5,229 in the original design)
+imputed_rows <- function(ds) {
+  f <- tail(sort(list.files(repo_path("data", "processed", "01_preprocessing", "impute"),
+                            pattern = paste0("_pgmatrix_imputed_", ds, "_.*_missing70pct[.]xlsx$"), full.names = TRUE)), 1)
+  if (!length(f)) stop("missing_required_input: imputed matrix of ", ds, call. = FALSE)
+  nrow(readxl::read_excel(f, range = readxl::cell_cols(1)))
+}
+FILTER_N <- vapply(names(DATASETS), imputed_rows, integer(1))
 info <- utils::read.csv(OUTCOME_INFO, stringsAsFactors = FALSE)
 if (!identical(info$sha256[info$item == "output"], unname(tools::sha256sum(OUTCOMES))))
   stop("behaviour_outcomes_ov4.csv differs from outcome_info.csv; rebuild it with its script.", call. = FALSE)
 
 jb <- readRDS(JOINT_BUNDLE); md <- jb$metadata; ft <- jb$feature_table
 S <- md$.joint_sample_id
-if (length(S) != 323L || !all(S %in% names(ft)) || !identical(colnames(jb$primary$matrix), S))
+if (!length(S) || anyDuplicated(S) || !all(S %in% names(ft)) || !identical(colnames(jb$primary$matrix), S))
   stop("The joint bundle's acquisitions are not aligned.", call. = FALSE)
 md$group <- unname(STRESS_GROUPS[as.character(md$experimental_group)])
 md$animal <- sub("^A0*", "", md$animal_id)
@@ -126,20 +136,22 @@ missingness <- do.call(rbind, miss_rows)
 
 # ---- CA2 SLM missingness by group (added 2026-11-04) ----------------------------------------------------------------
 # Per animal the mean fraction missing over its CA2 SLM acquisitions (the unit of the robustness screen); per group the
-# mean and range of the animal means. SUS - RES by exact permutation of the group labels over those six animals
-# (two-sided on |difference|, 20 assignments, smallest attainable P 0.1) and the three groups by the between-group sum
-# of squares over all 1,680 assignments of the nine animals (upper tail). A check of the statement that missingness was
-# unequal between the groups.
+# mean and range of the animal means. SUS - RES by exact permutation of the group labels over those animals
+# (two-sided on |difference|; 20 assignments with 3 + 3, 10 with 2 + 3) and the three groups by the between-group sum of
+# squares over every assignment of the animals with the observed group sizes (1,680 for 3/3/3, 560 for 3/3/2; upper
+# tail). A check of the statement that missingness was unequal between the groups.
 ca2 <- missingness[missingness$unit == "CA2_slm", , drop = FALSE]
 am <- stats::aggregate(fraction_missing ~ animal_id + group, data = ca2, FUN = mean)
-if (nrow(am) != 9L || any(table(am$group) != 3L)) stop("CA2 SLM missingness: expected three animals per group.", call. = FALSE)
+gsize <- table(factor(am$group, levels = c("CON", "RES", "SUS")))
+if (any(gsize < 2L)) stop("CA2 SLM missingness: expected at least two animals per group.", call. = FALSE)
 ss_between <- function(v, g) sum(tapply(v, g, function(x) length(x) * (mean(x) - mean(v))^2))
 v <- am$fraction_missing; idx <- seq_along(v); obs_ss <- ss_between(v, am$group); null_ss <- numeric()
-for (a in utils::combn(idx, 3L, simplify = FALSE)) for (b in utils::combn(setdiff(idx, a), 3L, simplify = FALSE)) {
+for (a in utils::combn(idx, gsize[["CON"]], simplify = FALSE)) for (b in utils::combn(setdiff(idx, a), gsize[["RES"]], simplify = FALSE)) {
   g <- character(length(v)); g[a] <- "A"; g[b] <- "B"; g[setdiff(idx, c(a, b))] <- "C"; null_ss <- c(null_ss, ss_between(v, g)) }
 sr <- am[am$group %in% c("SUS", "RES"), , drop = FALSE]
 d_obs <- mean(sr$fraction_missing[sr$group == "SUS"]) - mean(sr$fraction_missing[sr$group == "RES"])
-null_d <- vapply(utils::combn(nrow(sr), 3L, simplify = FALSE), function(k) mean(sr$fraction_missing[k]) - mean(sr$fraction_missing[-k]), 0)
+null_d <- vapply(utils::combn(nrow(sr), gsize[["SUS"]], simplify = FALSE), function(k) mean(sr$fraction_missing[k]) - mean(sr$fraction_missing[-k]), 0)
+n_assign_all <- factorial(sum(gsize)) / prod(factorial(gsize)); n_assign_sr <- choose(gsize[["SUS"]] + gsize[["RES"]], gsize[["SUS"]])
 ca2_groups <- rbind(
   do.call(rbind, lapply(c("CON", "RES", "SUS"), function(g) { x <- am$fraction_missing[am$group == g]
     data.frame(row_type = "group", comparison = g, n_animals = length(x), n_acquisitions = sum(ca2$group == g), mean_fraction_missing = mean(x),
@@ -149,12 +161,14 @@ ca2_groups <- rbind(
              n_acquisitions = c(sum(ca2$group %in% c("SUS", "RES")), nrow(ca2)), mean_fraction_missing = NA_real_, min_animal_mean = NA_real_,
              max_animal_mean = NA_real_, estimate = c(d_obs, NA_real_), statistic = c(d_obs, obs_ss),
              p_exact = c(mean(abs(null_d) >= abs(d_obs) - 1e-12), mean(null_ss >= obs_ss - 1e-12)), n_assignments = c(length(null_d), length(null_ss)),
-             test = c("exact permutation of the group labels over the six animals, two-sided on |difference| (smallest attainable P 0.1)",
-                      "exact permutation of the group labels over the nine animals, between-group sum of squares, upper tail"),
+             test = c(sprintf("exact permutation of the group labels over the %d SUS and RES animals, two-sided on |difference| (%d assignments)",
+                              nrow(sr), length(null_d)),
+                      sprintf("exact permutation of the group labels over the %d animals, between-group sum of squares, upper tail (%d assignments)",
+                              nrow(am), length(null_ss))),
              stringsAsFactors = FALSE))
 ca2_groups$unit <- "CA2_slm"
 ca2_groups$measure <- paste0("animal mean of the fraction of the ", FILTER_N[["neuron_neuropil"]], " analysed neuropil protein groups missing before imputation")
-if (length(null_ss) != 1680L || length(null_d) != 20L) stop("CA2 SLM missingness: wrong number of assignments.", call. = FALSE)
+if (length(null_ss) != n_assign_all || length(null_d) != n_assign_sr) stop("CA2 SLM missingness: wrong number of assignments.", call. = FALSE)
 
 # ---- PCA within each compartment -----------------------------------------------------------------------------------
 eta2 <- function(y, g) { g <- factor(g); if (nlevels(g) < 2L) return(NA_real_); ss <- sum((y - mean(y))^2)
@@ -174,7 +188,7 @@ for (ds in names(DATASETS)) {
 }
 pca_terms <- do.call(rbind, pca_terms); pca_scores <- do.call(rbind, pca_scores)
 
-# ---- design of the nine animals, with their behaviour --------------------------------------------------------------
+# ---- design of the animals, with their behaviour --------------------------------------------------------------
 beh <- utils::read.csv(OUTCOMES, stringsAsFactors = FALSE, colClasses = c(animal_id = "character", AnimalNum = "character"))
 males <- beh[beh$Sex == "Male", , drop = FALSE]
 males$iss_rank <- rank(males$CombZ, ties.method = "min")
@@ -195,18 +209,23 @@ design <- do.call(rbind, lapply(animals, function(a) {
 design <- design[order(match(design$group, c("CON", "RES", "SUS")), design$ISS), , drop = FALSE]
 
 # ---- the exemplar proteins of Figure 3e-g, animal by animal ---------------------------------------------------------
-ex_rows <- list()
+# The exemplars were declared from the original analysis; a protein group that the current data do not contain once
+# (another search can group proteins differently) is listed in the manifest instead of stopping the description.
+n_animals <- length(unique(md$animal_id))
+ex_rows <- list(); ex_missing <- character()
 for (ds in unique(EXEMPLARS$dataset)) {
   g <- read_animal_level_gct(ds)
   for (u in unique(EXEMPLARS$unit[EXEMPLARS$dataset == ds])) {
     ident <- canonical_protein_identity(ds, u, nrow(g$m))
     cols <- which(g$unit == u)
-    if (length(cols) != 9L) stop(ds, " ", u, ": expected nine animals, found ", length(cols), call. = FALSE)
+    if (length(cols) != n_animals) stop(ds, " ", u, ": expected ", n_animals, " animals, found ", length(cols), call. = FALSE)
     e <- EXEMPLARS[EXEMPLARS$dataset == ds & EXEMPLARS$unit == u, , drop = FALSE]
     for (i in seq_len(nrow(e))) {
       r <- which(ident$ProteinGroupID == e$ProteinGroupID[i])
-      if (length(r) != 1L || !identical(ident$official_gene_symbol[r], e$gene[i]))
-        stop("Exemplar protein ", e$gene[i], " (", e$ProteinGroupID[i], ") not found once in ", ds, " ", u, call. = FALSE)
+      if (length(r) != 1L || !identical(ident$official_gene_symbol[r], e$gene[i])) {
+        ex_missing <- c(ex_missing, paste0(e$gene[i], " (", e$ProteinGroupID[i], ") in ", ds, " ", u))
+        next
+      }
       v <- g$m[r, cols]; grp <- g$group[cols]
       ex_rows[[length(ex_rows) + 1L]] <- data.frame(exemplar = e$exemplar[i], dataset = ds, unit = u, gene = e$gene[i],
         ProteinGroupID = e$ProteinGroupID[i], animal_id = sub("^A0*", "", g$animal[cols]), group = grp, log2_abundance = unname(v),
@@ -215,7 +234,10 @@ for (ds in unique(EXEMPLARS$dataset)) {
   }
 }
 exemplars <- do.call(rbind, ex_rows)
-if (nrow(exemplars) != 21L * 9L) stop("Exemplar table must hold 21 proteins x 9 animals.", call. = FALSE)
+n_found <- nrow(EXEMPLARS) - length(ex_missing)
+if (is.null(exemplars) || nrow(exemplars) != n_found * n_animals)
+  stop("Exemplar table must hold ", n_found, " proteins x ", n_animals, " animals.", call. = FALSE)
+if (length(ex_missing)) message("Exemplar proteins not found once in the current data: ", paste(ex_missing, collapse = "; "))
 
 # ---- write -----------------------------------------------------------------------------------------------------------
 utils::write.csv(missingness, OUT$missingness, row.names = FALSE)
@@ -230,7 +252,9 @@ write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(joint_bundle = 
                    outputs = OUT,
                    parameters = list(missing_filter = MISSING_FILTER, filter_n = as.list(FILTER_N), n_pc = N_PC, pca_terms = as.list(PCA_TERMS),
                                      exemplars = "Figure 3e-g, seven top-ranked leading-edge proteins each (Figure 3 export, pRoteomics 83ace9b)",
+                                     exemplars_not_found = if (length(ex_missing)) as.list(ex_missing) else "none",
+                                     n_animals = n_animals,
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = paste("Descriptive; the one test is the CA2 SLM missingness by group (exact permutation, added 2026-11-04).",
                                  "Behaviour outcomes from the frozen behaviour bundles (data/external/behaviour_outcomes)."))
-message("Proteomic animals described: ", nrow(missingness), " acquisitions, ", nrow(design), " animals, ", nrow(exemplars) / 9L, " exemplar proteins")
+message("Proteomic animals described: ", nrow(missingness), " acquisitions, ", nrow(design), " animals, ", nrow(exemplars) / n_animals, " exemplar proteins")

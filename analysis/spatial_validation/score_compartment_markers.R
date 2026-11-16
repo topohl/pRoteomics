@@ -18,7 +18,7 @@
 # only: a marker that is not detected in an acquisition is left out of that
 # acquisition's mean, never imputed; the number of contributing markers is kept.
 #
-# UNITS: every acquisition of all nine animals (group is carried), and the
+# UNITS: every acquisition of all animals (group is carried), and the
 # mean of each animal's acquisitions per compartment.
 #
 # COMPARISONS (2026-10-28): control animals only. The animal is the unit and
@@ -102,8 +102,15 @@ info <- data.frame(Sample = samples, dataset = as.character(meta[[cols$dataset]]
                    group = ca_normalize_group(meta[[cols$group]]),
                    region = as.character(meta[[cols$region]]), layer = as.character(meta[[cols$layer]]),
                    hemisphere = ca_normalize_hemisphere(meta[[cols$hemisphere]]), stringsAsFactors = FALSE)
-if (length(unique(info$AnimalID)) != 9L || !setequal(info$dataset, c("neuron_soma", "neuron_neuropil", "microglia"))) {
-  stop("Expected nine animals and three compartments in the joint bundle.", call. = FALSE)
+# every animal in all three compartments and at least two animals per group (nine animals in the 3/3/3 design,
+# eight in the 3/3/2 rerun)
+compartments <- c("neuron_soma", "neuron_neuropil", "microglia")
+animal_complete <- tapply(info$dataset, info$AnimalID, function(d) setequal(unique(d), compartments))
+animals_per_group <- table(unique(info[, c("AnimalID", "group")])$group)
+if (!setequal(info$dataset, compartments) || !all(animal_complete) || any(animals_per_group < 2L)) {
+  stop("Expected every animal in all three compartments and at least two animals per group in the joint bundle; found ",
+       length(animal_complete), " animals (", paste(names(animals_per_group), animals_per_group, sep = " ", collapse = ", "),
+       "), incomplete: ", paste(names(animal_complete)[!animal_complete], collapse = ", "), ".", call. = FALSE)
 }
 
 rows <- list()

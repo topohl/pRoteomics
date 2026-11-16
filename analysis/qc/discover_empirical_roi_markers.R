@@ -135,8 +135,11 @@ protein_index <- build_empirical_roi_protein_index(feature_tables)
 raw_detection_provenance <- read_empirical_roi_raw_detection(protein_index)
 aggregated <- align_empirical_roi_aggregated(aggregated_unaligned, protein_index)
 model_input <- build_empirical_roi_model_input(aggregated)
-if (ncol(model_input$expression) != 27L) {
-  stop("Expected exactly 27 AnimalID x dataset observations; found ", ncol(model_input$expression), ".", call. = FALSE)
+# one observation per animal and compartment (27 with nine animals, 24 in the 3/3/2 design)
+n_expected_observations <- dplyr::n_distinct(all_metadata$AnimalID) * length(DATASETS)
+if (ncol(model_input$expression) != n_expected_observations) {
+  stop("Expected ", n_expected_observations, " AnimalID x dataset observations (", dplyr::n_distinct(all_metadata$AnimalID),
+       " animals x ", length(DATASETS), " compartments); found ", ncol(model_input$expression), ".", call. = FALSE)
 }
 model <- build_empirical_roi_limma_inference(model_input)
 
@@ -223,7 +226,7 @@ inference_validation <- data.frame(
     "ProteinGroupIDs_finite_coefficients_all_contrasts",
     "ProteinGroupIDs_finite_p_values_all_contrasts",
     "ProteinGroupIDs_finite_BH_FDR_all_contrasts",
-    "ProteinGroupIDs_complete_27_observations",
+    "ProteinGroupIDs_complete_all_observations",
     "model_warning_count"
   ),
   value = as.character(c(
@@ -238,7 +241,7 @@ inference_validation <- data.frame(
     sum(model$stats$finite_coefficients_all_contrasts),
     sum(model$stats$finite_p_values_all_contrasts),
     sum(model$stats$finite_FDR_all_contrasts),
-    sum(model$stats$n_observations == 27L),
+    sum(model$stats$n_observations == n_expected_observations),
     length(model$model_warnings)
   )),
   stringsAsFactors = FALSE
