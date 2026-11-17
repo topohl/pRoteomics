@@ -106,8 +106,13 @@ super_values_path <- wgcna_group_effects_artifact("all_supermodule_eigengene_gro
 annotation_path <- wgcna_annotation_artifact("WGCNA_module_biological_annotation.csv", "microglia")
 ## The label registry in force: the reviewed registry, or in provisional label mode (a rebuilt
 ## network awaiting review) the provisional registry named by PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY.
-registry_path <- if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", "reviewed")), "provisional") &&
-                     nzchar(Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY"))) {
+## The reviewed registry names the modules of the previous network, so provisional mode never falls back to it.
+source(repo_path("R", "wgcna_reviewed_label_registry.R"))
+registry_path <- if (identical(wgcna_label_mode(), "provisional")) {
+  if (!nzchar(Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY"))) {
+    stop("Provisional label mode needs PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY (the provisional microglia registry ",
+         "written by summarize_module_interpretation.R).", call. = FALSE)
+  }
   Sys.getenv("PROTEOMICS_WGCNA_PROVISIONAL_REGISTRY")
 } else file.path(audit_root, "config/wgcna_labels/microglia.csv")
 ## Phase 6G.7: a read of a migrated preprocessing object, normalized first and

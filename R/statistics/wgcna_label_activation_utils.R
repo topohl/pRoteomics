@@ -24,6 +24,8 @@ if (!exists("wgcna_interpretable_artifact", mode = "function")) {
   }
   source(repo_path("R", "wgcna_paths.R"))
 }
+# The label mode (wgcna_label_mode()) decides whether the reviewed registries are read at all.
+if (!exists("wgcna_label_mode", mode = "function")) source(repo_path("R", "wgcna_reviewed_label_registry.R"))
 
 wal_contract_version <- function() "wgcna_label_activation_v1"
 
@@ -125,6 +127,20 @@ resolve_wgcna_display_label <- function(entities, reviewed = NULL,
     reviewed_label = reviewed_label,
     stringsAsFactors = FALSE
   )
+}
+
+# The reviewed registries (<dir>/<dataset>.csv) of the label approval table, one frame with a dataset
+# column; NULL in provisional label mode, where they name the entities of the previous network.
+wal_reviewed_registries <- function(datasets, dir = repo_path("config", "wgcna_labels"),
+                                    label_mode = wgcna_label_mode()) {
+  if (identical(match.arg(label_mode, c("reviewed", "provisional")), "provisional")) return(NULL)
+  dplyr::bind_rows(lapply(datasets, function(ds) {
+    p <- file.path(dir, paste0(ds, ".csv"))
+    if (!file.exists(p)) return(NULL)
+    r <- readr::read_csv(p, show_col_types = FALSE, progress = FALSE, guess_max = Inf)
+    r$dataset <- ds
+    r
+  }))
 }
 
 # Hard invariant: one canonical display label per dataset + level + entity_id.
@@ -419,7 +435,8 @@ wal_claims_entity_columns <- function(claims = NULL) {
 # Stage07_label are retained alongside so the submission artifact still records
 # what each naming stage said.
 attach_canonical_wgcna_display_label <- function(claims, reviewed_dir = NULL,
-                                                 stage07_reader = NULL) {
+                                                 stage07_reader = NULL,
+                                                 label_mode = wgcna_label_mode()) {
   cols <- wal_claims_entity_columns(claims)
   if (!all(unlist(cols) %in% names(claims))) return(claims)
 
@@ -440,7 +457,9 @@ attach_canonical_wgcna_display_label <- function(claims, reviewed_dir = NULL,
 
   reviewed <- NULL
   rd <- reviewed_dir %||% repo_path("config", "wgcna_labels")
-  for (ds in unique(entities$dataset)) {
+  # not read in provisional label mode (wgcna_label_mode())
+  provisional <- identical(match.arg(label_mode, c("reviewed", "provisional")), "provisional")
+  for (ds in if (provisional) character() else unique(entities$dataset)) {
     p <- file.path(rd, paste0(ds, ".csv"))
     if (!file.exists(p)) next
     r <- utils::read.csv(p, stringsAsFactors = FALSE)

@@ -60,7 +60,7 @@ if (isTRUE(cli$dry_run)) {
   )
   for (ds in valid_datasets()) {
     inputs[[paste0("stage07_final_lookup__", ds)]] <- final_lookup_path(ds)
-    inputs[[paste0("reviewed_registry__", ds)]] <-
+    if (identical(wgcna_label_mode(), "reviewed")) inputs[[paste0("reviewed_registry__", ds)]] <-
       repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
   }
   cat("[DRY-RUN] WGCNA final label approval table; no outputs written.\n")
@@ -83,7 +83,7 @@ hubs <- read_required(PACKET("WGCNA_module_top25_hubs.csv"), "top-25 hubs")
 # ---------------------------------------------------- current active labels
 
 # The CURRENT active label is whatever a consumer would display today: an active
-# reviewed registry if one exists, else Stage-07, else Stage-01.
+# reviewed registry if one exists (never in provisional label mode), else Stage-07, else Stage-01.
 entities <- bind_rows(
   mod %>% transmute(dataset = .data$dataset, level = "module",
                     entity_id = .data$ModuleID,
@@ -108,13 +108,7 @@ stage07 <- bind_rows(lapply(unique(entities$dataset), function(ds) {
              stringsAsFactors = FALSE)
 }))
 
-reviewed <- bind_rows(lapply(unique(entities$dataset), function(ds) {
-  p <- repo_path("config", "wgcna_labels", paste0(ds, ".csv"))
-  if (!file.exists(p)) return(NULL)
-  r <- read_required(p, "reviewed registry")
-  r$dataset <- ds
-  r
-}))
+reviewed <- wal_reviewed_registries(unique(entities$dataset))
 
 resolved <- resolve_wgcna_display_label(
   entities, reviewed = reviewed, stage07 = stage07,
@@ -128,7 +122,7 @@ curated_mod <- wal_curated_adjudications()
 curated_sup <- wal_curated_supermodule_adjudications()
 # The curated adjudications are keyed to the module IDs of the network built before 2026-10-19. On a
 # rebuilt network (provisional label mode) they would name different modules, so they are not applied.
-if (identical(tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed")), "provisional")) {
+if (identical(wgcna_label_mode(), "provisional")) {
   curated_mod <- curated_mod[0, , drop = FALSE]
   curated_sup <- curated_sup[0, , drop = FALSE]
 }

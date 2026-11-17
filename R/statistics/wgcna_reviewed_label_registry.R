@@ -1,6 +1,16 @@
 # Reviewed WGCNA label-registry and canonical lookup helpers.
 # These helpers are deterministic and do not alter network or statistical state.
 
+# PROTEOMICS_WGCNA_LABEL_MODE = "reviewed" (default) or "provisional". "provisional" is for a rebuilt
+# network: the reviewed registries in config/wgcna_labels/ name the entities of the previous network
+# (equal IDs need not mean equal modules), so no consumer attaches them by ID; the label shown is the
+# Stage 07 label (the provisional registry for microglia, the automatic labels otherwise).
+wgcna_label_mode <- function() {
+  mode <- tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed"))
+  if (!mode %in% c("reviewed", "provisional")) stop("PROTEOMICS_WGCNA_LABEL_MODE must be reviewed or provisional.", call. = FALSE)
+  mode
+}
+
 wgcna_reviewed_registry_columns <- function() {
   c(
     "dataset", "level", "entity_id", "reviewed_biological_label",

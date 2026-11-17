@@ -1821,8 +1821,7 @@ make_dataset_summary <- function(ds) {
   # lineage-checked proposal), otherwise from this run's automatic labels. Every row is
   # adjudication_status = provisional_unreviewed with manual_review_required = TRUE, and the status
   # of each dataset is written to manifests/label_review_status.csv.
-  label_mode <- tolower(Sys.getenv("PROTEOMICS_WGCNA_LABEL_MODE", unset = "reviewed"))
-  if (!label_mode %in% c("reviewed", "provisional")) stop("PROTEOMICS_WGCNA_LABEL_MODE must be reviewed or provisional.", call. = FALSE)
+  label_mode <- wgcna_label_mode()
   use_registry <- identical(ds, "microglia")
   registry_source <- NA_character_
   # The reviewed labels of a dataset (wgcna_partial_registry_datasets(): neuron_soma and
