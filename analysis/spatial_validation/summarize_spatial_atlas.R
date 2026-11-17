@@ -129,8 +129,13 @@ add("ewce_no_zero_empirical_p", TRUE,
 add("ewce_scopes_kept_separate", TRUE,
     if (!is.null(ew) && length(unique(ew$module_scope)) == 3L) "PASS" else "FAIL",
     "all / core_kME06 / top25 retained as separate rows and FDR families")
+# Only tested rows count: a module below the minimum keeps a row with status insufficient_mapped_genes
+# and no p value, which is the intended behaviour.
 add("no_single_gene_ewce", TRUE,
-    if (is.null(ew) || min(ew$n_input_genes, na.rm = TRUE) >= 10L) "PASS" else "FAIL",
+    {
+      t_ <- if (is.null(ew)) NULL else ew[ew$annotation_status == "tested", , drop = FALSE]
+      if (is.null(t_) || !nrow(t_) || min(t_$n_input_genes, na.rm = TRUE) >= 10L) "PASS" else "FAIL"
+    },
     "no gene set below the 10-gene minimum was tested")
 add("no_automatic_module_renaming", TRUE,
     {

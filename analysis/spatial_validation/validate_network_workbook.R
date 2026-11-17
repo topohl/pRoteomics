@@ -256,15 +256,27 @@ add("no_fdr_from_bootstrap_sign", TRUE,
       if (!bad) "PASS" else "FAIL"
     },
     "no BH FDR is derived from any bootstrap sign frequency")
+# Expected exact-test resolution from the animals in the design: 3 vs 3 gives 20 assignments, 2 vs 3
+# gives 10. Without ties the most extreme statistic is reached once, or twice when the groups are the
+# same size (the observed labelling and its mirror), so both designs bottom out at p = 0.10.
+grp_u <- if (is.null(metrics)) NULL else unique(metrics[, c("dataset", "AnimalID", "StressGroup")])
+n_sus <- if (is.null(grp_u)) NULL else tapply(grp_u$StressGroup == "SUS", grp_u$dataset, sum)
+n_res <- if (is.null(grp_u)) NULL else tapply(grp_u$StressGroup == "RES", grp_u$dataset, sum)
+expect_assign <- if (is.null(n_sus)) NULL else choose(n_sus + n_res, n_sus)
+expect_min_p <- if (is.null(n_sus)) NULL else ifelse(n_sus == n_res, 2, 1) / expect_assign
+design_matches <- function(observed, expected) {
+  !is.null(edge_grp) && !is.null(expected) && all(edge_grp$dataset %in% names(expected)) &&
+    all(abs(observed - expected[as.character(edge_grp$dataset)]) < 1e-9, na.rm = TRUE)
+}
 add("permutation_unit_is_animal", TRUE,
-    if (!is.null(edge_grp) && all(edge_grp$exact_n_assignments == 20L, na.rm = TRUE))
-      "PASS" else "FAIL",
-    "SUS vs RES enumerates exactly 20 whole-animal assignments")
+    if (design_matches(edge_grp$exact_n_assignments, expect_assign)) "PASS" else "FAIL",
+    sprintf("SUS vs RES enumerates exactly %s whole-animal assignments",
+            if (is.null(expect_assign)) "the design's" else paste(unique(expect_assign), collapse = " / ")))
 add("exact_resolution_documented", TRUE,
-    if (!is.null(edge_grp) &&
-        all(abs(edge_grp$min_attainable_two_sided_p - 0.10) < 1e-9, na.rm = TRUE))
-      "PASS" else "FAIL",
-    "minimum attainable two-sided p recorded as 0.10 on every edge row")
+    if (design_matches(edge_grp$min_attainable_two_sided_p, expect_min_p)) "PASS" else "FAIL",
+    sprintf("minimum attainable two-sided p recorded as %s on every edge row",
+            if (is.null(expect_min_p)) "the design's" else
+              paste(formatC(unique(as.vector(expect_min_p)), format = "f", digits = 2), collapse = " / ")))
 add("bootstrap_resamples_animals", TRUE,
     if (!is.null(edge_grp) && "n_valid_bootstrap_iterations" %in% names(edge_grp))
       "PASS" else "FAIL",
