@@ -988,7 +988,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Input territories of the ten neuropil laminae (added 2026-10-28): per animal, Spearman similarity (Fisher z) of protein-centred laminar profiles for SynGO presynaptic vs postsynaptic proteins (glial/vascular and mitochondrial genes removed), same-input minus same-region pairs (perforant path; mossy fibre as positive control), against abundance-matched random sets; observed values only; CON animals primary (Figure 2j), stressed animals with every lamina as replication; DG po acquisitions with soma carry-over excluded (R/spatial/neuropil_lamina_utils.R, shared with map_afferent_sources and compare_lamina_synapses); post hoc sensitivity analyses (2026-10-28: lamina-label permutation, cross-host pairs, without the shared DG pair, laminar-SD-matched null, without GABAergic-terminal proteins, left-out animal re-entered) and per-protein territory contrasts."
+        notes: "Input territories of the ten neuropil laminae (added 2026-10-28): per animal, Spearman similarity (Fisher z) of protein-centred laminar profiles for SynGO presynaptic vs postsynaptic proteins (glial/vascular and mitochondrial genes removed), same-input minus same-region pairs (perforant path; mossy fibre as positive control), against abundance-matched random sets; observed values only; CON animals primary (Figure 2j), stressed animals with every lamina as replication; DG po carry-over rule with a per-animal floor (2026-11-16: flagged acquisitions dropped unless all of an animal's DG po are flagged, then its least-contaminated one kept; R/spatial/neuropil_lamina_utils.R, shared with map_afferent_sources and compare_lamina_synapses); post hoc sensitivity analyses (2026-10-28: lamina-label permutation, cross-host pairs, without the shared DG pair, laminar-SD-matched null, without GABAergic-terminal proteins; 2026-11-16: strict carry-over rule) and per-protein territory contrasts."
       - script: "analysis/spatial_validation/map_afferent_sources.R"
         required: false
         datasets: ["global"]
@@ -1004,7 +1004,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Laminar location of proteins by the cell type whose mRNA they are enriched in (added 2026-10-28): origin classes from the ABC whole-mouse-brain 10x reference, pinned by SHA-256 (entorhinal; other afferent, descriptive; CA3, granule, CA1, CA2 cells or interneurons; astrocytes, vascular cells, oligodendrocytes; non-projecting control, tested only with >= 5 proteins), scored on protein-centred laminar profiles against abundance-matched random sets; 8 pre-declared within-region contrasts (perforant path, Schaffer collaterals, mossy fibres, fissure context); CON animals primary (Figure 2k), stressed animals with every lamina as replication; DG po carry-over rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)."
+        notes: "Laminar location of proteins by the cell type whose mRNA they are enriched in (added 2026-10-28): origin classes from the ABC whole-mouse-brain 10x reference, pinned by SHA-256 (entorhinal; other afferent, descriptive; CA3, granule, CA1, CA2 cells or interneurons; astrocytes, vascular cells, oligodendrocytes; non-projecting control, tested only with >= 5 proteins), scored on protein-centred laminar profiles against abundance-matched random sets; 8 pre-declared within-region contrasts (perforant path, Schaffer collaterals, mossy fibres, fissure context); CON animals primary (Figure 2k), stressed animals with every lamina as replication; DG po carry-over rule with a per-animal floor (R/spatial/neuropil_lamina_utils.R); strict-rule sensitivity rows (column sensitivity, 2026-11-16)."
       - script: "analysis/spatial_validation/compare_lamina_synapses.R"
         required: false
         datasets: ["global"]
@@ -1019,7 +1019,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context; DG po carry-over rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)."
+        notes: "Laminar inhibitory presynaptic share (added 2026-10-28; Figure 2l): GAD1/GAD2/VGAT vs VGLUT1 within each acquisition, pre-declared lamina pairs tested on the per-animal differences of the CON animals (paired t, BH; pooled-error model as sensitivity), stressed animals as replication; GAD2 + VGAT-only and VGLUT2 columns as sensitivity and context; DG po carry-over rule with a per-animal floor (R/spatial/neuropil_lamina_utils.R); strict-rule and hemisphere-matched DG mo - po sensitivity rows (column sensitivity, 2026-11-16)."
       - script: "analysis/spatial_validation/test_stress_exposure.R"
         required: false
         datasets: ["global"]
@@ -1418,7 +1418,7 @@ stages:
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Per-protein robustness audit of the 28 FDR-supported CA2-SLM DAPs. Canonical differential abundance is READ, never refitted, and no new FDR is computed anywhere; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the model consumed. Imputation status is derived from the PRE-imputation raw matrix, because the post-imputation matrix has no NA left. The sample-level reconstruction is proven to reproduce the animal-level matrix to 1e-14 before any sensitivity number is formed. Also measures the missingness-driven normalisation displacement: per-sample median centring on observed values inflates the median of a heavily missing sample, displacing EVERY protein in it downwards, including proteins with no imputed value. All thresholds are prespecified named constants and the classifier has no argument through which a module, gene or tier could reach it."
+        notes: "Per-protein robustness audit of the FDR-supported CA2-SLM DAPs (28 in the published 3/3/3 run). Canonical differential abundance is READ, never refitted, and no new FDR is computed anywhere; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the model consumed. Imputation status is derived from the PRE-imputation raw matrix, because the post-imputation matrix has no NA left. The sample-level reconstruction is proven to reproduce the animal-level matrix to 1e-14 before any sensitivity number is formed. Also measures the missingness-driven normalisation displacement: per-sample median centring on observed values inflates the median of a heavily missing sample, displacing EVERY protein in it downwards, including proteins with no imputed value. All thresholds are prespecified named constants and the classifier has no argument through which a module, gene or tier could reach it."
       - script: "analysis/spatial_validation/audit_stress_identity_robustness.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -1469,9 +1469,11 @@ stages:
           - "results/integration/test_network_behaviour_coupling/global/tables"
           - "results/tables/08_behavior_physio_coupling/network_behavior_coupling/"
           - "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*samples_missing70pct.xlsx"
+          - "results/qc/assess_dataset_quality/neuron_neuropil/tables/dataset_qc_outlier_flags.csv"
+          - "results/preprocessing/map_protein_identifiers/neuron_neuropil/tables/mapped/forward/per_file/*sus_*res.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Candidate QC/robustness figures, the reviewer workbook and the CA2-SLM validation contract; a critical FAIL exits non-zero. Figures are NEW candidates that replace no manuscript figure contract, and each writes its own source-data CSV. The contract asserts that canonical differential abundance is unchanged and carried verbatim, that no p.adjust or model fit appears anywhere in the robustness layer, that leave-one-out removes exactly one AnimalID, that the A755-out and A764-out analyses exclude exactly those animals, that removing both QC-failed SUS animals is labelled descriptive-only, and that frozen WGCNA state and the network layer are untouched."
+        notes: "Candidate QC/robustness figures, the reviewer workbook and the CA2-SLM validation contract; a critical FAIL exits non-zero. PROTEOMICS_CA2_SLM_UNPINNED=true (a rerun on other data) replaces the pin to the published 28 hits by set equality with the contrast; the generated wording follows the design in the sample context. Figures are NEW candidates that replace no manuscript figure contract, and each writes its own source-data CSV. The contract asserts that canonical differential abundance is unchanged and carried verbatim, that no p.adjust or model fit appears anywhere in the robustness layer, that leave-one-out removes exactly one AnimalID, that the A755-out and A764-out analyses exclude exactly those animals, that removing both QC-failed SUS animals is labelled descriptive-only, and that frozen WGCNA state and the network layer are untouched."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:
