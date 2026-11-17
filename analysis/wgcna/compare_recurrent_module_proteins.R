@@ -1,19 +1,19 @@
 # ================================================================
 # Script: analysis/wgcna/compare_recurrent_module_proteins.R
 # Stage: modules_downstream
-# Scope: global
-# Consumes: required data/processed/04_differential_expression_enrichment/compareGO/neuron_neuropil/compareGO_input_manifest.csv; data/processed/04_differential_expression_enrichment/compareGO/neuron_soma/compareGO_input_manifest.csv; +1 more; optional none.
-# Produces: results/tables/06_modules_WGCNA/01a_compare_GO_recurrent_proteins/.
-# Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
-# Notes: Global recurrent GO/protein comparison used by curated overlap programs.
+# Scope: dataset_specific
+# Consumes: required results/differential_abundance/summarize_top_term_drivers/<dataset>/tables/top_term_driver_genes.csv; optional none declared in pipeline.yml
+# Produces: results/wgcna/compare_recurrent_module_proteins/<dataset>/tables/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx
+# Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
+# Notes: Genes that drive the top GO terms in at least three spatial units of one dataset; the neuron_neuropil workbook is the input of build_curated_overlap_programs.R.
 # ================================================================
 
 # ================================================================
-# Compare overlapping proteins across GSEA top-gene Excel files
-# Keeps proteins present in at least N datasets
+# Compare top-term driver genes across spatial units
+# Keeps genes present in at least N spatial units
 # ================================================================
 
-library(readxl)
+library(readr)
 library(dplyr)
 library(purrr)
 library(stringr)
@@ -25,6 +25,7 @@ paths_file <- if (file.exists(file.path("R", "paths.R"))) file.path("R", "paths.
 source(paths_file)
 source(repo_path("R", "dataset_config.R"))
 source(repo_path("R", "wgcna_paths.R"))
+source(repo_path("R", "top_term_driver_utils.R"))
 
 # ------------------------------------------------
 # 1) SETTINGS
@@ -40,26 +41,20 @@ value_after <- function(flag, default = "") {
 DATASET <- validate_dataset(value_after("--dataset", Sys.getenv("PROTEOMICS_DATASET", unset = NA_character_)), source = "--dataset")
 Sys.setenv(PROTEOMICS_DATASET = DATASET)
 dry_run <- is_dry_run()
-target_file   <- "07_Top_Genes_Driving_TopTerms.xlsx"
 
 min_datasets <- 3
 
-comparego_dir <- path_results(
-  "tables",
-  "04_differential_expression_enrichment",
-  "compareGO",
-  DATASET,
-  "BP",
-  "phenotype_within_unit"
+# Written by analysis/differential_abundance/summarize_top_term_drivers.R
+# (GSEA_GO, BP, phenotype_within_unit).
+aggregate_input_file <- canonical_result_path(
+  "differential_abundance", "summarize_top_term_drivers", DATASET, "tables",
+  "top_term_driver_genes.csv"
 )
-
-aggregate_input_file <- file.path(comparego_dir, target_file)
 
 output_dir <- file.path(
   wgcna_dirs("compare_recurrent_module_proteins", DATASET)$tables,
   "recurrent_top_gene_drivers"
 )
-dir_create(output_dir)
 
 output_file <- file.path(output_dir, paste0("overlapping_proteins_min", min_datasets, "_spatial_units.xlsx"))
 
@@ -78,7 +73,7 @@ expected_spatial_units <- switch(
 if (dry_run) {
   dry_run_line("Script", "analysis/wgcna/compare_recurrent_module_proteins.R")
   dry_run_line("Dataset", DATASET)
-  dry_run_line("compareGO aggregate top-gene file", aggregate_input_file, if (file.exists(aggregate_input_file)) "PASS" else "FAIL")
+  dry_run_line("Top-term driver genes", aggregate_input_file, if (file.exists(aggregate_input_file)) "PASS" else "FAIL")
   dry_run_line("Expected spatial units", paste(expected_spatial_units, collapse = ", "), "INFO")
   dry_run_line("Output workbook", output_file, "INFO")
   quit(status = if (file.exists(aggregate_input_file)) 0L else 1L, save = "no")
@@ -89,16 +84,18 @@ if (dry_run) {
 # ------------------------------------------------
 
 input_files <- tibble(
-  Input_type = "compareGO_aggregate_top_gene_drivers",
+  Input_type = "top_term_driver_genes",
   File = aggregate_input_file,
   File_exists = file.exists(File)
 )
 
 if (!file.exists(aggregate_input_file)) {
-  stop("No input file found. Expected compareGO output: ", aggregate_input_file, call. = FALSE)
+  stop("No input file found. Expected the top-term driver table of summarize_top_term_drivers.R: ",
+       aggregate_input_file, call. = FALSE)
 }
 
-message("Found compareGO input file: ", aggregate_input_file)
+message("Found top-term driver table: ", aggregate_input_file)
+dir_create(output_dir)
 
 # ------------------------------------------------
 # 3) READ AND STANDARDIZE DATA
@@ -121,35 +118,47 @@ parse_dataset_from_comparison <- function(x) {
   if (length(detected) == 0) NA_character_ else detected[[1]]
 }
 
-read_top_genes <- function(file) {
-  df <- readxl::read_excel(file)
+read_driver_table <- function(file) {
+  df <- readr::read_csv(
+    file,
+    col_types = readr::cols(.default = readr::col_character()),
+    na = c("", "NA"),
+    progress = FALSE
+  )
 
-  required_cols <- c("Description", "Gene", "Freq", "Mean_NES", "Comparisons")
+  required_cols <- c("Description", "Gene", "Freq", "Mean_NES", "Comparisons",
+                     "ProteinGroupIDs", "member_accessions")
   missing_cols <- setdiff(required_cols, names(df))
 
   if (length(missing_cols) > 0) {
     stop(
       "File missing required columns: ",
       basename(file), " | Missing: ",
-      paste(missing_cols, collapse = ", ")
+      paste(missing_cols, collapse = ", "),
+      call. = FALSE
     )
   }
 
   df %>%
     mutate(
       Description = as.character(Description),
-      Gene = as.character(Gene),
-      Gene = str_trim(Gene),
+      Gene = str_trim(as.character(Gene)),
       Freq = suppressWarnings(as.numeric(Freq)),
       Mean_NES = suppressWarnings(as.numeric(Mean_NES)),
       Comparisons = as.character(Comparisons)
     ) %>%
-    filter(!is.na(Gene), Gene != "") %>%
+    filter(!is.na(Gene), Gene != "")
+}
+
+read_top_genes <- function(df) {
+  long <- df %>%
     tidyr::separate_rows(Comparisons, sep = ";\\s*") %>%
-    mutate(
-      Comparison = stringr::str_trim(Comparisons),
-      Dataset = purrr::map_chr(Comparison, parse_dataset_from_comparison)
-    ) %>%
+    mutate(Comparison = stringr::str_trim(Comparisons))
+  ## each distinct comparison is parsed once
+  comparisons <- unique(long$Comparison)
+  unit_of <- stats::setNames(purrr::map_chr(comparisons, parse_dataset_from_comparison), comparisons)
+  long %>%
+    mutate(Dataset = unname(unit_of[Comparison])) %>%
     filter(!is.na(Dataset), Dataset %in% expected_spatial_units) %>%
     group_by(Dataset, Description, Gene) %>%
     summarise(
@@ -160,7 +169,23 @@ read_top_genes <- function(file) {
     )
 }
 
-all_data <- read_top_genes(aggregate_input_file)
+driver_table <- read_driver_table(aggregate_input_file)
+all_data <- read_top_genes(driver_table)
+
+# Protein groups carrying each gene, merged over all of its driver rows; see
+# R/enrichment/top_term_driver_utils.R for the ProteinGroupIDs /
+# member_accessions encoding.
+gene_protein_groups <- driver_table %>%
+  group_by(Gene) %>%
+  summarise(
+    encoded = list(top_term_merge_protein_groups(ProteinGroupIDs, member_accessions)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ProteinGroupIDs = purrr::map_chr(encoded, ~ .x[["ProteinGroupIDs"]]),
+    member_accessions = purrr::map_chr(encoded, ~ .x[["member_accessions"]])
+  ) %>%
+  dplyr::select(Gene, ProteinGroupIDs, member_accessions)
 
 found_datasets <- sort(unique(all_data$Dataset))
 missing_datasets <- setdiff(expected_spatial_units, found_datasets)
@@ -187,6 +212,9 @@ protein_dataset_summary <- all_data %>%
   ) %>%
   filter(N_datasets >= min_datasets) %>%
   arrange(desc(N_datasets), Gene)
+
+overlap_summary <- protein_dataset_summary %>%
+  left_join(gene_protein_groups, by = "Gene")
 
 # ------------------------------------------------
 # 5) TERM-LEVEL DETAILS FOR OVERLAPPING PROTEINS
@@ -247,7 +275,7 @@ description_overlap <- all_data %>%
 wb <- createWorkbook()
 
 addWorksheet(wb, "Overlap_summary")
-writeData(wb, "Overlap_summary", protein_dataset_summary)
+writeData(wb, "Overlap_summary", overlap_summary)
 
 addWorksheet(wb, "Overlap_details")
 writeData(wb, "Overlap_details", overlap_details)
@@ -283,4 +311,5 @@ for (sheet in names(wb)) {
 saveWorkbook(wb, output_file, overwrite = TRUE)
 
 message("Done.")
+message("Genes in >= ", min_datasets, " spatial units: ", nrow(overlap_summary))
 message("Output written to: ", output_file)

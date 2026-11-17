@@ -86,3 +86,14 @@ block's own output was adjudicated
 `MISLEADING_OR_UNINTERPRETABLE` — it reports a bootstrap row-inclusion
 probability, pinned near `1 − e⁻¹ = 0.632`, under a name that implies enrichment
 robustness.
+
+## Reimplemented parts (2026-11-16)
+
+The top-term selection (best instance per term, significant pool, top 5 up and
+down with the leading-edge redundancy filter) and section 10, top driver genes
+(`07_Top_Genes_Driving_TopTerms.xlsx`), were reimplemented on canonical inputs
+by `analysis/differential_abundance/summarize_top_term_drivers.R` with
+`R/enrichment/top_term_driver_utils.R`. They read the canonical compareGO
+bundle; the leading edge is the claim-safe core of the term-gene provenance.
+Nothing sources or parses this file, and the payload is unchanged. The
+bootstrap block was not reimplemented.

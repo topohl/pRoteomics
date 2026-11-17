@@ -20,8 +20,8 @@ WRITERS <- c("annotate_neuropil_reference", "audit_gsea_protein_direction",
              "audit_stress_response_biology", "build_go_program_atlas",
              "build_sus_res_dap_atlas", "compare_external_stress_signatures",
              "compare_go_enrichment", "run_clusterprofiler_enrichment",
-             "summarize_biological_programs", "test_microglia_targeted_signatures",
-             "validate_control_spatial_identity")
+             "summarize_biological_programs", "summarize_top_term_drivers",
+             "test_microglia_targeted_signatures", "validate_control_spatial_identity")
 LEGACY_NS <- "04_differential_expression_enrichment"
 
 sp <- function(x) {
@@ -73,7 +73,7 @@ syms <- function(e) {
 
 # --- section 23: writer truth, every writer, no sampling ------------------
 
-testthat::test_that("all eleven writers agree: registry, code and normalized path", {
+testthat::test_that("all twelve writers agree: registry, code and normalized path", {
   s <- registry_steps()
   checked <- 0L
   for (aid in WRITERS) {

@@ -276,6 +276,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Consumes only the manifest-selected clusterProfiler outputs for this dataset."
+      - script: "analysis/differential_abundance/summarize_top_term_drivers.R"
+        required: false
+        datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
+        stage: "enrichment"
+        scope: "dataset_specific"
+        produces: ["results/differential_abundance/summarize_top_term_drivers/<dataset>/tables/top_term_driver_genes.csv", "results/differential_abundance/summarize_top_term_drivers/<dataset>/tables/selected_top_terms.csv", "results/differential_abundance/summarize_top_term_drivers/<dataset>/manifests/run_manifest.yml"]
+        consumes_required: ["results/differential_abundance/compare_go_enrichment/<dataset>/models/compareGO_input_manifest.csv", "data/processed/04_differential_expression_enrichment/compareGO/<dataset>/compareGO_input_manifest.csv", "config/compareGO_config.yml"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Top GO terms per comparison (non-redundant, up and down) and the genes driving them, from the canonical compareGO bundle (GSEA_GO, BP, phenotype_within_unit); input of compare_recurrent_module_proteins.R. Reimplements the top-term selection and top-gene table of the archived compareGO tail (2026-11-16)."
       - script: "analysis/differential_abundance/annotate_neuropil_reference.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -409,22 +420,22 @@ stages:
         stage: "modules_downstream"
         scope: "dataset_specific"
         produces: ["results/wgcna/compare_recurrent_module_proteins/<dataset>/tables/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx"]
-        consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/<dataset>/BP/phenotype_within_unit/07_Top_Genes_Driving_TopTerms.xlsx"]
+        consumes_required: ["results/differential_abundance/summarize_top_term_drivers/<dataset>/tables/top_term_driver_genes.csv"]
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Dataset-specific recurrent GO/protein comparison across spatial units; does not alter WGCNA modules."
+        notes: "Dataset-specific recurrent GO/protein comparison across spatial units, from the top-term driver table of summarize_top_term_drivers.R; does not alter WGCNA modules."
       - script: "analysis/wgcna/build_curated_overlap_programs.R"
         required: false
         datasets: ["global"]
         stage: "modules_downstream"
         scope: "global"
         produces: ["results/wgcna/build_curated_overlap_programs/global/tables"]
-        consumes_required: ["results/tables/04_differential_expression_enrichment/compareGO/overlapping_proteins_min3_datasets.xlsx"]
-        consumes_optional: ["data/external/MOUSE_10090_idmapping.dat"]
+        consumes_required: ["results/wgcna/compare_recurrent_module_proteins/neuron_neuropil/tables/recurrent_top_gene_drivers/overlapping_proteins_min3_spatial_units.xlsx", "data/external/MOUSE_10090_idmapping.dat"]
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Curated overlap programs are global biological program sets and are distinct from WGCNA module construction."
+        notes: "Curated overlap programs are global biological program sets and are distinct from WGCNA module construction; built from the neuron_neuropil recurrent top-term driver genes (sheet Overlap_summary)."
       - script: "analysis/wgcna/score_module_activity.R"
         required: false
         datasets: ["neuron_soma", "microglia"]
@@ -435,7 +446,7 @@ stages:
         consumes_optional: ["results/preprocessing/build_module_score_metadata/<dataset>/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx", "results/wgcna/build_wgcna_modules/<dataset>/tables/supermodules/wgcna_module_supermodule_annotation.csv", "results/tables/06_modules_WGCNA/01_WGCNA/<dataset>/supermodules/wgcna_module_supermodule_annotation.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Module scoring layer: scores existing WGCNA module definitions against dataset matrices; does not rebuild WGCNA modules. neuron_neuropil is scored only by the WGCNA-source row below; its curated-overlap default is not registered because build_curated_overlap_programs.R has no producer for its compareGO input."
+        notes: "Module scoring layer: scores existing WGCNA module definitions against dataset matrices; does not rebuild WGCNA modules. neuron_neuropil is scored only by the WGCNA-source row below; its curated-overlap default is not registered. The curated programs have a producer chain again (summarize_top_term_drivers.R -> compare_recurrent_module_proteins.R -> build_curated_overlap_programs.R, 2026-11-16); registering the overlap-source score run is a separate decision."
       - script: "analysis/wgcna/score_module_activity.R"
         required: false
         datasets: ["neuron_neuropil"]
@@ -873,12 +884,12 @@ stages:
         datasets: ["neuron_neuropil"]
         stage: "networks"
         scope: "dataset_specific"
-        produces: ["results/spatial_networks/render_network_chord_diagram/<dataset>/plots", "results/spatial_networks/render_network_chord_diagram/<dataset>/manifests"]
-        consumes_required: ["data/processed/02_id_mapping/mapped/neuron-phenotypeWithinUnit/"]
-        consumes_optional: ["results/tables/07_spatial_networks/"]
+        produces: ["results/spatial_networks/render_network_chord_diagram/<dataset>/plots", "results/spatial_networks/render_network_chord_diagram/<dataset>/tables", "results/spatial_networks/render_network_chord_diagram/<dataset>/manifests"]
+        consumes_required: ["results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
+        consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Chord diagrams from mapped phenotype-within-unit edge/protein tables; current stage placement is retained although the input path is legacy-shaped."
+        notes: "Chord diagrams of significant proteins shared between phenotype-within-unit contrasts of the mapped contrast tables (ProteinGroupID, official_gene_symbol, protein_level_claim_allowed); shared-protein workbooks in tables/."
       - script: "analysis/spatial_validation/build_spatial_data_contract.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

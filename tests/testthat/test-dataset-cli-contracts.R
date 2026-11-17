@@ -6,6 +6,7 @@ testthat::test_that("dataset-scoped active scripts use shared CLI dataset resolu
     "analysis/preprocessing/map_protein_identifiers.R",
     "analysis/differential_abundance/run_clusterprofiler_enrichment.R",
     "analysis/differential_abundance/compare_go_enrichment.R",
+    "analysis/differential_abundance/summarize_top_term_drivers.R",
     "analysis/differential_abundance/annotate_neuropil_reference.R",
     "analysis/spatial_networks/build_differential_networks.R",
     "analysis/spatial_networks/test_network_stability.R",

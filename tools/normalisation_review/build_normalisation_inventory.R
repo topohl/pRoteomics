@@ -90,9 +90,9 @@ WRITES_LEGACY <- c(
   "analysis/preprocessing/build_animal_level_protigy_input.R" = "writes its aggregation tables into results/tables/01_preprocessing (read by the normalisation guard)")
 # a step is not downstream of what it produces itself or feeds
 NOT_UPSTREAM <- list("analysis/wgcna/build_wgcna_modules.R" = c("labels"))
-ORIGINAL_ONLY <- c(
-  "analysis/wgcna/build_curated_overlap_programs.R" = "defined from recurrent compareGO proteins of the original-centring results (legacy table); not regenerated",
-  "analysis/wgcna/compare_recurrent_module_proteins.R" = "reads legacy compareGO top-gene workbooks of the original-centring results; not regenerated")
+# none since 2026-11-16: compare_recurrent_module_proteins.R and build_curated_overlap_programs.R
+# read the current compareGO results through summarize_top_term_drivers.R instead of legacy workbooks
+ORIGINAL_ONLY <- stats::setNames(character(), character())
 steps <- steps |> mutate(
   depends_on_centring = !script %in% names(INDEPENDENT),
   dependence_path = case_when(script %in% names(INDEPENDENT) ~ paste("independent:", INDEPENDENT[script]),
@@ -104,8 +104,8 @@ steps <- steps |> mutate(
 hist_patterns <- c("config/wgcna_labels" = "reviewed WGCNA label registry",
   "gsea_wgcna_theme_module_mapping" = "theme-module mapping (curated on the previous network)",
   "gsea_wgcna_program_module_mapping" = "program-module mapping (curated on the previous network)",
-  "wgcna_supermodules" = "supermodule configuration", "curated_overlap" = "curated overlap programmes (defined from previous DA results)",
-  "compareGO/overlapping_proteins" = "recurrent compareGO proteins (previous DA results)",
+  "wgcna_supermodules" = "supermodule configuration", "curated_overlap" = "curated overlap programmes (outcome-derived; from the current DA results once the recurrent-protein chain is rerun)",
+  "recurrent_top_gene_drivers" = "recurrent top-term driver genes (outcome-derived; current DA results)",
   "manuscript_go_theme_registry" = "theme registry (predefined, not outcome-selected)")
 LEGACY_CODE <- 'path_results\\(\\s*"tables"|"results/tables/|results/source_data/|"data/processed/0[2-9]_|path_processed\\(\\s*"0[2-9]_|"results/tables"|biological_claims_table[.]csv"'
 code_of <- function(s) if (file.exists(s)) { x <- readLines(s, warn = FALSE); x[!grepl("^\\s*#", x)] } else character()

@@ -244,12 +244,16 @@ term_gene_provenance_columns <- function() c(
   "core_enrichment_member", "enrichment_contract_version", "gene_annotation_contract_version"
 )
 
-validate_term_gene_provenance_contract <- function(x, strict = TRUE) {
-  missing <- setdiff(term_gene_provenance_columns(), names(x))
+# `required` is narrowed only by a caller that read a column subset on purpose
+# (read_canonical_comparego_bundle(provenance_columns = ...)); the content
+# checks below still run on every column that was read.
+validate_term_gene_provenance_contract <- function(x, strict = TRUE,
+                                                   required = term_gene_provenance_columns()) {
+  missing <- setdiff(required, names(x))
   if (length(missing)) {
     stop("Term-gene provenance is missing required columns: ", paste(missing, collapse = ", "), call. = FALSE)
   }
-  if (!is.character(x$official_entrez_id)) {
+  if ("official_entrez_id" %in% required && !is.character(x$official_entrez_id)) {
     stop("Term-gene provenance official_entrez_id must remain character.", call. = FALSE)
   }
   if (isTRUE(strict) && any(x$gene_level_claim_allowed %in% FALSE, na.rm = TRUE)) {
@@ -385,11 +389,24 @@ validate_comparego_manifest_contract <- function(manifest, require_files = TRUE)
   invisible(TRUE)
 }
 
-read_csv_contract <- function(path, character_columns = character()) {
+# `columns` reads only those columns (the others are skipped by colClasses
+# "NULL"), with the same parser and type rules as a full read.
+read_csv_contract <- function(path, character_columns = character(), columns = NULL) {
   header <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE, nrows = 0L)
   character_columns <- intersect(character_columns, names(header))
+  skipped <- character()
+  if (!is.null(columns)) {
+    missing <- setdiff(columns, names(header))
+    if (length(missing)) {
+      stop("Contract table is missing requested columns: ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    skipped <- setdiff(names(header), columns)
+    character_columns <- intersect(character_columns, columns)
+  }
+  classes <- c(setNames(rep("character", length(character_columns)), character_columns),
+    setNames(rep("NULL", length(skipped)), skipped))
   x <- utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE,
-    colClasses = if (length(character_columns)) c(setNames(rep("character", length(character_columns)), character_columns)) else NA)
+    colClasses = if (length(classes)) classes else NA)
   x
 }
 
@@ -824,7 +841,8 @@ read_canonical_clusterprofiler_bundle <- function(manifest_path, dataset,
   )
 }
 
-read_single_declared_contract_table <- function(paths, label, character_columns = character()) {
+read_single_declared_contract_table <- function(paths, label, character_columns = character(),
+                                                columns = NULL) {
   paths <- sort(unique(as.character(paths[!is.na(paths) & nzchar(paths)])), method = "radix")
   if (length(paths) != 1L) stop("Canonical compareGO manifest must declare exactly one ", label, ".", call. = FALSE)
   ## "does not exist" is a claim this check is not entitled to make: the same
@@ -835,22 +853,41 @@ read_single_declared_contract_table <- function(paths, label, character_columns 
     stop("Declared ", label, " is not usable: ",
       describe_input_status_failures(paths[[1]], declared_status), call. = FALSE)
   }
-  list(path = paths[[1]], data = read_csv_contract(paths[[1]], character_columns = character_columns))
+  list(path = paths[[1]], data = read_csv_contract(paths[[1]], character_columns = character_columns,
+    columns = columns))
 }
 
-read_canonical_comparego_bundle <- function(manifest_path, dataset, repository_root = repo_path()) {
+# The term-gene provenance columns a subset read always keeps: the row identity
+# and the claim fields the strict contract checks.
+term_gene_provenance_key_columns <- function() c(
+  "dataset", "comparison", "result_type", "ontology", "term_id",
+  "official_gene_symbol", "ProteinGroupID", "protein_group_gene_annotation_status",
+  "gene_level_claim_allowed"
+)
+
+# provenance_columns = NULL reads the whole provenance table. A consumer that
+# needs only some columns of a large table (neuron_neuropil is ~780 MB) names
+# them; the key columns are always added and the strict contract checks run on
+# what was read.
+read_canonical_comparego_bundle <- function(manifest_path, dataset, repository_root = repo_path(),
+                                            provenance_columns = NULL) {
   manifest <- read_canonical_comparego_manifest(
     manifest_path, dataset, require_files = TRUE, repository_root = repository_root
   )
   terms <- read_single_declared_contract_table(manifest$term_comparison_file, "compareGO term comparison")
+  provenance_read <- if (is.null(provenance_columns)) NULL else
+    intersect(term_gene_provenance_columns(),
+      union(term_gene_provenance_key_columns(), provenance_columns))
   provenance <- read_single_declared_contract_table(
-    manifest$term_gene_provenance_output_file, "compareGO term-gene provenance", "official_entrez_id"
+    manifest$term_gene_provenance_output_file, "compareGO term-gene provenance", "official_entrez_id",
+    columns = provenance_read
   )
   status <- read_single_declared_contract_table(manifest$analysis_status_summary_file, "compareGO analysis-status summary")
   required_terms <- c("dataset", "comparison", "result_type", "ontology", "term_id", "term_description", "NES", "p.adjust")
   missing_terms <- setdiff(required_terms, names(terms$data))
   if (length(missing_terms)) stop("compareGO term comparison is missing required columns: ", paste(missing_terms, collapse = ", "), call. = FALSE)
-  validate_term_gene_provenance_contract(provenance$data, strict = TRUE)
+  validate_term_gene_provenance_contract(provenance$data, strict = TRUE,
+    required = provenance_read %||% term_gene_provenance_columns())
   required_status <- c("dataset", "comparison", "result_type", "ontology", "analysis_status", "n_terms", "comparego_action")
   missing_status <- setdiff(required_status, names(status$data))
   if (length(missing_status)) stop("compareGO analysis-status summary is missing required columns: ", paste(missing_status, collapse = ", "), call. = FALSE)
