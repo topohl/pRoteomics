@@ -177,6 +177,41 @@ testthat::test_that("per-protein QC-fail removals follow the animals in the desi
   testthat::expect_match(rerun$classification_reason, "not dependent on the QC-failed SUS sample", fixed = TRUE)
 })
 
+testthat::test_that("a whole-animal removal that leaves one animal in a group decides no class", {
+  # RES at 0; A111 at -0.2; A755 at -1.0 in both hemispheres (its Left acquisition is QC-FAILED);
+  # A764, when present, at -0.2. Dropping A755 shrinks the effect by more than half; dropping
+  # only its QC-failed hemisphere changes nothing.
+  one_protein <- function(with_764) {
+    s <- synthetic_ctx(with_764)
+    animals <- sort(unique(s$AnimalID))
+    stress <- stats::setNames(s$StressGroup[match(animals, s$AnimalID)], animals)
+    val <- c(CON = 0.5, RES = 0, SUS = -0.2)[s$StressGroup]
+    val[s$AnimalID == "755"] <- -1
+    imputed <- matrix(val, nrow = 1L, dimnames = list("P1", s$sample_id))
+    mask <- stats::setNames(rep(FALSE, nrow(s)), s$sample_id)
+    av <- tapply(val, s$AnimalID, mean)
+    fc <- mean(av[names(stress)[stress == "SUS"]]) - mean(av[names(stress)[stress == "RES"]])
+    ctx <- list(sample_meta = s, animals = animals, stress = stress,
+                qc_fail_samples = s$sample_id[s$qc_flag == "FAIL"],
+                sample_of = function(a, h) s$sample_id[s$AnimalID == a & s$hemisphere == h][1])
+    canon <- data.frame(ProteinGroupID = "PG1", official_gene_symbol = "G1", log2fc = fc,
+                        pval = 1e-4, padj = 0.01, stringsAsFactors = FALSE)
+    csr_protein_robustness("P1", canon, imputed, mask, ctx)$summary
+  }
+  # 3/3/3: dropping A755 leaves A111 and A764 (2 versus 3) and decides the class
+  full <- one_protein(TRUE)
+  testthat::expect_true(full$A755_sensitive)
+  testthat::expect_identical(full$CA2_SLM_robustness_class, "not_claimable_due_to_QC")
+  # 3/3/2: dropping A755 leaves A111 alone (1 versus 3); reported, labelled, not deciding
+  rerun <- one_protein(FALSE)
+  testthat::expect_true(is.na(rerun$A755_sensitive))
+  testthat::expect_gt(abs(rerun$effect_excluding_A755 - rerun$canonical_log2FC_SUS_minus_RES),
+                      0.5 * abs(rerun$canonical_log2FC_SUS_minus_RES))
+  testthat::expect_match(rerun$effect_excluding_A755_interpretation, "^DESCRIPTIVE ONLY")
+  testthat::expect_false(rerun$qc_failed_hemisphere_sensitive)
+  testthat::expect_identical(rerun$CA2_SLM_robustness_class, "robust_to_missingness_and_QC")
+})
+
 testthat::test_that("generated wording follows the design in the sample context", {
   t9 <- csr_design_text(synthetic_ctx(TRUE), n_flagged_neuropil = 5L)
   # the published 3/3/3 wording is reproduced
@@ -208,8 +243,8 @@ testthat::test_that("generated wording follows the design in the sample context"
     "that the sign is stable under every leave-out."))
   testthat::expect_match(t8$qc_fail_removal,
     "^Removing the QC-failed SUS animal leaves 1 versus 3, which is NOT a valid group comparison")
-  # in 3/3/2 that removal still marks proteins not claimable, and the text says so
-  testthat::expect_match(t8$qc_fail_removal, "still marks the protein not claimable", fixed = TRUE)
+  # in 3/3/2 that removal decides no class, and the text says so
+  testthat::expect_match(t8$qc_fail_removal, "and decides no class", fixed = TRUE)
   testthat::expect_false(grepl("wherever it appears", t8$qc_fail_removal, fixed = TRUE))
   testthat::expect_identical(c(t8$n_samples, t8$n_sus_res_samples, t8$n_animals), c(16L, 10L, 8L))
   # without the neuropil QC table the share is stated for CA2-SLM alone
@@ -403,6 +438,9 @@ testthat::test_that("every QC-fail removal leaving fewer than two animals in a g
                                  n_sus < 2L || n_res < 2L, info = nm)
       testthat::expect_identical(any(grepl("DESCRIPTIVE ONLY", lab)),
                                  n_sus < 2L || n_res < 2L, info = nm)
+      # a labelled single-animal removal decides no class
+      flag <- if (nm == "both") NULL else r[[paste0(nm, "_sensitive")]]
+      if (!is.null(flag) && (n_sus < 2L || n_res < 2L)) testthat::expect_true(all(is.na(flag)), info = nm)
     }
   }
 })

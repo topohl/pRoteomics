@@ -256,24 +256,13 @@ disp <- if (is.null(bias)) NA_real_ else {
 # CA2-SLM having the highest pre-imputation missingness of the neuropil units and
 # the lowest baseline abundance holds in the 3/3/3 data and in the 3/3/2 rerun.
 units_txt <- if (n_units) sprintf("the %d neuropil units", n_units) else "the neuropil units"
-# Not claimable: the published sentence holds while every trigger is a removal that keeps at least
-# csr_min_observed_animals() per group. A protein marked only by a whole-animal removal that leaves
-# fewer (A755 in the 3/3/2 rerun, labelled DESCRIPTIVE ONLY) is counted separately.
+# A whole-animal removal that leaves fewer than csr_min_observed_animals() in a group (A755 in the
+# 3/3/2 rerun) is labelled DESCRIPTIVE ONLY and decides no class: its sensitivity flag must be NA.
 desc_only <- function(col) if (col %in% names(rob)) grepl("^DESCRIPTIVE ONLY", rob[[col]]) else rep(FALSE, nrow(rob))
-nc <- rob$CA2_SLM_robustness_class == "not_claimable_due_to_QC"
-valid_trigger <- rob$qc_failed_hemisphere_sensitive %in% TRUE |
-  (rob$A755_sensitive %in% TRUE & !desc_only("effect_excluding_A755_interpretation")) |
-  (rob$A764_sensitive %in% TRUE & !desc_only("effect_excluding_A764_interpretation"))
-n_desc_only_nc <- sum(nc & !valid_trigger)
-desc_design <- unique(sub("^DESCRIPTIVE ONLY: (.*) is not a valid group comparison$", "\\1",
-                          c(rob$effect_excluding_A755_interpretation[desc_only("effect_excluding_A755_interpretation")],
-                            rob$effect_excluding_A764_interpretation[desc_only("effect_excluding_A764_interpretation")])))
-not_claimable_txt <- if (!n_desc_only_nc)
-  sprintf("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition is removed", n_by("not_claimable_due_to_QC")) else
-  sprintf(paste0("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition or animal is removed; ",
-                 "for %d of them only the removal of the whole QC-failed animal does so, which leaves %s ",
-                 "(descriptive only, used conservatively)"),
-          n_by("not_claimable_due_to_QC"), n_desc_only_nc, paste(desc_design, collapse = "; "))
+desc_flag_ok <- all(is.na(rob$A755_sensitive[desc_only("effect_excluding_A755_interpretation")])) &&
+  all(is.na(rob$A764_sensitive[desc_only("effect_excluding_A764_interpretation")]))
+not_claimable_txt <- sprintf("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition is removed",
+                             n_by("not_claimable_due_to_QC"))
 claim_status <- data.frame(
   item = c("canonical_result", "qc_context", "robust_subset",
            "not_claimable", "not_evaluable", "approved_wording",
@@ -437,25 +426,20 @@ removal_eval <- if (is.null(sctx)) NULL else lapply(names(removal_sets), functio
   list(eff = eff, ok = ok, needs = needs,
        text = if (length(drop)) sprintf("%s leaves %d versus %d", what, n_sus, n_res) else NA_character_)
 })
-# a class set only by a removal that needs the label must say so in its reason
-desc_reason_ok <- !n_desc_only_nc ||
-  ("classification_reason" %in% names(rob) && all(grepl("descriptive only", rob$classification_reason[nc & !valid_trigger], fixed = TRUE)))
-removal_ok <- !is.null(removal_eval) && all(vapply(removal_eval, `[[`, logical(1), "ok")) && desc_reason_ok
+removal_ok <- !is.null(removal_eval) && all(vapply(removal_eval, `[[`, logical(1), "ok")) && desc_flag_ok
 removal_needs <- if (is.null(removal_eval)) character(0) else
   unlist(lapply(removal_eval, function(z) if (z$needs) z$text))
 removal_bad <- c(if (is.null(removal_eval)) character(0) else
   unlist(lapply(removal_eval, function(z) if (!z$ok) z$eff)),
-  if (!desc_reason_ok) "the classification reasons of proteins marked only by a descriptive-only removal")
+  if (!desc_flag_ok) "the sensitivity flags of descriptive-only removals (must be NA: they decide no class)")
 add("both_QC_fail_removal_labelled_descriptive", TRUE,
     if (removal_ok) "PASS" else "FAIL",
     if (is.null(removal_eval)) "sample context missing; group sizes after QC-fail removal not known" else
       paste0(if (length(removal_needs)) paste(removal_needs, collapse = "; ") else
                sprintf("no QC-fail removal leaves fewer than %d animals in a group", csr_min_observed_animals()),
              if (!removal_ok) paste0("; label or value inconsistent with the rule for ", csr_and_list(removal_bad)) else
-               paste0(if (length(removal_needs) == 1L) " and is labelled descriptive-only" else
-                        if (length(removal_needs) > 1L) "; each is labelled descriptive-only" else "",
-                      if (n_desc_only_nc) sprintf("; %d not-claimable classes rest only on such a removal and their reasons say so",
-                                                  n_desc_only_nc) else "")))
+               if (length(removal_needs) == 1L) " and is labelled descriptive-only" else
+                 if (length(removal_needs) > 1L) "; each is labelled descriptive-only" else ""))
 
 add("classification_ignores_annotation", TRUE,
     if (!grepl("ModuleID|GeneSymbol|candidate_tier|gene_symbol",

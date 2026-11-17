@@ -317,27 +317,26 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   # ------------------------------------------------------ stability flags
   loo_sign_stable <- length(sgn) > 0L && all(sgn)
-  a755 <- isTRUE(!csr_same_sign(e_755, canon_fc)) ||
-    isTRUE(csr_rel_change(e_755, canon_fc) > csr_magnitude_collapse_cut())
-  a764 <- isTRUE(!csr_same_sign(e_764, canon_fc)) ||
-    isTRUE(csr_rel_change(e_764, canon_fc) > csr_magnitude_collapse_cut())
+  # A whole-animal removal decides a class only when it leaves at least
+  # csr_min_observed_animals() animals in each group, as the removal of both QC-failed
+  # animals never did in the 3/3/3 design. Otherwise (A755 in the 3/3/2 rerun: 1 SUS
+  # versus 3 RES) its effect is reported, labelled descriptive only, and the flag is NA;
+  # the QC check that decides is then the removal of the QC-failed hemisphere alone.
+  animal_flag <- function(drop, e) {
+    k <- !(animals %in% drop)
+    if (!all(k) && csr_removal_needs_label(sum(st[k] == "SUS"), sum(st[k] == "RES"))) return(NA)
+    isTRUE(!csr_same_sign(e, canon_fc)) ||
+      isTRUE(csr_rel_change(e, canon_fc) > csr_magnitude_collapse_cut())
+  }
+  a755 <- animal_flag("755", e_755)
+  a764 <- animal_flag("764", e_764)
   hemi <- isTRUE(!csr_same_sign(e_hemi, canon_fc)) ||
     isTRUE(csr_rel_change(e_hemi, canon_fc) > csr_magnitude_collapse_cut())
   obs_sign <- isTRUE(csr_same_sign(obs_only, canon_fc))
 
   cls <- csr_classify(fully_observed, estimable, obs_sign, imp_class,
                       loo_sign_stable, a755, a764, hemi, imp_rel)
-  # The reasons are worded for the published 3/3/3 design. A whole-animal removal that
-  # leaves fewer than csr_min_observed_animals() in a group (A755 in the 3/3/2 rerun)
-  # still marks a protein not claimable (conservative: it can only move a protein away
-  # from robust), and the reason says that the comparison is descriptive only.
-  for (a in c("755", "764")) {
-    k <- !(animals %in% a)
-    if (!all(k) && csr_removal_needs_label(sum(st[k] == "SUS"), sum(st[k] == "RES")))
-      cls$reason <- sub(paste0("dropping A", a), sprintf("dropping A%s (%d SUS versus %d RES, descriptive only)",
-                                                         a, sum(st[k] == "SUS"), sum(st[k] == "RES")),
-                        cls$reason, fixed = TRUE)
-  }
+  # the reasons are worded for the published design with two QC-failed SUS samples
   n_fail <- length(ctx$qc_fail_samples)
   if (n_fail != 2L)
     cls$reason <- sub("either QC-failed SUS sample",
@@ -435,6 +434,8 @@ csr_classify <- function(fully_observed, estimable, obs_sign_retained, imp_class
                                         "one group, so no observed-only effect exists to ",
                                         "compare against"), csr_min_observed_animals())))
   }
+  # a755 / a764 are NA when that removal does not count (fewer than two animals left)
+  a755 <- isTRUE(a755); a764 <- isTRUE(a764); hemi <- isTRUE(hemi)
   if (a755 || a764 || hemi) {
     which_ <- paste(c(if (a755) "dropping A755", if (a764) "dropping A764",
                       if (hemi) "dropping the QC-failed hemispheres"), collapse = ", ")
@@ -474,11 +475,16 @@ csr_classify <- function(fully_observed, estimable, obs_sign_retained, imp_class
 csr_fully_observed_audit <- function(fully, loo_long, sample_meta) {
   if (!nrow(fully)) return(cbind(fully, max_qc_animal_leverage = numeric(0)))
   qc_an <- unique(sample_meta$AnimalID[sample_meta$qc_flag %in% c("FAIL", "WARN")])
+  # leverage counts only omissions that leave at least csr_min_observed_animals() per group
+  grp <- sample_meta$StressGroup[match(unique(sample_meta$AnimalID), sample_meta$AnimalID)]
+  n_sus <- sum(grp == "SUS"); n_res <- sum(grp == "RES")
+  valid_omission <- !csr_removal_needs_label(n_sus - (loo_long$omitted_StressGroup == "SUS"),
+                                             n_res - (loo_long$omitted_StressGroup == "RES"))
   out <- fully
   out$max_qc_animal_leverage <- vapply(seq_len(nrow(fully)), function(i) {
     z <- loo_long[loo_long$original_identifier == fully$original_identifier[i] &
                     loo_long$omitted_AnimalID %in% qc_an &
-                    loo_long$can_change_estimate, , drop = FALSE]
+                    loo_long$can_change_estimate & valid_omission, , drop = FALSE]
     if (!nrow(z)) return(NA_real_)
     max(abs(z$change_from_canonical))
   }, numeric(1))
@@ -506,8 +512,8 @@ csr_fully_observed_audit <- function(fully, loo_long, sample_meta) {
 
 # A QC-fail removal that leaves fewer than csr_min_observed_animals() animals
 # in SUS or in RES is not a group comparison. Its effect is still reported and
-# labelled DESCRIPTIVE ONLY. The A755 and A764 removals also set A755_sensitive
-# and A764_sensitive, which can only move a protein away from robust.
+# labelled DESCRIPTIVE ONLY, and it decides no class (A755_sensitive /
+# A764_sensitive are then NA).
 csr_removal_needs_label <- function(n_sus, n_res) {
   n_sus < csr_min_observed_animals() | n_res < csr_min_observed_animals()
 }
@@ -622,9 +628,9 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
     paste0("Removing ", removed, " leaves ", n_sus - k_an, " versus ", n_res,
            if (csr_removal_needs_label(n_sus - k_an, n_res)) {
              if (csr_removal_needs_label(n_sus - 1L, n_res))
-               paste0(", which is NOT a valid group comparison: its effect is labelled DESCRIPTIVE ONLY, but a ",
-                      "collapse there still marks the protein not claimable (conservative: it can only move a ",
-                      "protein away from robust; the classification reason names it).") else
+               paste0(", which is NOT a valid group comparison: its effect is reported, labelled DESCRIPTIVE ONLY, ",
+                      "and decides no class. The QC check that decides is the removal of the QC-failed ",
+                      "acquisition alone, which keeps the animal's other hemisphere.") else
                ", which is NOT a valid group comparison and is labelled descriptive-only wherever it appears."
            } else
              sprintf(", which keeps at least %d animals in each group.", csr_min_observed_animals()))
