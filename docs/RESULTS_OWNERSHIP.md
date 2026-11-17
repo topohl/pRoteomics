@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **120 families**, **429 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **121 families**, **433 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -28,6 +28,7 @@ its outputs.
 | `results/differential_abundance/compare_go_enrichment/<dataset>` | `compare_go_enrichment.R` | 1 | 1 |
 | `results/differential_abundance/run_clusterprofiler_enrichment/<dataset>` | `run_clusterprofiler_enrichment.R` | 1 | 1 |
 | `results/differential_abundance/summarize_biological_programs/<dataset>` | `summarize_biological_programs.R` | 1 | 1 |
+| `results/differential_abundance/summarize_top_term_drivers/<dataset>` | `summarize_top_term_drivers.R` | 1 | 3 |
 | `results/differential_abundance/test_microglia_targeted_signatures/microglia` | `test_microglia_targeted_signatures.R` | 1 | 0 |
 | `results/differential_abundance/validate_control_spatial_identity/global` | `validate_control_spatial_identity.R` | 1 | 1 |
 | `results/enrichment/run_ewce_celltype_enrichment/<dataset>` | `run_ewce_celltype_enrichment.R` | 1 | 0 |
@@ -97,7 +98,7 @@ its outputs.
 | `results/spatial_validation/compare_lamina_synapses/global` | `compare_lamina_synapses.R` | 1 | 3 |
 | `results/spatial_validation/couple_network_edges_to_outcomes/global` | `couple_network_edges_to_outcomes.R` | 1 | 2 |
 | `results/spatial_validation/decompose_bilateral_variance/global` | `decompose_bilateral_variance.R` | 1 | 2 |
-| `results/spatial_validation/describe_proteomic_animals/global` | `describe_proteomic_animals.R` | 1 | 5 |
+| `results/spatial_validation/describe_proteomic_animals/global` | `describe_proteomic_animals.R` | 1 | 6 |
 | `results/spatial_validation/map_afferent_sources/global` | `map_afferent_sources.R` | 1 | 3 |
 | `results/spatial_validation/map_anatomical_programmes/global` | `map_anatomical_programmes.R` | 1 | 15 |
 | `results/spatial_validation/map_input_territories/global` | `map_input_territories.R` | 1 | 7 |
