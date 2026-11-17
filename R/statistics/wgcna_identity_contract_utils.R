@@ -410,6 +410,8 @@ wgcna_identity_build_validation <- function(dataset, paths, state, definitions,
   state_features <- wgcna_identity_state_feature_ids(state)
   definition_features <- wgcna_identity_definition_feature_ids(definitions)
   color_features <- wgcna_identity_clean_id(names(state$mergedColors))
+  # proteins WGCNA left unassigned keep WGCNA's "grey" in mergedColors and are in no module definition
+  assigned_features <- color_features[as.character(state$mergedColors) != "grey"]
 
   add(
     "state_ProteinGroupID_values_are_unique",
@@ -425,7 +427,7 @@ wgcna_identity_build_validation <- function(dataset, paths, state, definitions,
     "state_module_assignments_align_with_active_feature_universe",
     length(state_features) > 0L &&
       setequal(state_features, color_features) &&
-      setequal(state_features, definition_features$ids),
+      setequal(assigned_features, definition_features$ids),
     paste0(
       "state=", length(unique(state_features)),
       "; mergedColors=", length(unique(color_features)),

@@ -158,6 +158,11 @@ protected_before <- data.frame(
 state <- readRDS(state_path)
 expression_primary <- as.matrix(state$expression.data)
 storage.mode(expression_primary) <- "double"
+## Proteins WGCNA left unassigned keep WGCNA's "grey" in mergedColors; they belong to no module.
+unassigned_features <- names(state$mergedColors)[as.character(state$mergedColors) == "grey"]
+if (length(unassigned_features)) {
+  expression_primary <- expression_primary[, !colnames(expression_primary) %in% unassigned_features, drop = FALSE]
+}
 if (nrow(expression_primary) < 16L || nrow(expression_primary) %% 8L != 0L) {
   stop("Current primary expression matrix does not hold eight microglia ROI observations per animal")
 }

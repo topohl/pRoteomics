@@ -51,9 +51,28 @@ wgcna_publication_module_palette <- function() {
   )
 }
 
+# cutreeDynamic labels the proteins it cannot place in any branch as 0. They are not a module: they
+# keep WGCNA's unassigned colour, which mergeCloseModules never merges, and get no ModuleID.
+wgcna_unassigned_module_color <- function() "grey"
+
+# Real modules (labels >= 1) keep the colour the earlier mapping gave them: palette[rank among the
+# sorted labels, label 0 included]. Label 0 takes the unassigned colour instead of palette[1].
+wgcna_cut_label_colors <- function(labels, palette = wgcna_publication_module_palette()) {
+  unique_labels <- sort(unique(labels))
+  palette <- unname(palette)
+  if (length(palette) < length(unique_labels)) {
+    stop("Detected ", length(unique_labels), " WGCNA modules but only ", length(palette),
+         " unique publication colours are defined.", call. = FALSE)
+  }
+  color_map <- stats::setNames(palette[seq_along(unique_labels)], as.character(unique_labels))
+  color_map[unique_labels == 0] <- wgcna_unassigned_module_color()
+  as.character(color_map[as.character(labels)])
+}
+
 wgcna_module_color_metadata <- function(module_colors, palette = wgcna_publication_module_palette()) {
   module_colors <- sort(unique(as.character(module_colors)))
-  module_colors <- module_colors[!is.na(module_colors) & nzchar(module_colors)]
+  module_colors <- module_colors[!is.na(module_colors) & nzchar(module_colors) &
+                                   module_colors != wgcna_unassigned_module_color()]
   if (length(module_colors) > length(palette)) {
     stop(
       "WGCNA publication palette has ", length(palette), " colours but ",
@@ -101,9 +120,12 @@ validate_wgcna_module_color_metadata <- function(module_meta, observed_internal_
   if (anyDuplicated(as.character(module_meta$ModuleColor))) {
     stop(artifact, " must map ModuleID one-to-one to publication ModuleColor.", call. = FALSE)
   }
+  if (any(as.character(module_meta$WGCNAInternalColor) == wgcna_unassigned_module_color())) {
+    stop(artifact, " gives unassigned proteins a ModuleID.", call. = FALSE)
+  }
   if (!is.null(observed_internal_colors)) {
     observed <- unique(as.character(observed_internal_colors))
-    observed <- observed[!is.na(observed) & nzchar(observed)]
+    observed <- observed[!is.na(observed) & nzchar(observed) & observed != wgcna_unassigned_module_color()]
     missing <- setdiff(observed, as.character(module_meta$WGCNAInternalColor))
     if (length(missing)) {
       stop(
@@ -930,6 +952,30 @@ validate_wgcna_cached_state <- function(state, expected_feature_ids = NULL) {
   }
   if (!is.null(expected_feature_ids) && !identical(ids, as.character(expected_feature_ids))) {
     stop("Cached WGCNA feature keys differ from current canonical features. ", rerun, call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+# cutreeDynamic never cuts a module below min_module_size, so a smaller module in a cached state is
+# proteins it left unassigned (label 0) that the earlier colour mapping saved as a module.
+validate_wgcna_cached_module_sizes <- function(state) {
+  rerun <- "Rerun with PROTEOMICS_WGCNA_FORCE_FULL=true."
+  min_size <- suppressWarnings(as.numeric(state$parameters$min_module_size))
+  if (length(min_size) != 1L || is.na(min_size)) {
+    stop("Cached WGCNA state does not record min_module_size, so its module sizes cannot be checked. ", rerun,
+         call. = FALSE)
+  }
+  colors <- as.character(state$mergedColors)
+  sizes <- table(colors[!is.na(colors) & colors != wgcna_unassigned_module_color()])
+  small <- sizes[sizes < min_size]
+  if (length(small)) {
+    ids <- as.character(state$module_color_metadata$ModuleID[
+      match(names(small), state$module_color_metadata$WGCNAInternalColor)])
+    if (!length(ids)) ids <- rep(NA_character_, length(small))
+    stop("Cached WGCNA state has module(s) smaller than min_module_size = ", min_size, ": ",
+         paste0(ifelse(is.na(ids), "", paste0(ids, " ")), names(small), " (", as.integer(small), " proteins)",
+                collapse = ", "),
+         ". These are proteins cutreeDynamic left unassigned, saved as a module. ", rerun, call. = FALSE)
   }
   invisible(TRUE)
 }

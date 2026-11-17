@@ -137,12 +137,17 @@ for (ds in datasets) {
   inp <- dataset_inputs[[ds]]
   fu <- data.table::fread(inp[["wgcna_universe"]], select = c("ProteinGroupID", "included_in_wgcna", "ModuleID"), showProgress = FALSE)
   fu <- fu[included_in_wgcna %in% TRUE]
+  # Network proteins WGCNA left unassigned have an empty ModuleID (fread reads it as ""). They stay in
+  # the WGCNA universe and belong to no module or supermodule.
+  fu[, ModuleID := as.character(ModuleID)]
+  fu[!nzchar(ModuleID), ModuleID := NA_character_]
+  fu_in_module <- fu[!is.na(ModuleID)]
   ml <- data.table::fread(inp[["wgcna_modules_long"]], select = c("ModuleID", "ProteinGroupID", "is_core_kME_0.6"), showProgress = FALSE)
   contract <- data.table::fread(inp[["membership_contract"]], showProgress = FALSE)
   if (!all(contract$membership_status == "current_authoritative_membership")) {
     stop("Membership contract for ", ds, " is not current_authoritative_membership.", call. = FALSE)
   }
-  if (!setequal(unique(fu$ModuleID), contract$module_id)) {
+  if (!setequal(unique(fu_in_module$ModuleID), contract$module_id)) {
     stop("Feature-universe modules and the membership contract disagree for ", ds, ".", call. = FALSE)
   }
   rk <- ranked_universe(ds)
@@ -171,7 +176,7 @@ for (ds in datasets) {
   }
 
   # entities
-  mods_all <- split(fu$ProteinGroupID, fu$ModuleID)
+  mods_all <- split(fu_in_module$ProteinGroupID, fu_in_module$ModuleID)
   core_pg <- unique(ml[`is_core_kME_0.6` %in% TRUE]$ProteinGroupID)
   mods_core <- lapply(mods_all, function(p) intersect(p, core_pg))
   multi <- contract[, .(n = .N, members = paste(sort(module_id), collapse = ";")), by = supermodule_id][n > 1]
@@ -198,7 +203,7 @@ for (ds in datasets) {
 
   # partition agreement on single-theme proteins in the primary universe
   st <- data.table::rbindlist(lapply(THEMES, function(th) data.table::data.table(ProteinGroupID = intersect(set_variants$go_membership_single_theme[[th]], U_annot), theme_id = th)))
-  st <- merge(st, fu[, .(ProteinGroupID, module_id = ModuleID)], by = "ProteinGroupID")
+  st <- merge(st, fu_in_module[, .(ProteinGroupID, module_id = ModuleID)], by = "ProteinGroupID")
   st <- merge(st, contract[, .(module_id, supermodule_id)], by = "module_id")
   for (lev in c("module", "supermodule")) {
     lab <- if (lev == "module") st$module_id else st$supermodule_id

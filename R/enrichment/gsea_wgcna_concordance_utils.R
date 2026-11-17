@@ -1024,8 +1024,10 @@ gww_build_universe_bundle <- function(universe, dataset) {
       representative_accession = if ("representative_accession" %in% names(universe))
         as.character(.data$representative_accession) else NA_character_
     )
+  # A network protein WGCNA left unassigned has no ModuleID: it stays in the
+  # universe and is in no module set.
   if (any(is.na(x$ProteinGroupID) | !nzchar(x$ProteinGroupID)) ||
-      any(is.na(x$ModuleID) | !nzchar(x$ModuleID))) {
+      any(!is.na(x$ModuleID) & !nzchar(x$ModuleID))) {
     stop(dataset, " canonical WGCNA universe has missing identity/module values.",
          call. = FALSE)
   }

@@ -109,10 +109,15 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     "ProteinGroupID" %in% staged_names_early || all(c("Protein.Group", "T: Protein.Names") %in% staged_names_early)
   }
   cache_contract_error_early <- NA_character_
+  cache_module_size_error_early <- NA_character_
   cache_annotation_mismatch_early <- character()
   cache_contract_ok_early <- if (!file.exists(wgcna_final_state_path_early)) FALSE else tryCatch({
     state_early <- readRDS(wgcna_final_state_path_early)
     validate_wgcna_cached_state(state_early)
+    cache_module_size_error_early <- tryCatch({
+      validate_wgcna_cached_module_sizes(state_early)
+      NA_character_
+    }, error = function(e) conditionMessage(e))
     go_limits_early <- yaml::read_yaml(repo_path("config", "clusterProfiler_config.yml"))$analysis
     cache_annotation_mismatch_early <- wgcna_cached_annotation_mismatches(
       state_early$wgcna_feature_table, state_early$parameters, idmap_dat_early,
@@ -124,7 +129,7 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
     FALSE
   })
   reuse_stale_state_early <- tolower(Sys.getenv("PROTEOMICS_WGCNA_REUSE_STALE_STATE", unset = "false")) %in% c("1", "true", "yes", "y")
-  can_use_cache_early <- cache_contract_ok_early && !force_full_analysis_early &&
+  can_use_cache_early <- cache_contract_ok_early && is.na(cache_module_size_error_early) && !force_full_analysis_early &&
     (!length(cache_annotation_mismatch_early) || reuse_stale_state_early)
   can_write_outputs_early <- all(vapply(c(output_root_early, unlist(subdirs_early)), function(path) dir.exists(path) && file.access(path, 2) == 0, logical(1)))
   sample_check_early <- "not checked"
@@ -172,6 +177,13 @@ if (early_has_flag("--dry-run") || tolower(Sys.getenv("PROTEOMICS_DRY_RUN", unse
   dry_run_line("Force full analysis", force_full_analysis_early)
   dry_run_line("Cached state", wgcna_final_state_path_early, if (can_use_cache_early) "PASS" else if (reuse_completed_analysis_early) "WARN" else "INFO")
   dry_run_line("Cached feature-key contract", if (cache_contract_ok_early) wgcna_feature_key_contract_version() else cache_contract_error_early, if (cache_contract_ok_early) "PASS" else "WARN")
+  dry_run_line(
+    "Cached module sizes",
+    if (!cache_contract_ok_early) "no usable cached state"
+    else if (!is.na(cache_module_size_error_early)) paste0(cache_module_size_error_early, " A default run stops.")
+    else "every module at least min_module_size",
+    if (cache_contract_ok_early && is.na(cache_module_size_error_early)) "PASS" else if (force_full_analysis_early) "INFO" else "WARN"
+  )
   dry_run_line(
     "Cached gene annotation and module GO limits",
     if (!cache_contract_ok_early) "no usable cached state"
@@ -1561,6 +1573,8 @@ if (!isTRUE(wgcna_dry_run) && using_cached_final_state) {
   )
   message("Reusing completed WGCNA analysis from: ", wgcna_final_state_path)
   cached_state <- readRDS(wgcna_final_state_path)
+  # fail closed on a state that saved the unassigned proteins as a module
+  validate_wgcna_cached_module_sizes(cached_state)
   hydrated_state <- wgcna_hydrate_cached_state(cached_state)
   list2env(hydrated_state, envir = environment())
   cached_annotation_mismatch <- wgcna_cached_annotation_mismatches(
@@ -2356,14 +2370,8 @@ Modules <- cutreeDynamic(dendro = geneTree, distM = TOM.dissimilarity, deepSplit
 colorSeq <- module_color_palette
 
 # Map numeric module labels to unique colours. Extend the palette rather than recycling.
-unique_mods <- sort(unique(Modules))
-nmods <- length(unique_mods)
-palette_vals <- unname(colorSeq)
-if (length(palette_vals) < nmods) {
-  stop("Detected ", nmods, " WGCNA modules but only ", length(palette_vals), " unique publication colours are defined.", call. = FALSE)
-}
-mod_colors_map <- setNames(palette_vals[seq_len(nmods)], as.character(unique_mods))
-ModuleColors <- as.character(mod_colors_map[as.character(Modules)])
+# Label 0 (proteins cutreeDynamic leaves unassigned) gets the unassigned colour, not a module colour.
+ModuleColors <- wgcna_cut_label_colors(Modules, colorSeq)
 stopifnot(length(ModuleColors) == length(Modules))
 
 svg(file = fp_net("gene_dendrogram_module_colors.svg"), width = figure_double_col, height = 5.2, family = figure_font)
@@ -2372,14 +2380,21 @@ plotDendroAndColors(geneTree, ModuleColors, "Module", dendroLabels = FALSE, hang
                     main = "Gene dendrogram and module colors")
 dev.off()
 
-MElist <- moduleEigengenes(expression.data, colors = ModuleColors)
+MElist <- moduleEigengenes(expression.data, colors = ModuleColors,
+                           excludeGrey = TRUE, grey = wgcna_unassigned_module_color())
 MEs <- MElist$eigengenes
 ME.dissimilarity <- 1 - cor(MEs, use = "p", method = "pearson")
 METree <- hclust(as.dist(ME.dissimilarity), method = "average")
-merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = merge_cut_height)
+merge <- mergeCloseModules(expression.data, ModuleColors, cutHeight = merge_cut_height,
+                           unassdColor = wgcna_unassigned_module_color())
 mergedColors <- merge$colors
 names(mergedColors) <- colnames(expression.data)
 mergedMEs <- orderMEs(merge$newMEs)
+# mergeCloseModules also returns an eigengene for the unassigned proteins; they are not a module.
+unassigned_me <- paste0("ME", wgcna_unassigned_module_color())
+if (unassigned_me %in% colnames(mergedMEs)) {
+  mergedMEs <- mergedMEs[, colnames(mergedMEs) != unassigned_me, drop = FALSE]
+}
 
 write_csv_safe(
   tibble::tibble(
@@ -2606,7 +2621,7 @@ GSPvalue <- data.frame(
 )
 names(geneTraitSignificance) <- "GS.ExpGroup"
 
-modules_of_interest <- unique(mergedColors)
+modules_of_interest <- setdiff(unique(mergedColors), wgcna_unassigned_module_color())
 for (module in modules_of_interest) {
   moduleGenes <- mergedColors == module
   if (!any(moduleGenes)) next
@@ -2649,7 +2664,7 @@ ratio_to_numeric <- function(x) {
 ME_names_stable <- colnames(mergedMEs)
 ME_colors <- sub("^ME", "", ME_names_stable)
 color_to_MEcol <- stats::setNames(ME_names_stable, ME_colors)
-module_colors <- sort(unique(as.character(mergedColors)))
+module_colors <- setdiff(sort(unique(as.character(mergedColors))), wgcna_unassigned_module_color())
 module_color_metadata <- wgcna_module_color_metadata(module_colors, module_color_palette)
 validate_wgcna_module_color_metadata(module_color_metadata, module_colors)
 module_ids <- stats::setNames(module_color_metadata$ModuleID, module_color_metadata$WGCNAInternalColor)
@@ -2658,8 +2673,10 @@ module_publication_colors <- stats::setNames(module_color_metadata$ModuleColor, 
 module_color_names <- stats::setNames(module_color_metadata$ModuleColorName, module_color_metadata$WGCNAInternalColor)
 module_color_labels <- stats::setNames(module_color_metadata$ModuleColorLabel, module_color_metadata$WGCNAInternalColor)
 
+# Unassigned proteins stay in the feature universe but belong to no module.
+module_feature_ids <- all_feature_ids[mergedColors[all_feature_ids] != wgcna_unassigned_module_color()]
 feature_module_tbl <- wgcna_integrate_feature_module_metadata(
-  protein_group_ids = all_feature_ids,
+  protein_group_ids = module_feature_ids,
   merged_colors = mergedColors,
   module_meta = module_color_metadata,
   feature_table = network_feature_table
@@ -2916,6 +2933,8 @@ WGCNA_feature_universe <- wgcna_feature_table %>%
     by = "ProteinGroupID"
   ) %>%
   dplyr::mutate(
+    # network proteins in no module keep the unassigned colour and no ModuleID
+    WGCNAInternalColor = dplyr::coalesce(.data$WGCNAInternalColor, unname(mergedColors[.data$ProteinGroupID])),
     ProteinID = .data$ProteinGroupID,
     RepresentativeUniProt = .data$representative_accession,
     MemberUniProts = .data$member_accessions,
@@ -3029,7 +3048,8 @@ make_reserved_module_name <- function(base, existing) {
   out
 }
 
-preservation_grey_name <- make_reserved_module_name("grey", ref_colors)
+preservation_grey_name <- make_reserved_module_name("grey", setdiff(ref_colors, wgcna_unassigned_module_color()))
+ref_colors[ref_colors == wgcna_unassigned_module_color()] <- preservation_grey_name
 preservation_gold_name <- make_reserved_module_name("gold", c(ref_colors, preservation_grey_name))
 preservation_min_module_size <- 3
 ref_module_sizes <- table(ref_colors)
