@@ -1439,7 +1439,9 @@ for (mid in module_ids) {
   }
 }
 marker_enrichment <- do.call(rbind, marker_rows)
-marker_enrichment$FDR <- ave(marker_enrichment$hypergeometric_p, marker_enrichment$marker_panel, FUN = p.adjust, method = "BH")
+# BH within each marker panel. ave() would take method = "BH" as a grouping factor and adjust by Holm.
+marker_enrichment$FDR <- unsplit(lapply(split(marker_enrichment$hypergeometric_p, marker_enrichment$marker_panel),
+                                        FUN = p.adjust, method = "BH"), marker_enrichment$marker_panel)
 write_csv_atomic(marker_enrichment, file.path(output_dir, "module_marker_panel_enrichment.csv"))
 
 compartment_summary <- do.call(rbind, lapply(split(active_map, active_map$ModuleID), function(z) {
