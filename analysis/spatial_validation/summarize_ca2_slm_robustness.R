@@ -6,6 +6,13 @@
 # The figures here are NEW CANDIDATES. They replace no manuscript figure
 # contract, and each writes its own source-data CSV.
 #
+# PIN. The published 3/3/3 result has 28 FDR-supported CA2-SLM SUS-RES DAPs and
+# the validation holds the audit to that count. A rerun on other data (the 3/3/2
+# rerun) sets PROTEOMICS_CA2_SLM_UNPINNED=true: the audit's protein set must then
+# equal the contrast file's padj < 0.05 set, and the validation table and log
+# state that the pin was not enforced. Design counts in the generated text are
+# taken from the audit tables in both modes.
+#
 # USAGE
 #   Rscript analysis/spatial_validation/summarize_ca2_slm_robustness.R
 #   Rscript analysis/spatial_validation/summarize_ca2_slm_robustness.R --dry-run
@@ -27,6 +34,7 @@ source("R/data_contracts/animal_id_contract.R")
 source("R/spatial/ca2_slm_robustness_utils.R")
 source(repo_path("R", "spatial_systems_paths.R"))
 source(repo_path("R", "preprocessing_paths.R"))
+source(repo_path("R", "qc_result_paths.R"))
 
 # Phase 6G.3: destinations resolve through the normalized output contract,
 # addressed by this analysis's own identity rather than by the historical
@@ -54,6 +62,12 @@ DA_FILE <- file.path(preprocessing_mapped_contrast_dir("neuron_neuropil", "forwa
                      "CA2slmsus_CA2slmres.csv")
 source(repo_path("R", "dataset_inputs.R"))
 IMPUTED <- resolve_dataset_inputs("neuron_neuropil", purpose = "wgcna", record_resolution = FALSE)$expression_file
+# read only for the count of QC-flagged neuropil samples in the generated text
+QC_FLAGS <- qc_find("dataset_qc_outlier_flags.csv", owner = "assess_dataset_quality",
+                    legacy_substep = "00_dataset_qc_report", scope = "neuron_neuropil")
+
+PINNED_N_HITS <- 28L
+ca2_unpinned <- identical(tolower(Sys.getenv("PROTEOMICS_CA2_SLM_UNPINNED", "")), "true")
 
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] CA2-SLM robustness figures, workbook and validation.\n")
@@ -85,6 +99,24 @@ blast <- rd(AID("animal_id_normalization_blast_radius.csv"))
 resolution <- rd(AID("animal_id_resolution_report.csv"))
 join_sum <- rd(COUP("join_diagnostics_summary.csv"))
 coup_cor <- rd(COUP("edge_behavior_correlations.csv"))
+qc_flags <- rd(QC_FLAGS)
+da <- rd(DA_FILE)
+
+# ---- design facts for the generated text, from the data rather than assumed
+# neuropil SUS-RES DAPs over every unit's contrast next to the CA2-SLM one
+sr_files <- list.files(dirname(DA_FILE), pattern = "sus_.*res[.]csv$", full.names = TRUE)
+sr_files <- sr_files[sub("sus_.*$", "", basename(sr_files)) ==
+                       sub("^.*sus_(.*)res[.]csv$", "\\1", basename(sr_files))]
+n_units <- length(sr_files)
+n_neuropil_daps <- if (!n_units || !basename(DA_FILE) %in% basename(sr_files)) NA_integer_ else
+  sum(vapply(sr_files, function(f) {
+    z <- rd(f); sum(!is.na(z$padj) & z$padj < csr_fdr_threshold())
+  }, integer(1)))
+imp_head <- if (file.exists(IMPUTED)) readxl::read_excel(IMPUTED, n_max = 400) else NULL
+n_neuropil_samples <- if (is.null(imp_head)) NA_integer_ else
+  sum(vapply(imp_head, is.numeric, logical(1)))
+n_flagged_neuropil <- if (is.null(qc_flags)) NA_integer_ else sum(qc_flags$outlier_flag != "PASS")
+dtxt <- if (is.null(sctx)) NULL else csr_design_text(sctx, n_flagged_neuropil)
 
 # ============================================ PART 19: candidate figures
 
@@ -177,6 +209,12 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
       gs <- stats::setNames(rob$gene_symbol, rob$original_identifier)
       d$gene <- unname(gs[d$original_identifier])
       d$is_ca2 <- d$spatial_unit == "CA2_slm"
+      outside <- if (!"padj" %in% names(d)) NULL else
+        d[!d$is_ca2 & !is.na(d$padj) & d$padj < csr_fdr_threshold(), , drop = FALSE]
+      sub_d <- if (is.null(outside)) "canonical SUS-RES log2FC per spatial unit; descriptive" else
+        if (!nrow(outside)) "canonical SUS-RES log2FC per spatial unit; descriptive, no unit other than CA2-SLM is FDR-supported" else
+          paste0("canonical SUS-RES log2FC per spatial unit; descriptive; also FDR-supported outside CA2-SLM: ",
+                 paste(outside$gene, outside$spatial_unit, collapse = ", "))
       p <- ggplot(d, aes(x = spatial_unit, y = log2fc, group = gene)) +
         geom_hline(yintercept = 0, linewidth = 0.3) +
         geom_line(colour = "grey70") +
@@ -185,7 +223,7 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
                             name = NULL, labels = c("other unit", "CA2-SLM")) +
         facet_wrap(~ gene, ncol = 3) +
         labs(title = "Robustness-qualified CA2-SLM effects across every neuropil unit",
-             subtitle = "canonical SUS-RES log2FC per spatial unit; descriptive, no unit other than CA2-SLM is FDR-supported",
+             subtitle = sub_d,
              x = NULL, y = "log2FC (SUS - RES)") +
         base_theme +
         theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 6))
@@ -215,17 +253,43 @@ disp <- if (is.null(bias)) NA_real_ else {
   mean(pa[gg == "SUS"]) - mean(pa[gg == "RES"])
 }
 
+# CA2-SLM having the highest pre-imputation missingness of the neuropil units and
+# the lowest baseline abundance holds in the 3/3/3 data and in the 3/3/2 rerun.
+units_txt <- if (n_units) sprintf("the %d neuropil units", n_units) else "the neuropil units"
+# Not claimable: the published sentence holds while every trigger is a removal that keeps at least
+# csr_min_observed_animals() per group. A protein marked only by a whole-animal removal that leaves
+# fewer (A755 in the 3/3/2 rerun, labelled DESCRIPTIVE ONLY) is counted separately.
+desc_only <- function(col) if (col %in% names(rob)) grepl("^DESCRIPTIVE ONLY", rob[[col]]) else rep(FALSE, nrow(rob))
+nc <- rob$CA2_SLM_robustness_class == "not_claimable_due_to_QC"
+valid_trigger <- rob$qc_failed_hemisphere_sensitive %in% TRUE |
+  (rob$A755_sensitive %in% TRUE & !desc_only("effect_excluding_A755_interpretation")) |
+  (rob$A764_sensitive %in% TRUE & !desc_only("effect_excluding_A764_interpretation"))
+n_desc_only_nc <- sum(nc & !valid_trigger)
+desc_design <- unique(sub("^DESCRIPTIVE ONLY: (.*) is not a valid group comparison$", "\\1",
+                          c(rob$effect_excluding_A755_interpretation[desc_only("effect_excluding_A755_interpretation")],
+                            rob$effect_excluding_A764_interpretation[desc_only("effect_excluding_A764_interpretation")])))
+not_claimable_txt <- if (!n_desc_only_nc)
+  sprintf("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition is removed", n_by("not_claimable_due_to_QC")) else
+  sprintf(paste0("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition or animal is removed; ",
+                 "for %d of them only the removal of the whole QC-failed animal does so, which leaves %s ",
+                 "(descriptive only, used conservatively)"),
+          n_by("not_claimable_due_to_QC"), n_desc_only_nc, paste(desc_design, collapse = "; "))
 claim_status <- data.frame(
   item = c("canonical_result", "qc_context", "robust_subset",
            "not_claimable", "not_evaluable", "approved_wording",
            "restricted_wording"),
   value = c(
-    sprintf("%d FDR-supported CA2-SLM SUS-RES DAPs in the canonical differential abundance, unchanged", nrow(rob)),
-    sprintf("CA2-SLM carries the highest pre-imputation missingness of the 10 neuropil units, higher missingness in SUS than RES, and 3 of the 5 QC-flagged neuropil samples (A755 Left FAIL, A764 Right FAIL, A765 Right WARN); none was excluded"),
+    if (!ca2_unpinned) sprintf("%d FDR-supported CA2-SLM SUS-RES DAPs in the canonical differential abundance, unchanged", nrow(rob)) else
+      sprintf("%d FDR-supported CA2-SLM SUS-RES DAPs in this run's canonical differential abundance (pin to the published %d not enforced)",
+              nrow(rob), PINNED_N_HITS),
+    if (is.null(dtxt)) "CA2-SLM sample context not available" else
+      sprintf("CA2-SLM carries the highest pre-imputation missingness of %s, %s, and %s; none was excluded",
+              units_txt, dtxt$missingness_direction, dtxt$flagged_share_with_flags),
     sprintf("%d of %d remain robust to missingness and QC: %s", n_by("robust_to_missingness_and_QC"), nrow(rob), paste(robust_genes, collapse = ", ")),
-    sprintf("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition is removed", n_by("not_claimable_due_to_QC")),
+    not_claimable_txt,
     sprintf("%d cannot be evaluated: fewer than %d fully observed animals in at least one group", n_by("insufficient_observed_data"), csr_min_observed_animals()),
-    sprintf(paste0("Canonical DA showed a concentration of SUS-RES differences in CA2-SLM, but this spatial unit also displayed substantial group-differential missingness and included two QC-failed SUS samples. Protein-level sensitivity analyses were therefore used to distinguish robust effects from imputation/QC-sensitive findings. %d of %d effects remain robust; a protein-independent normalisation displacement of %+.3f log2 (SUS minus RES) arising from per-sample median centring under unequal missingness applies to every protein in the unit."),
+    sprintf(paste0("Canonical DA showed a concentration of SUS-RES differences in CA2-SLM, but this spatial unit also displayed substantial group-differential missingness%s. Protein-level sensitivity analyses were therefore used to distinguish robust effects from imputation/QC-sensitive findings. %d of %d effects remain robust; a protein-independent normalisation displacement of %+.3f log2 (SUS minus RES) arising from per-sample median centring under unequal missingness applies to every protein in the unit."),
+            if (is.null(dtxt) || !dtxt$n_qc_fail_sus_samples) "" else paste0(" and included ", dtxt$qc_fail_sus_samples),
             n_by("robust_to_missingness_and_QC"), nrow(rob), disp),
     paste0("NOT permitted unless explicitly scoped to the robustness-qualified subset: ",
            paste(CA2_RESTRICTED_PHRASES, collapse = "; "))),
@@ -241,23 +305,34 @@ add <- function(id, critical, status, detail) {
     stringsAsFactors = FALSE)
 }
 
-da <- rd(DA_FILE)
-canon28 <- if (is.null(da)) NULL else
+canon <- if (is.null(da)) NULL else
   da[!is.na(da$padj) & da$padj < csr_fdr_threshold(), , drop = FALSE]
+n_canon <- if (is.null(canon)) NA_integer_ else nrow(canon)
+unpinned_note <- sprintf("pin to the published %d not enforced (PROTEOMICS_CA2_SLM_UNPINNED=true)",
+                         PINNED_N_HITS)
 
+# Pinned: the published count. Unpinned: the audit holds exactly this run's FDR-supported set.
 add("canonical_DA_unchanged", TRUE,
-    if (!is.null(canon28) && nrow(canon28) == 28L) "PASS" else "FAIL",
-    paste0("the canonical CA2-SLM contrast still yields ",
-           if (is.null(canon28)) "NA" else nrow(canon28),
-           " FDR-supported proteins at padj < ", csr_fdr_threshold()))
+    if (!ca2_unpinned) {
+      if (!is.null(canon) && n_canon == PINNED_N_HITS) "PASS" else "FAIL"
+    } else {
+      if (!is.null(canon) && !anyDuplicated(rob$original_identifier) && nrow(rob) == n_canon &&
+          setequal(rob$original_identifier, canon$original_identifier)) "PASS" else "FAIL"
+    },
+    if (!ca2_unpinned) paste0("the canonical CA2-SLM contrast still yields ",
+           if (is.null(canon)) "NA" else n_canon,
+           " FDR-supported proteins at padj < ", csr_fdr_threshold()) else
+      paste0(unpinned_note, ": the audit's ", nrow(rob), " proteins are the ",
+             if (is.null(canon)) "NA" else n_canon, " FDR-supported proteins at padj < ",
+             csr_fdr_threshold(), " of the canonical CA2-SLM contrast"))
 
-fc_ok <- !is.null(canon28) && all(mapply(function(k, v) {
-  j <- match(k, canon28$original_identifier)
-  !is.na(j) && isTRUE(all.equal(as.numeric(canon28$log2fc[j]), v, tolerance = 1e-12))
+fc_ok <- !is.null(canon) && all(mapply(function(k, v) {
+  j <- match(k, canon$original_identifier)
+  !is.na(j) && isTRUE(all.equal(as.numeric(canon$log2fc[j]), v, tolerance = 1e-12))
 }, rob$original_identifier, rob$canonical_log2FC_SUS_minus_RES))
-fdr_ok <- !is.null(canon28) && all(mapply(function(k, v) {
-  j <- match(k, canon28$original_identifier)
-  !is.na(j) && isTRUE(all.equal(as.numeric(canon28$padj[j]), v, tolerance = 1e-12))
+fdr_ok <- !is.null(canon) && all(mapply(function(k, v) {
+  j <- match(k, canon$original_identifier)
+  !is.na(j) && isTRUE(all.equal(as.numeric(canon$padj[j]), v, tolerance = 1e-12))
 }, rob$original_identifier, rob$canonical_BH_FDR))
 add("canonical_statistics_carried_verbatim", TRUE,
     if (fc_ok && fdr_ok) "PASS" else "FAIL",
@@ -277,11 +352,20 @@ add("no_differential_model_refit", TRUE,
                    c(src16, src17, srcu)))) "PASS" else "FAIL",
     "no differential model is fitted; all effects are descriptive group differences")
 
+# The check id keeps the published count; the detail carries the count observed.
 add("all_28_canonical_hits_retained", TRUE,
-    if (nrow(rob) == 28L &&
-        (is.null(canon28) || all(canon28$original_identifier %in% rob$original_identifier)))
-      "PASS" else "FAIL",
-    paste0(nrow(rob), " of 28 canonical CA2-SLM hits present in the audit; none dropped"))
+    if (!ca2_unpinned) {
+      if (nrow(rob) == PINNED_N_HITS &&
+          (is.null(canon) || all(canon$original_identifier %in% rob$original_identifier)))
+        "PASS" else "FAIL"
+    } else {
+      if (!is.null(canon) && nrow(rob) == n_canon &&
+          all(canon$original_identifier %in% rob$original_identifier)) "PASS" else "FAIL"
+    },
+    if (!ca2_unpinned) paste0(nrow(rob), " of ", PINNED_N_HITS, " canonical CA2-SLM hits present in the audit; none dropped") else
+      paste0(if (is.null(canon)) "NA" else sum(canon$original_identifier %in% rob$original_identifier),
+             " of ", if (is.null(canon)) "NA" else n_canon,
+             " canonical CA2-SLM hits present in the audit; none dropped; ", unpinned_note))
 
 # fully observed reconciles with the raw pre-imputation matrix, recomputed here
 fo_recon <- NA_integer_
@@ -289,7 +373,8 @@ if (!is.null(sctx)) fo_recon <- sum(rob$fully_observed %in% TRUE)
 add("fully_observed_reconciles", TRUE,
     if (!is.na(fo_recon) && fo_recon == sum(rob$n_imputed_SUS + rob$n_imputed_RES == 0L))
       "PASS" else "FAIL",
-    paste0(fo_recon, " proteins carry zero imputed values across the 12 SUS+RES samples"))
+    paste0(fo_recon, " proteins carry zero imputed values across the ",
+           if (is.null(dtxt)) "NA" else dtxt$n_sus_res_samples, " SUS+RES samples"))
 
 add("imputation_status_from_preimputation_source", TRUE,
     if (grepl("quicksearch.pg_matrix.tsv", src16, fixed = TRUE) &&
@@ -297,10 +382,9 @@ add("imputation_status_from_preimputation_source", TRUE,
     "observation status is derived from the raw matrix, never from the post-imputation matrix")
 
 nas_after <- NA
-if (file.exists(IMPUTED)) {
-  x <- readxl::read_excel(IMPUTED, n_max = 400)
-  num <- vapply(x, is.numeric, logical(1))
-  nas_after <- sum(is.na(x[, num, drop = FALSE]))
+if (!is.null(imp_head)) {
+  num <- vapply(imp_head, is.numeric, logical(1))
+  nas_after <- sum(is.na(imp_head[, num, drop = FALSE]))
 }
 add("post_imputation_matrix_has_no_missing", FALSE,
     if (is.na(nas_after) || nas_after == 0L) "PASS" else "FAIL",
@@ -328,10 +412,50 @@ add("A755_out_excludes_only_A755", TRUE,
     if (!is.null(loo) && all(loo$omitted_AnimalID[loo$omitted_AnimalID == "755"] == "755"))
       "PASS" else "FAIL",
     "the A755-out analysis removes animal 755 and no other animal")
+# Every QC-fail removal that leaves fewer than csr_min_observed_animals() animals in SUS or
+# RES carries the DESCRIPTIVE ONLY label and no other removal does (in the 3/3/2 rerun this
+# includes the A755 removal); a removal of animals absent from the design is not computed.
+# The group sizes left are counted from the sample context.
+removal_sets <- list(effect_excluding_A755 = "755", effect_excluding_A764 = "764",
+                     effect_excluding_both_QC_fail_SUS = c("755", "764"))
+removal_label_cols <- c(effect_excluding_A755 = "effect_excluding_A755_interpretation",
+                        effect_excluding_A764 = "effect_excluding_A764_interpretation",
+                        effect_excluding_both_QC_fail_SUS = "effect_excluding_both_interpretation")
+removal_eval <- if (is.null(sctx)) NULL else lapply(names(removal_sets), function(eff) {
+  drop <- intersect(removal_sets[[eff]], as.character(sctx$AnimalID))
+  left <- sctx[!as.character(sctx$AnimalID) %in% drop, , drop = FALSE]
+  n_sus <- length(unique(left$AnimalID[left$StressGroup == "SUS"]))
+  n_res <- length(unique(left$AnimalID[left$StressGroup == "RES"]))
+  lab <- rob[[removal_label_cols[[eff]]]]
+  labelled <- !is.null(lab) && all(grepl("DESCRIPTIVE ONLY", lab))
+  unlabelled <- is.null(lab) || !any(grepl("DESCRIPTIVE ONLY", lab))
+  needs <- length(drop) > 0L && csr_removal_needs_label(n_sus, n_res)
+  ok <- if (!length(drop)) unlabelled && all(is.na(rob[[eff]])) else if (needs) labelled else unlabelled
+  what <- if (eff != "effect_excluding_both_QC_fail_SUS") paste0("removing A", drop) else
+    if (length(drop) == 2L) "removing both QC-failed SUS animals" else
+      paste0("removing the QC-failed SUS animals present (", paste0("A", drop, collapse = ", "), ")")
+  list(eff = eff, ok = ok, needs = needs,
+       text = if (length(drop)) sprintf("%s leaves %d versus %d", what, n_sus, n_res) else NA_character_)
+})
+# a class set only by a removal that needs the label must say so in its reason
+desc_reason_ok <- !n_desc_only_nc ||
+  ("classification_reason" %in% names(rob) && all(grepl("descriptive only", rob$classification_reason[nc & !valid_trigger], fixed = TRUE)))
+removal_ok <- !is.null(removal_eval) && all(vapply(removal_eval, `[[`, logical(1), "ok")) && desc_reason_ok
+removal_needs <- if (is.null(removal_eval)) character(0) else
+  unlist(lapply(removal_eval, function(z) if (z$needs) z$text))
+removal_bad <- c(if (is.null(removal_eval)) character(0) else
+  unlist(lapply(removal_eval, function(z) if (!z$ok) z$eff)),
+  if (!desc_reason_ok) "the classification reasons of proteins marked only by a descriptive-only removal")
 add("both_QC_fail_removal_labelled_descriptive", TRUE,
-    if (all(grepl("DESCRIPTIVE ONLY", rob$effect_excluding_both_interpretation)))
-      "PASS" else "FAIL",
-    "removing both QC-failed SUS animals leaves 1 versus 3 and is labelled descriptive-only")
+    if (removal_ok) "PASS" else "FAIL",
+    if (is.null(removal_eval)) "sample context missing; group sizes after QC-fail removal not known" else
+      paste0(if (length(removal_needs)) paste(removal_needs, collapse = "; ") else
+               sprintf("no QC-fail removal leaves fewer than %d animals in a group", csr_min_observed_animals()),
+             if (!removal_ok) paste0("; label or value inconsistent with the rule for ", csr_and_list(removal_bad)) else
+               paste0(if (length(removal_needs) == 1L) " and is labelled descriptive-only" else
+                        if (length(removal_needs) > 1L) "; each is labelled descriptive-only" else "",
+                      if (n_desc_only_nc) sprintf("; %d not-claimable classes rest only on such a removal and their reasons say so",
+                                                  n_desc_only_nc) else "")))
 
 add("classification_ignores_annotation", TRUE,
     if (!grepl("ModuleID|GeneSymbol|candidate_tier|gene_symbol",
@@ -426,8 +550,9 @@ write_csv_safe(validation, OUT("CA2_SLM_robustness_validation.csv"))
 
 # ================================================= PART 20: workbook
 
+# Sheet names carry the counts present (Canonical_28 and Fully_observed_8 in the published run).
 sheets <- list(
-  Canonical_28 = rob,
+  Canonical_N = rob,
   Missingness = sctx,
   Normalization_bias = bias,
   Observed_only = if (is.null(rob)) NULL else rob[, c("gene_symbol",
@@ -436,18 +561,19 @@ sheets <- list(
     "observed_only_same_sign", "observed_only_relative_change",
     "observed_only_rule"), drop = FALSE],
   LOO = loo,
-  QC_fail_sensitivity = if (is.null(rob)) NULL else rob[, c("gene_symbol",
+  QC_fail_sensitivity = if (is.null(rob)) NULL else rob[, intersect(c("gene_symbol",
     "canonical_log2FC_SUS_minus_RES", "effect_excluding_A755",
     "effect_excluding_A764", "effect_excluding_both_QC_fail_SUS",
     "effect_dropping_QC_failed_hemispheres", "A755_sensitive", "A764_sensitive",
-    "qc_failed_hemisphere_sensitive", "effect_excluding_both_interpretation"),
-    drop = FALSE],
+    "qc_failed_hemisphere_sensitive", "effect_excluding_both_interpretation",
+    "effect_excluding_A755_interpretation", "effect_excluding_A764_interpretation"),
+    names(rob)), drop = FALSE],
   Imputation_dependence = if (is.null(rob)) NULL else rob[, c("gene_symbol",
     "n_imputed_SUS", "n_imputed_RES", "differential_missingness_SUS_minus_RES",
     "imputed_share_of_SUS_mean", "imputed_share_of_RES_mean",
     "n_imputed_aligned_with_canonical_direction", "imputation_dependence_class"),
     drop = FALSE],
-  Fully_observed_8 = fo,
+  Fully_observed_N = fo,
   Spatial_specificity = spec,
   Module_distribution = modcmp,
   Stress_identity_before_after = ident,
@@ -458,6 +584,8 @@ sheets <- list(
   Blast_radius = blast,
   Network_behavior_after_fix = coup_cor,
   Validation = validation)
+names(sheets)[names(sheets) == "Canonical_N"] <- paste0("Canonical_", nrow(rob))
+names(sheets)[names(sheets) == "Fully_observed_N"] <- paste0("Fully_observed_", if (is.null(fo)) 0L else nrow(fo))
 sheets <- sheets[!vapply(sheets, function(z) is.null(z) || !nrow(z), logical(1))]
 
 wb <- openxlsx::createWorkbook(creator = SCRIPT_ID)
@@ -467,14 +595,35 @@ wrap <- openxlsx::createStyle(fontName = "Arial", fontSize = 9, wrapText = TRUE,
                               valign = "top")
 openxlsx::addWorksheet(wb, "README", gridLines = FALSE, tabColour = "#23384D")
 openxlsx::writeData(wb, "README", "CA2-SLM robustness audit", startRow = 1)
+# Counts and QC identities in the notes come from the audit tables (dtxt), the
+# neuropil contrasts, the imputed matrix and the QC table.
+na_or <- function(x) if (is.null(x) || is.na(x)) "NA" else x
+disp_r <- if (is.null(bias)) NA_real_ else stats::cor(bias$fraction_missing_preimputation,
+                                                      bias$mean_centred_value_of_always_observed_proteins)
 readme <- data.frame(Note = c(
-  "CANONICAL DIFFERENTIAL ABUNDANCE IS UNCHANGED AND REMAINS THE PRIMARY STATISTICAL RESULT. All 28 FDR-supported CA2-SLM proteins are retained. Nothing here refits a model or recomputes an FDR; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the canonical model saw. QC robustness governs INTERPRETATION, not membership.",
-  "WHY THIS AUDIT EXISTS. 28 of the 31 neuropil SUS-RES DAPs fall in CA2-SLM. That unit also carries the lowest baseline abundance, the highest pre-imputation missingness, higher missingness in SUS than RES, and 3 of the 5 QC-flagged neuropil samples - two of them QC-FAILED SUS acquisitions (A755 Left, A764 Right). None was excluded: Exclude is FALSE for all 180 neuropil samples.",
-  "WHAT THE MODEL SAW. Each animal-level value is the unweighted mean of that animal's Left and Right POST-imputation log2 values, so the contrast is 3 versus 3 and an undetected hemisphere still contributes a drawn value. Imputation status is therefore derived from the PRE-imputation raw matrix; the post-imputation matrix has no NA left and cannot answer the question.",
-  "A NORMALISATION ARTIFACT UNDERLIES PART OF THE SIGNAL. Each sample is median-centred on its OBSERVED values before imputation. A heavily missing sample detects only its more abundant proteins, so its observed median is inflated and centring then displaces EVERY protein in that sample downwards - including proteins with no imputed value anywhere. Measured on proteins observed in all 18 CA2-SLM samples, missingness predicts that displacement almost perfectly, and the two QC-FAILED SUS samples are the two most missing.",
-  "EXACT RESOLUTION OF THE SENSITIVITY ANALYSES. Leave-one-animal-out on a 3-versus-3 design leaves 2 versus 3. Removing both QC-failed SUS animals leaves 1 versus 3, which is NOT a valid group comparison and is labelled descriptive-only wherever it appears. These are robustness diagnostics, not new hypothesis tests, and no new FDR is attached to any of them.",
+  if (ca2_unpinned) paste0("PIN NOT ENFORCED. PROTEOMICS_CA2_SLM_UNPINNED=true: this run is not held to the published ",
+                           PINNED_N_HITS, " CA2-SLM DAPs; the audit's protein set is checked against this run's contrast file instead."),
+  sprintf("CANONICAL DIFFERENTIAL ABUNDANCE IS UNCHANGED AND REMAINS THE PRIMARY STATISTICAL RESULT. All %d FDR-supported CA2-SLM proteins are retained. Nothing here refits a model or recomputes an FDR; every quantity is a descriptive sensitivity diagnostic on the same animal-level values the canonical model saw. QC robustness governs INTERPRETATION, not membership.", nrow(rob)),
+  paste0("WHY THIS AUDIT EXISTS. ",
+         if (is.na(n_neuropil_daps)) sprintf("%d SUS-RES DAPs fall in CA2-SLM. ", nrow(rob)) else
+           sprintf("%d of the %d neuropil SUS-RES DAPs fall in CA2-SLM. ", nrow(rob), n_neuropil_daps),
+         "That unit also carries the lowest baseline abundance, the highest pre-imputation missingness",
+         if (is.null(dtxt)) ". " else paste0(", ", dtxt$missingness_direction, ", and ", dtxt$flagged_share_with_failed, ". "),
+         if (is.na(n_neuropil_samples)) "None was excluded." else
+           sprintf("None was excluded: Exclude is FALSE for all %d neuropil samples.", n_neuropil_samples)),
+  sprintf("WHAT THE MODEL SAW. Each animal-level value is the unweighted mean of that animal's Left and Right POST-imputation log2 values, so the contrast is %s versus %s and an undetected hemisphere still contributes a drawn value. Imputation status is therefore derived from the PRE-imputation raw matrix; the post-imputation matrix has no NA left and cannot answer the question.",
+          na_or(dtxt$n_sus), na_or(dtxt$n_res)),
+  paste0("A NORMALISATION ARTIFACT UNDERLIES PART OF THE SIGNAL. Each sample is median-centred on its OBSERVED values before imputation. A heavily missing sample detects only its more abundant proteins, so its observed median is inflated and centring then displaces EVERY protein in that sample downwards - including proteins with no imputed value anywhere. ",
+         sprintf("Measured on proteins observed in all %s CA2-SLM samples, missingness predicts that displacement ", na_or(dtxt$n_samples)),
+         if (is.finite(disp_r) && abs(disp_r) >= 0.95) "almost perfectly" else sprintf("with r = %.2f", disp_r),
+         if (is.null(dtxt)) "." else paste0(", and ", dtxt$qc_fail_most_missing, ".")),
+  paste("EXACT RESOLUTION OF THE SENSITIVITY ANALYSES.",
+        if (is.null(dtxt)) "" else paste(dtxt$loo_design, dtxt$qc_fail_removal),
+        "These are robustness diagnostics, not new hypothesis tests, and no new FDR is attached to any of them."),
   "PRESPECIFIED RULES. An animal counts toward an observed-only effect only if BOTH hemispheres were detected, and an observed-only effect needs at least two such animals in EACH group. Imputation dependence is minimal at or below a 25% change in effect magnitude and strong above 50%. Losing more than half the canonical magnitude is a collapse. Every threshold is a named constant and none references a module, gene or tier.",
-  "ANIMAL IDENTITY. The behaviour/physiology consumers were rerun against a fail-closed canonical AnimalID contract. The withdrawn normaliser truncated digit runs longer than four, zero-padded bare numerals while leaving A-prefixed ids at their original width, and required at least three digits - so the proteomics A111 never matched the behaviour OR111, and only one of nine animals had ever joined."),
+  paste0("ANIMAL IDENTITY. The behaviour/physiology consumers were rerun against a fail-closed canonical AnimalID contract. The withdrawn normaliser truncated digit runs longer than four, zero-padded bare numerals while leaving A-prefixed ids at their original width, and required at least three digits - so the proteomics A111 never matched the behaviour OR111, and only one of ",
+         if (identical(dtxt$n_animals, 9L)) "nine animals" else "the nine animals of the original 3/3/3 design",
+         " had ever joined.")),
   stringsAsFactors = FALSE)
 openxlsx::writeDataTable(wb, "README", readme, startRow = 3, tableName = "CA2Readme",
                          tableStyle = "TableStyleLight9")
@@ -496,6 +645,7 @@ wb_path <- file.path(dir_create(CANONICAL_PATHS$reports),
 xlsx_save_valid_workbook(wb, wb_path)
 
 cat("\n===== CA2-SLM robustness workbook and validation =====\n")
+if (ca2_unpinned) cat(toupper(substr(unpinned_note, 1, 1)), substring(unpinned_note, 2), "\n", sep = "")
 cat("workbook:", relative_to(wb_path), " sheets:", length(sheets) + 1L, "\n")
 cat("figures :", paste(made, collapse = ", "), "\n\n")
 for (i in seq_len(nrow(validation))) {

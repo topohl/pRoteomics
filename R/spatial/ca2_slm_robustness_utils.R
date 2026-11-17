@@ -15,7 +15,7 @@
 # WHAT THE CANONICAL MODEL SAW
 #   animal-level value = unweighted mean of that animal's Left and Right
 #   POST-imputation log2 values (aggregation_audit.csv records
-#   equal_weight_mean_LR_on_existing_imputed_log2_values for all 90 units).
+#   equal_weight_mean_LR_on_existing_imputed_log2_values for every animal x unit).
 #   Working from the sample-level imputed matrix therefore reproduces the
 #   animal-level matrix exactly, and additionally allows a hemisphere to be
 #   dropped - which is what the QC diagnostics need.
@@ -27,7 +27,8 @@ csr_fdr_threshold <- function() 0.05
 
 # An observed-only effect needs at least this many FULLY observed animals in
 # EACH group. With 3 per group the only options are 3 and 2; a 1-versus-3
-# comparison is never reported as an effect.
+# comparison is never reported as an effect. The same minimum decides when a
+# QC-fail removal is labelled descriptive only (csr_removal_needs_label).
 csr_min_observed_animals <- function() 2L
 
 # Imputation dependence, as a fraction of the canonical effect magnitude.
@@ -131,6 +132,7 @@ csr_preimputation_mask <- function(raw_path, dataset_samples, unit_samples) {
   list(unit_missing = unit_mask,
        n_missing_total = sum(na_mat[keep, , drop = FALSE]),
        n_analysed_rows = sum(keep),
+       n_dataset_samples = length(present),
        unit_samples = unit_cols)
 }
 
@@ -266,10 +268,17 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
   sgn <- loo$sign_retained[loo$can_change_estimate]
 
   # -------------------------------------------------- QC-fail sensitivity
+  # A removal of animals that are not in the design (A764 in the 3/3/2 rerun)
+  # is not computed: it would only repeat the canonical effect.
   drop_animals <- function(drop) {
     k <- !(animals %in% drop)
+    if (all(k)) return(NA_real_)
     if (!sum(st[k] == "SUS") || !sum(st[k] == "RES")) return(NA_real_)
     csr_effect(av[k], st[k])
+  }
+  drop_label <- function(drop) {
+    k <- !(animals %in% drop)
+    csr_removal_interpretation(sum(st[k] == "SUS"), sum(st[k] == "RES"), computed = !all(k))
   }
   e_755 <- drop_animals("755"); e_764 <- drop_animals("764")
   e_both <- drop_animals(c("755", "764"))
@@ -318,6 +327,22 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   cls <- csr_classify(fully_observed, estimable, obs_sign, imp_class,
                       loo_sign_stable, a755, a764, hemi, imp_rel)
+  # The reasons are worded for the published 3/3/3 design. A whole-animal removal that
+  # leaves fewer than csr_min_observed_animals() in a group (A755 in the 3/3/2 rerun)
+  # still marks a protein not claimable (conservative: it can only move a protein away
+  # from robust), and the reason says that the comparison is descriptive only.
+  for (a in c("755", "764")) {
+    k <- !(animals %in% a)
+    if (!all(k) && csr_removal_needs_label(sum(st[k] == "SUS"), sum(st[k] == "RES")))
+      cls$reason <- sub(paste0("dropping A", a), sprintf("dropping A%s (%d SUS versus %d RES, descriptive only)",
+                                                         a, sum(st[k] == "SUS"), sum(st[k] == "RES")),
+                        cls$reason, fixed = TRUE)
+  }
+  n_fail <- length(ctx$qc_fail_samples)
+  if (n_fail != 2L)
+    cls$reason <- sub("either QC-failed SUS sample",
+                      if (n_fail == 1L) "the QC-failed SUS sample" else "any QC-failed SUS sample",
+                      cls$reason, fixed = TRUE)
 
   summary <- data.frame(
     ProteinGroupID = canonical$ProteinGroupID,
@@ -380,8 +405,9 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
     effect_excluding_A755 = e_755,
     effect_excluding_A764 = e_764,
     effect_excluding_both_QC_fail_SUS = e_both,
-    effect_excluding_both_interpretation =
-      "DESCRIPTIVE ONLY: 1 SUS versus 3 RES is not a valid group comparison",
+    effect_excluding_both_interpretation = drop_label(c("755", "764")),
+    effect_excluding_A755_interpretation = drop_label("755"),
+    effect_excluding_A764_interpretation = drop_label("764"),
     effect_dropping_QC_failed_hemispheres = e_hemi,
     A755_sensitive = a755, A764_sensitive = a764,
     qc_failed_hemisphere_sensitive = hemi,
@@ -464,9 +490,152 @@ csr_fully_observed_audit <- function(fully, loo_long, sample_meta) {
   out$fully_observed_but_qc_leveraged <-
     is.finite(out$qc_animal_leverage_relative) &
     out$qc_animal_leverage_relative > csr_magnitude_collapse_cut()
+  fail_an <- csr_sort_animals(unique(sample_meta$AnimalID[sample_meta$qc_flag %in% "FAIL"]))
+  if (length(fail_an)) fail_an <- paste0("A", fail_an)
   out$audit_note <- paste0(
-    "these proteins carry no imputed value, but A755 and A764 remain QC-FAILED ",
-    "acquisitions; leverage and leave-one-animal-out stability are assessed ",
+    "these proteins carry no imputed value, ",
+    if (!length(fail_an)) "and no acquisition is QC-FAILED" else
+      paste0("but ", csr_and_list(fail_an),
+             if (length(fail_an) == 1L) " remains a QC-FAILED acquisition" else " remain QC-FAILED acquisitions"),
+    "; leverage and leave-one-animal-out stability are assessed ",
     "independently rather than assumed from the absence of imputation")
   out
+}
+
+# ------------------------------------------------- QC-fail removal labels
+
+# A QC-fail removal that leaves fewer than csr_min_observed_animals() animals
+# in SUS or in RES is not a group comparison. Its effect is still reported and
+# labelled DESCRIPTIVE ONLY. The A755 and A764 removals also set A755_sensitive
+# and A764_sensitive, which can only move a protein away from robust.
+csr_removal_needs_label <- function(n_sus, n_res) {
+  n_sus < csr_min_observed_animals() | n_res < csr_min_observed_animals()
+}
+
+# computed = FALSE: none of the animals to remove is in the design, so no
+# effect was formed.
+csr_removal_interpretation <- function(n_sus, n_res, computed = TRUE) {
+  if (!computed) return("not computed: the animal is not in this design")
+  if (csr_removal_needs_label(n_sus, n_res)) {
+    return(sprintf("DESCRIPTIVE ONLY: %d SUS versus %d RES is not a valid group comparison",
+                   n_sus, n_res))
+  }
+  sprintf("%d SUS versus %d RES remain; a descriptive sensitivity diagnostic", n_sus, n_res)
+}
+
+# ------------------------------------------- text from the design present
+#
+# Generated wording names the design the audit tables describe (3/3/3 in the
+# published run, 3/3/2 in the rerun) instead of assuming it.
+
+csr_number_word <- function(n) {
+  w <- c("no", "one", "two", "three", "four", "five", "six", "seven", "eight",
+         "nine", "ten")
+  ifelse(!is.na(n) & n >= 0 & n <= 10, w[pmin(pmax(n, 0), 10) + 1], as.character(n))
+}
+
+csr_and_list <- function(x) {
+  x <- as.character(x)
+  if (length(x) <= 1L) return(paste(x, collapse = ""))
+  paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
+}
+
+# bare animal ids in numeric order (755 before 764 before 765)
+csr_sort_animals <- function(x) {
+  x <- as.character(x)
+  x[order(suppressWarnings(as.numeric(x)), x)]
+}
+
+# "A755 Left FAIL" per sample-context row, in animal then hemisphere order.
+csr_sample_labels <- function(ctx, with_flag = TRUE) {
+  if (!nrow(ctx)) return(character(0))
+  ctx <- ctx[order(suppressWarnings(as.numeric(ctx$AnimalID)), ctx$AnimalID,
+                   ctx$hemisphere), , drop = FALSE]
+  hemi <- unname(c(L = "Left", R = "Right")[ctx$hemisphere])
+  paste0("A", ctx$AnimalID, " ", hemi, if (with_flag) paste0(" ", ctx$qc_flag) else "")
+}
+
+# Phrases for the claim-status summary and the workbook README, from the
+# CA2-SLM sample context (one row per sample: AnimalID, hemisphere,
+# StressGroup, qc_flag, fraction_missing_preimputation). n_flagged_neuropil is
+# the number of QC-flagged samples over the whole neuropil dataset, NA when the
+# QC table is not available.
+csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
+  animals_in <- function(g) unique(ctx$AnimalID[ctx$StressGroup == g])
+  n_sus <- length(animals_in("SUS")); n_res <- length(animals_in("RES"))
+  flagged <- ctx[ctx$qc_flag != "PASS", , drop = FALSE]
+  fail_sus <- ctx[ctx$qc_flag == "FAIL" & ctx$StressGroup == "SUS", , drop = FALSE]
+  k <- nrow(fail_sus)
+  k_an <- length(unique(fail_sus$AnimalID))
+
+  miss <- tapply(ctx$fraction_missing_preimputation, ctx$StressGroup, mean)
+  miss_dir <- if (!all(c("SUS", "RES") %in% names(miss))) "missingness in SUS and RES not compared" else
+    if (miss[["SUS"]] > miss[["RES"]]) "higher missingness in SUS than RES" else
+      if (miss[["SUS"]] < miss[["RES"]]) "lower missingness in SUS than RES" else
+        "equal missingness in SUS and RES"
+
+  share <- function(with_flags) {
+    lab <- if (with_flags && nrow(flagged))
+      paste0(" (", paste(csr_sample_labels(flagged), collapse = ", "), ")") else ""
+    if (is.na(n_flagged_neuropil))
+      return(sprintf("%d QC-flagged %s%s", nrow(flagged),
+                     if (nrow(flagged) == 1L) "sample" else "samples", lab))
+    if (n_flagged_neuropil == 1L && nrow(flagged) == 1L)
+      return(sprintf("the only QC-flagged neuropil sample%s", lab))
+    sprintf("%d of the %d QC-flagged neuropil samples%s", nrow(flagged), n_flagged_neuropil, lab)
+  }
+  fail_lab <- paste0(" (", paste(csr_sample_labels(fail_sus, with_flag = FALSE), collapse = ", "), ")")
+  of_them <- if (!k) "none of them a QC-FAILED SUS acquisition" else
+    if (k == nrow(flagged)) {
+      if (k == 1L) paste0("a QC-FAILED SUS acquisition", fail_lab) else
+        paste0("all of them QC-FAILED SUS acquisitions", fail_lab)
+    } else {
+      if (k == 1L) paste0("one of them a QC-FAILED SUS acquisition", fail_lab) else
+        paste0(csr_number_word(k), " of them QC-FAILED SUS acquisitions", fail_lab)
+    }
+
+  rk <- sort(rank(-ctx$fraction_missing_preimputation, ties.method = "min")[
+    ctx$qc_flag == "FAIL" & ctx$StressGroup == "SUS"])
+  most_missing <- if (!k) "no SUS sample is QC-FAILED" else
+    if (identical(as.integer(rk), seq_len(k))) {
+      if (k == 1L) "the QC-FAILED SUS sample is the most missing" else
+        sprintf("the %s QC-FAILED SUS samples are the %s most missing",
+                csr_number_word(k), csr_number_word(k))
+    } else {
+      sprintf("the QC-FAILED SUS %s %s %s of %d by missingness",
+              if (k == 1L) "sample" else "samples", if (k == 1L) "ranks" else "rank",
+              csr_and_list(rk), nrow(ctx))
+    }
+
+  loo_left <- sprintf("%d versus %d", n_sus - 1L, n_res)
+  if (n_sus != n_res) loo_left <- paste(loo_left, "or", sprintf("%d versus %d", n_sus, n_res - 1L))
+  loo <- sprintf("Leave-one-animal-out on a %d-versus-%d design leaves %s.", n_sus, n_res, loo_left)
+  if (csr_removal_needs_label(n_sus - 1L, n_res) || csr_removal_needs_label(n_sus, n_res - 1L))
+    loo <- paste0(loo, sprintf(paste0(" A leave-out that leaves fewer than %d animals in a group is descriptive only; ",
+                                      "it enters the classes only through the requirement that the sign is stable ",
+                                      "under every leave-out."), csr_min_observed_animals()))
+
+  removed <- if (k_an == 2L) "both QC-failed SUS animals" else
+    if (k_an == 1L) "the QC-failed SUS animal" else
+      sprintf("all %s QC-failed SUS animals", csr_number_word(k_an))
+  qc_removal <- if (!k_an) "No SUS animal is QC-failed, so no QC-fail removal is made." else
+    paste0("Removing ", removed, " leaves ", n_sus - k_an, " versus ", n_res,
+           if (csr_removal_needs_label(n_sus - k_an, n_res)) {
+             if (csr_removal_needs_label(n_sus - 1L, n_res))
+               paste0(", which is NOT a valid group comparison: its effect is labelled DESCRIPTIVE ONLY, but a ",
+                      "collapse there still marks the protein not claimable (conservative: it can only move a ",
+                      "protein away from robust; the classification reason names it).") else
+               ", which is NOT a valid group comparison and is labelled descriptive-only wherever it appears."
+           } else
+             sprintf(", which keeps at least %d animals in each group.", csr_min_observed_animals()))
+
+  list(n_sus = n_sus, n_res = n_res, n_animals = length(unique(ctx$AnimalID)),
+       n_samples = nrow(ctx), n_sus_res_samples = sum(ctx$StressGroup %in% c("SUS", "RES")),
+       n_qc_fail_sus_samples = k, n_qc_fail_sus_animals = k_an,
+       missingness_direction = miss_dir,
+       flagged_share_with_flags = share(TRUE),
+       flagged_share_with_failed = paste0(share(FALSE), " - ", of_them),
+       qc_fail_sus_samples = paste(csr_number_word(k), if (k == 1L) "QC-failed SUS sample" else "QC-failed SUS samples"),
+       qc_fail_most_missing = most_missing,
+       loo_design = loo, qc_fail_removal = qc_removal)
 }

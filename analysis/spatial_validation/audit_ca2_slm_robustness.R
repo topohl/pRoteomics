@@ -2,8 +2,9 @@
 #
 #
 # THE QUESTION
-#   Which of the 28 CA2-SLM SUS-vs-RES DAPs remain supported independently of
-#   differential missingness, imputation, and the two QC-failed SUS samples?
+#   Which of the FDR-supported CA2-SLM SUS-vs-RES DAPs (28 in the published
+#   3/3/3 design) remain supported independently of differential missingness,
+#   imputation, and the QC-failed SUS samples?
 #
 #   This is NOT an attempt to rescue the CA2-SLM signal, and NOT an attempt to
 #   eliminate it. Every rule below is fixed before any protein is inspected.
@@ -18,9 +19,10 @@
 # THE DATA THE CANONICAL MODEL ACTUALLY SAW
 #   Each animal-level value is the unweighted mean of that animal's Left and
 #   Right POST-imputation log2 values (aggregation_audit.csv records
-#   equal_weight_mean_LR_on_existing_imputed_log2_values for all 90 units).
-#   So the contrast is n = 3 vs 3 on animal-level columns, and an animal whose
-#   hemisphere was never detected still carries a drawn value.
+#   equal_weight_mean_LR_on_existing_imputed_log2_values for every animal x unit).
+#   So the contrast is SUS vs RES on animal-level columns (3 vs 3; 2 vs 3 in the
+#   3/3/2 rerun), and an animal whose hemisphere was never detected still
+#   carries a drawn value.
 #
 #   Imputation status is therefore derived from the PRE-imputation raw matrix
 #   (data/raw/pg_matrix/quicksearch.pg_matrix.tsv, where missing is a literal
@@ -33,7 +35,8 @@
 #   is the mean of the two and a half-imputed mean is partly synthetic. The
 #   observed-only effect is estimable only with at least MIN_OBS_ANIMALS = 2
 #   fully observed animals in EACH of SUS and RES. A 1-versus-3 comparison is
-#   not reported as an effect.
+#   not reported as an effect, and a QC-fail removal that leaves fewer than 2
+#   animals in a group is labelled DESCRIPTIVE ONLY.
 #
 #   IMPUTATION DEPENDENCE. Relative to the canonical effect magnitude:
 #     <= 0.25 change  -> minimal
@@ -148,7 +151,7 @@ message("  QC in CA2_slm: ", paste(sprintf("%s_%s=%s", ca2$AnimalID, ca2$Hemi,
 message("Deriving the pre-imputation observation mask from the raw matrix")
 mask <- csr_preimputation_mask(RAW, neuro$sample_id, ca2$sample_id)
 message("  analysed rows after the 70% filter: ", mask$n_analysed_rows,
-        " (pre-imputation NAs over the 180 neuropil samples: ",
+        " (pre-imputation NAs over the ", mask$n_dataset_samples, " neuropil samples: ",
         mask$n_missing_total, ")")
 
 # ================== sample-level values, and proof they rebuild the DA input
@@ -242,7 +245,7 @@ rob <- rob |> dplyr::relocate(dplyr::any_of(c(
 # Per-sample median centring uses only OBSERVED values, so a heavily missing
 # sample gets an inflated median and every one of its proteins is displaced
 # downwards - including proteins with no imputed value at all. Measured here
-# on proteins observed in all 18 samples, so imputation cannot contribute.
+# on proteins observed in every CA2_slm sample, so imputation cannot contribute.
 
 message("Measuring the missingness-driven normalisation displacement")
 bias <- csr_normalization_bias_context(RAW, neuro$sample_id, sample_meta)
@@ -266,7 +269,7 @@ rob$exceeds_global_displacement <-
 rob$displacement_note <- paste0(
   "the displacement is a protein-independent consequence of per-sample median ",
   "centring under unequal missingness, measured on the ", bias$n_always_observed,
-  " proteins observed in all 18 CA2_slm samples; it is NOT a refitted statistic")
+  " proteins observed in all ", nrow(sample_meta), " CA2_slm samples; it is NOT a refitted statistic")
 
 # ======================================= PART 13: the fully observed subset
 
@@ -296,7 +299,8 @@ write_csv_safe(bias$per_sample, OUT("CA2_SLM_normalization_bias_context.csv"))
 
 cat("\n===== CA2-SLM robustness audit =====\n")
 cat(sprintf("canonical DAPs audited: %d (read, never refitted)\n", nrow(rob)))
-cat(sprintf("fully observed in all 12 SUS+RES samples: %d\n", sum(rob$fully_observed)))
+cat(sprintf("fully observed in all %d SUS+RES samples: %d\n",
+            sum(sample_meta$StressGroup %in% c("SUS", "RES")), sum(rob$fully_observed)))
 cat(sprintf("observed-only effect estimable (>=%d observed animals per group): %d\n",
             csr_min_observed_animals(), sum(rob$observed_only_estimable)))
 
@@ -307,8 +311,11 @@ cat("\n--- final robustness classification ---\n")
 print(table(rob$CA2_SLM_robustness_class))
 
 cat("\n--- QC-sample dependence ---\n")
-cat(sprintf("  A755-sensitive: %d   A764-sensitive: %d   single-animal-sensitive: %d\n",
-            sum(rob$A755_sensitive), sum(rob$A764_sensitive),
+# only the QC-failed animals present in the design (no A764 in the 3/3/2 rerun)
+qc_an <- intersect(c("755", "764"), animals)
+cat(sprintf("  %s   single-animal-sensitive: %d\n",
+            paste(sprintf("A%s-sensitive: %d", qc_an, vapply(qc_an, function(a)
+              sum(rob[[paste0("A", a, "_sensitive")]]), integer(1))), collapse = "   "),
             sum(rob$single_animal_sensitive)))
 cat(sprintf("  LOO sign stable: %d of %d\n", sum(rob$loo_sign_stable), nrow(rob)))
 
@@ -325,11 +332,13 @@ cat(sprintf("  median share of effect explained by displacement  = %.0f%%\n",
             100 * stats::median(rob$fraction_of_effect_explained_by_displacement[
               rob$canonical_log2FC_SUS_minus_RES < 0], na.rm = TRUE)))
 
-cat("\n--- the 8 fully observed DAPs ---\n")
+cat(sprintf("\n--- the %d fully observed DAPs ---\n", nrow(fo_audit)))
 if (nrow(fo_audit)) {
+  # GeneSymbol comes from the atlas join; without the atlas use the contrast's symbol
+  fo_symbol <- if ("GeneSymbol" %in% names(fo_audit)) fo_audit$GeneSymbol else fo_audit$gene_symbol
   for (i in seq_len(nrow(fo_audit))) {
     cat(sprintf("  %-10s log2FC=%6.3f  LOO[%6.3f,%6.3f]  signStable=%-5s  QClev=%.2f  %s\n",
-                substr(fo_audit$GeneSymbol[i], 1, 10),
+                substr(fo_symbol[i], 1, 10),
                 fo_audit$canonical_log2FC_SUS_minus_RES[i],
                 fo_audit$loo_min_effect[i], fo_audit$loo_max_effect[i],
                 fo_audit$loo_sign_stable[i], fo_audit$max_qc_animal_leverage[i],

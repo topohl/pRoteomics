@@ -14,13 +14,14 @@
 #   as frozen source data.
 #
 # WHY IT IS NOT A SIMPLE "TOP N BY FDR"
-#   Of the 31 FDR-supported SUS-RES protein x unit cells in the whole neuropil,
-#   28 are in CA2-SLM, and the CA2-SLM robustness audit qualified only 6 of
-#   those 28. Ranking by FDR alone therefore returns mostly proteins the
-#   repository already classifies as insufficient_observed_data or
+#   Most FDR-supported SUS-RES protein x unit cells in the neuropil are in
+#   CA2-SLM, and the CA2-SLM robustness audit classes only a minority of those
+#   robust_to_missingness_and_QC. Ranking by FDR alone therefore returns mostly
+#   proteins the repository already classifies as insufficient_observed_data or
 #   not_claimable_due_to_QC. This screen consumes that existing classification
-#   instead of re-deriving it, and records an explicit evidence class per
-#   candidate.
+#   instead of re-deriving it: a hit supported only in CA2-SLM counts only when
+#   its class is robust_to_missingness_and_QC, and every candidate gets an
+#   explicit evidence class.
 #
 # WHAT THIS SCRIPT DOES NOT DO
 #   No model is refitted, no threshold is tuned, no statistic is recomputed. The
