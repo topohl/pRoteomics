@@ -6,7 +6,8 @@
 # presynaptic proteins? (Figure 2j, 2026-10-28; revised the same evening: the Allen trimmed
 # means are read on their own log2 scale - they were log-transformed twice
 # before, which loosened the glial filter -; carry-over rule shared with k and
-# l; post hoc sensitivity analyses)
+# l; post hoc sensitivity analyses; 2026-11-16: DG po floor, the previous rule
+# as sensitivity 6)
 #
 # USAGE (from the repository root)
 #   Rscript analysis/spatial_validation/map_input_territories.R
@@ -70,15 +71,16 @@
 # postsynaptic excess (a paired test); BH over the 6 control comparisons. The
 # stressed animals (RES, SUS) are a replication only, tested the same way (BH
 # separately) and never pooled with the controls. An animal enters only with a
-# retained acquisition of every lamina: 5 of the 6 stressed animals (A0003 has
-# no retained DG po; see QC and SENSITIVITY).
+# retained acquisition of every lamina (see QC).
 #
 # QC: DG po borders the granule cell layer. Soma-only proteins (observed in
 # >= 90% of the acquisitions of every soma unit and < 50% of every other unit
 # except DG po itself) index carry-over; a DG po acquisition with more soma-only
-# detections than any acquisition of the other nine laminae is excluded
-# (R/spatial/neuropil_lamina_utils.R; the same rule in k and l). An animal
-# without a retained acquisition of every lamina is left out.
+# detections than any acquisition of the other nine laminae is flagged and
+# dropped, but an animal whose DG po acquisitions are all flagged keeps its
+# least-contaminated one (the floor; R/spatial/neuropil_lamina_utils.R, the
+# same rule in k and l; input_territory_carryover_qc.csv). An animal without a
+# retained acquisition of every lamina is left out.
 #
 # SENSITIVITY (post hoc, 2026-10-28; input_territory_sensitivity.csv; separate
 # random stream, so the primary results are unchanged): (1) lamina-label
@@ -89,8 +91,10 @@
 # mo-po reference pair that both territories share; (4) a null matched on
 # abundance and laminar SD quintiles; (5) without GABAergic-terminal proteins
 # (Allen 10x: highest GABAergic cluster > 1 above every other neuronal
-# cluster; GABAergic = Gad2 >= 6); (6) an animal left out for lack of DG po
-# re-enters with its least-contaminated DG po acquisition (replication set).
+# cluster; GABAergic = Gad2 >= 6); (6) strict carry-over rule (2026-11-16):
+# every flagged DG po acquisition dropped, so an animal kept only by the floor
+# is left out (the other animals' primary excess; no new draws; only for an
+# animal set that has such an animal).
 # input_territory_protein_contrasts.csv lists the control-animal territory
 # contrast of every synaptic protein (descriptive: which proteins carry it).
 #
@@ -180,12 +184,13 @@ pg_of <- stats::setNames(rownames(mat), symbol)
 rownames(mat) <- rownames(obs) <- symbol
 if (!all(LAMINAE %in% info$unit) || !all(SOMA_UNITS %in% info$unit)) stop("Expected neuropil and soma units are missing.", call. = FALSE)
 
-# ---- QC: soma carry-over into DG po (R/spatial/neuropil_lamina_utils.R) ----------
+# ---- QC: soma carry-over into DG po, per-animal floor (R/spatial/neuropil_lamina_utils.R) ----
 np_info <- dg_po_carryover(info, obs, LAMINAE, SOMA_UNITS)
 threshold <- np_info$carryover_threshold[1]
 carry <- np_info[, c("Sample", "AnimalID", "group", "hemisphere", "unit", "soma_only_detected",
-                     "carryover_threshold", "excluded", "n_soma_only_proteins")]
+                     "carryover_threshold", "flagged", "retained_under_floor", "excluded", "n_soma_only_proteins")]
 kept <- np_info[!np_info$excluded, , drop = FALSE]
+floor_animals <- sort(unique(np_info$AnimalID[np_info$retained_under_floor]))
 
 # ---- protein classes ------------------------------------------------------------
 ann <- as.data.frame(readxl::read_excel(REF$syngo_annotations))
@@ -426,32 +431,14 @@ is_gaba <- neuronal & X["Gad2", ] >= 6
 gaba_terminal <- rownames(X)[apply(X[, is_gaba, drop = FALSE], 1, max) -
                              apply(X[, neuronal & !is_gaba, drop = FALSE], 1, max) > 1]
 
-# An animal left out for lack of a retained DG po acquisition re-enters with its least-contaminated one.
-sens_profiles <- profiles
-for (a in left_out) {
-  na <- np_info[np_info$AnimalID == a, , drop = FALSE]
-  po <- na[na$unit == "DG_po", , drop = FALSE]
-  if (!nrow(po) || !all(LAMINAE %in% na$unit)) next
-  ka <- rbind(na[!na$excluded, , drop = FALSE], po[which.min(po$soma_only_detected), , drop = FALSE])
-  P <- vapply(LAMINAE, function(k) {
-    s <- ka$Sample[ka$unit == k]
-    v <- rowMeans(mat[, s, drop = FALSE])
-    v[rowSums(!obs[, s, drop = FALSE]) > 0] <- NA
-    v
-  }, numeric(nrow(mat)))
-  sens_profiles[[a]] <- P[stats::complete.cases(P), , drop = FALSE]
-}
-sens_group <- stats::setNames(info$group[match(names(sens_profiles), info$AnimalID)], names(sens_profiles))
-
 sens_rows <- list()
 zr_mean <- list()
 add_row <- function(a, analysis, k, cl, d, nd) sens_rows[[length(sens_rows) + 1L]] <<- data.frame(
-  AnimalID = a, group = sens_group[[a]], territory = SENS_PAIRS[[k]]$territory, pairs = SENS_PAIRS[[k]]$pairs,
+  AnimalID = a, group = group_of[[a]], territory = SENS_PAIRS[[k]]$territory, pairs = SENS_PAIRS[[k]]$pairs,
   analysis = analysis, protein_class = cl, d = d, null_median_d = stats::median(nd), excess = d - stats::median(nd),
   stringsAsFactors = FALSE)
-REENTER <- "animal left out for lack of DG po re-enters (its least-contaminated DG po acquisition)"
-for (a in names(sens_profiles)) {
-  A <- sens_profiles[[a]]
+for (a in names(profiles)) {
+  A <- profiles[[a]]
   mu <- rowMeans(A)
   lsd <- apply(A - mu, 1, stats::sd)
   ib <- intersect(set_of("background"), rownames(A))
@@ -482,10 +469,6 @@ for (a in names(sens_profiles)) {
       Zs <- Zs + Z
     }
     zr_mean[[a]][[cl]] <- list(Zo = Zo, Zr = Zs / SENS_DRAWS)
-    if (a %in% left_out) {
-      for (k in declared) add_row(a, REENTER, k, cl, do[k], D[, k])
-      next
-    }
     for (k in setdiff(seq_along(SENS_PAIRS), declared)) add_row(a, "lamina pairs changed", k, cl, do[k], D[, k])
     # null matched on abundance and laminar SD quintiles
     D2 <- t(replicate(SENS_DRAWS, sens_d(zmat(A[sdraw(ids, bin_as), , drop = FALSE]))))
@@ -499,6 +482,19 @@ for (a in names(sens_profiles)) {
 }
 sens_rows <- do.call(rbind, sens_rows)
 
+# per-animal excess (rows: AnimalID, protein_class, excess) -> the three across-animal tests of one analysis
+sens_test_rows <- function(ss, set_name, territory, pairs, analysis) {
+  pre <- ss[ss$protein_class == "presynaptic", , drop = FALSE]
+  post <- ss[ss$protein_class == "postsynaptic", , drop = FALSE]
+  post <- post[match(pre$AnimalID, post$AnimalID), , drop = FALSE]
+  per <- function(x) paste(paste0(pre$AnimalID, ":", sprintf("%.3f", x)), collapse = "; ")
+  lab <- function(statistic, x) cbind(animal_set = set_name, territory = territory, pairs = pairs, analysis = analysis,
+                                      statistic = statistic, one_sample(x), per_animal = per(x), stringsAsFactors = FALSE)
+  rbind(lab("presynaptic excess", pre$excess),
+        lab("postsynaptic excess", post$excess),
+        lab("presynaptic minus postsynaptic excess", pre$excess - post$excess))
+}
+STRICT <- "strict carry-over rule"
 sens_tests <- list()
 for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
   gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
@@ -506,26 +502,18 @@ for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
   keys <- unique(s[, c("analysis", "territory", "pairs")])
   for (r in seq_len(nrow(keys))) {
     ss <- s[s$analysis == keys$analysis[r] & s$territory == keys$territory[r] & s$pairs == keys$pairs[r], , drop = FALSE]
-    if (keys$analysis[r] == REENTER) {
-      # the set with the re-entered animal: the other animals' primary excess plus its own
-      base <- scores[scores$group %in% gs & scores$territory == keys$territory[r] &
-                     scores$protein_class %in% c("presynaptic", "postsynaptic"), , drop = FALSE]
-      ss <- rbind(ss, data.frame(AnimalID = base$AnimalID, group = base$group, territory = base$territory,
-                                 pairs = keys$pairs[r], analysis = REENTER, protein_class = base$protein_class,
-                                 d = base$input_organisation_d, null_median_d = base$null_median_d,
-                                 excess = base$input_organisation_d - base$null_median_d, stringsAsFactors = FALSE))
-    }
-    pre <- ss[ss$protein_class == "presynaptic", , drop = FALSE]
-    post <- ss[ss$protein_class == "postsynaptic", , drop = FALSE]
-    post <- post[match(pre$AnimalID, post$AnimalID), , drop = FALSE]
-    per <- function(x) paste(paste0(pre$AnimalID, ":", sprintf("%.3f", x)), collapse = "; ")
-    lab <- function(statistic, x) cbind(animal_set = set_name, territory = keys$territory[r], pairs = keys$pairs[r],
-                                        analysis = keys$analysis[r], statistic = statistic, one_sample(x),
-                                        per_animal = per(x), stringsAsFactors = FALSE)
-    sens_tests[[length(sens_tests) + 1L]] <- rbind(
-      lab("presynaptic excess", pre$excess),
-      lab("postsynaptic excess", post$excess),
-      lab("presynaptic minus postsynaptic excess", pre$excess - post$excess))
+    sens_tests[[length(sens_tests) + 1L]] <- sens_test_rows(ss, set_name, keys$territory[r], keys$pairs[r], keys$analysis[r])
+  }
+  # strict carry-over rule: the primary excess of the animals with an unflagged DG po (an animal kept only by
+  # the floor is left out), for a set that has such an animal
+  an <- names(profiles)[group_of %in% gs]
+  if (!any(an %in% floor_animals) || length(setdiff(an, floor_animals)) < 2L) next
+  for (k in declared) {
+    ss <- scores[scores$AnimalID %in% setdiff(an, floor_animals) & scores$territory == SENS_PAIRS[[k]]$territory &
+                 scores$protein_class %in% c("presynaptic", "postsynaptic"), , drop = FALSE]
+    ss$excess <- ss$excess_over_random
+    sens_tests[[length(sens_tests) + 1L]] <- sens_test_rows(ss, set_name, SENS_PAIRS[[k]]$territory, SENS_PAIRS[[k]]$pairs,
+                                                            STRICT)
   }
 }
 sens_tests <- do.call(rbind, sens_tests)
@@ -575,8 +563,11 @@ sens_tests$method <- ifelse(
          "animals of the set; P = share of ", N_LAMINA_PERM, " relabellings of the ten laminae plus the observed one (the ",
          "same relabelling for every animal) at least as extreme in the direction of the observed value; per_animal: ",
          "each animal's own permutation P"),
-  paste0("excess = d minus the median d of ", SENS_DRAWS, " random sets; one-sample t test over the animals of the set ",
-         "(df = n - 1); per_animal: the animals' values"))
+  paste0("excess = d minus the median d of ",
+         ifelse(sens_tests$analysis == STRICT,
+                paste0(N_DRAWS, " random sets (the primary excess, primary seed, of the animals with an unflagged DG po)"),
+                paste(SENS_DRAWS, "random sets")),
+         "; one-sample t test over the animals of the set (df = n - 1); per_animal: the animals' values"))
 
 # matched random similarity of every territory pair (mean Fisher z of the declared null), for the pair table
 pairs_out$matched_random_fisher_z <- vapply(seq_len(nrow(pairs_out)), function(i) {
@@ -618,11 +609,13 @@ write_run_manifest(MANIFEST, inputs = c(list(joint_bundle = JOINT_BUNDLE), REF),
                                      control_animals = sort(names(profiles)[group_of == CONTRAST_GROUP]),
                                      replication_animals = sort(names(profiles)[group_of != CONTRAST_GROUP]),
                                      animals_left_out = left_out, carryover_threshold = threshold,
+                                     flagged_acquisitions = carry$Sample[carry$flagged],
+                                     retained_under_floor = carry$Sample[carry$retained_under_floor],
                                      excluded_acquisitions = carry$Sample[carry$excluded], inferential_p_values = TRUE,
                                      sensitivity = list(seed = SEED + 1L, random_sets = SENS_DRAWS, lamina_relabellings = N_LAMINA_PERM,
                                                         analyses = unique(sens_tests$analysis),
                                                         gabaergic_terminal_rule = "Allen 10x: highest GABAergic cluster (Gad2 >= 6) > 1 above every other neuronal cluster",
-                                                        reentered_animals = intersect(left_out, names(sens_profiles))),
+                                                        strict_rule_left_out = floor_animals),
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = "The animal is the unit of every across-animal comparison; retained hemisphere acquisitions are averaged within animal.")
 message("Input territories complete: ", length(profiles), " animals (", sum(group_of == CONTRAST_GROUP), " CON)")

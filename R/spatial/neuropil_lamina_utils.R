@@ -5,11 +5,17 @@
 # Somatic carry-over into the DG polymorphic layer. DG po borders the granule cell layer. Soma-only
 # proteins (observed in >= 90% of the acquisitions of every soma unit and < 50% of every other unit
 # except DG po itself) index carry-over; a DG po acquisition with more soma-only detections than any
-# acquisition of the other nine neuropil laminae is excluded.
+# acquisition of the other nine neuropil laminae is flagged. Flagged acquisitions are excluded, with a
+# per-animal floor: an animal whose DG po acquisitions are all flagged keeps its least-contaminated one
+# (fewest soma-only detections, then the lower soma-only share of its detected proteins, then Sample
+# name). The floor was added on 2026-11-16, after the eight-animal rerun left a CON animal (A129)
+# without an unflagged DG po; the rule of 2026-10-28 (every flagged acquisition dropped, the strict
+# rule) is reported as a sensitivity.
 #   info  data.frame of every acquisition of the bundle: Sample, AnimalID, group, hemisphere, unit
 #         (region_layer)
 #   obs   logical matrix, proteins x samples (observed and finite), columns in info$Sample order
-# Returns one row per neuropil acquisition, with soma_only_detected, the threshold and excluded.
+# Returns one row per neuropil acquisition, with soma_only_detected, the threshold, flagged,
+# retained_under_floor and excluded (= flagged and not retained under the floor).
 dg_po_carryover <- function(info, obs, laminae, soma_units) {
   stopifnot(identical(colnames(obs), info$Sample), "DG_po" %in% laminae, all(soma_units %in% info$unit))
   units_all <- sort(unique(info$unit))
@@ -20,7 +26,15 @@ dg_po_carryover <- function(info, obs, laminae, soma_units) {
   np$soma_only_detected <- colSums(obs[soma_only, np$Sample, drop = FALSE])
   threshold <- max(np$soma_only_detected[np$unit != "DG_po"])
   np$carryover_threshold <- threshold
-  np$excluded <- np$unit == "DG_po" & np$soma_only_detected > threshold
+  np$flagged <- np$unit == "DG_po" & np$soma_only_detected > threshold
+  np$retained_under_floor <- FALSE
+  share <- np$soma_only_detected / pmax(colSums(obs[, np$Sample, drop = FALSE]), 1)
+  for (a in unique(np$AnimalID)) {
+    i <- which(np$AnimalID == a & np$unit == "DG_po")
+    if (length(i) && all(np$flagged[i]))
+      np$retained_under_floor[i[order(np$soma_only_detected[i], share[i], np$Sample[i], method = "radix")[1]]] <- TRUE
+  }
+  np$excluded <- np$flagged & !np$retained_under_floor
   np$n_soma_only_proteins <- length(soma_only)
   np
 }

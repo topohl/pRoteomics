@@ -3,7 +3,8 @@
 #
 # Inhibitory presynaptic share of every neuropil lamina (Figure 2l,
 # 2026-10-28; later that day: carry-over rule shared with j and k, animals named in
-# the outputs), control animals; stressed animals as replication.
+# the outputs; 2026-11-16: DG po floor, DG mo - po sensitivities), control
+# animals; stressed animals as replication.
 #
 # INHIBITORY SHARE: in every neuropil acquisition, the mean log2 abundance of
 # the GABAergic presynaptic proteins GAD1, GAD2 and VGAT (Slc32a1) minus the
@@ -17,8 +18,7 @@
 # every pair) is kept as a sensitivity only: the between-animal spread of the
 # differences varies more than twentyfold between pairs (independent review
 # 2026-10-28). The stressed animals are tested the same way as a replication,
-# never pooled: every stressed animal with both laminae of a pair (six; five
-# where DG po is missing).
+# never pooled: every stressed animal with both laminae of a pair.
 # Sensitivities and context: GAD2 + VGAT only (GAD1 also marks interneuron
 # somata and runs opposite in the hilus); VGLUT2 (Slc17a6, detected mainly in
 # SLM and DG mo, mainly reuniens and supramammillary terminals; the VGLUT1
@@ -26,8 +26,12 @@
 # GPHN and NLGN2 vs PSD-95 (Dlg4) and GluA2 (Gria2) as the postsynaptic
 # counterpart (descriptive).
 #
-# DG po acquisitions with somatic carry-over are excluded by the rule of
-# map_input_territories (R/spatial/neuropil_lamina_utils.R).
+# DG po: the somatic carry-over rule with its per-animal floor
+# (R/spatial/neuropil_lamina_utils.R; shared with j and k). Sensitivity rows for
+# DG mo - po (column sensitivity; post hoc, not corrected): the strict rule
+# (every flagged acquisition dropped, so an animal kept only by the floor
+# leaves the pair) and hemisphere-matched DG mo (an animal whose DG po comes
+# from one hemisphere only is compared with the DG mo of that hemisphere).
 #
 # USAGE (from the repository root)
 #   Rscript analysis/spatial_validation/compare_lamina_synapses.R
@@ -106,7 +110,7 @@ use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & 
 mat <- mat[use, , drop = FALSE]
 obs <- obs[use, , drop = FALSE]
 rownames(mat) <- rownames(obs) <- symbol[use]
-# soma carry-over into DG po: the rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)
+# soma carry-over into DG po, with the per-animal floor (R/spatial/neuropil_lamina_utils.R)
 carry <- dg_po_carryover(info, obs, LAMINAE, SOMA_UNITS)
 info <- info[info$unit %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded], c("Sample", "AnimalID", "group",
                                                                                         "hemisphere", "unit"), drop = FALSE]
@@ -129,19 +133,23 @@ acq$vglut2_minus_vglut1_log2 <- if ("Slc17a6" %in% rownames(mat))
 acq$definition <- paste0("presynaptic: mean log2 ", paste(INHIBITORY, collapse = "/"), " minus log2 ", EXCITATORY,
                          "; postsynaptic: mean log2 ", paste(POST_INHIBITORY, collapse = "/"), " minus mean log2 ",
                          paste(POST_EXCITATORY, collapse = "/"), "; observed values only")
-key <- paste(acq$AnimalID, acq$lamina)
-animal <- do.call(rbind, lapply(split(acq, key), function(d) {
-  data.frame(AnimalID = d$AnimalID[1], group = d$group[1], lamina = d$lamina[1],
-             n_acquisitions = sum(is.finite(d$inhibitory_presynaptic_share_log2)),
-             inhibitory_presynaptic_share_log2 = mean(d$inhibitory_presynaptic_share_log2, na.rm = TRUE),
-             inhibitory_postsynaptic_share_log2 = mean(d$inhibitory_postsynaptic_share_log2, na.rm = TRUE),
-             gad2_vgat_share_log2 = mean(d$gad2_vgat_share_log2, na.rm = TRUE),
-             vglut2_minus_vglut1_log2 = if (any(is.finite(d$vglut2_minus_vglut1_log2)))
-               mean(d$vglut2_minus_vglut1_log2, na.rm = TRUE) else NA_real_,
-             vglut2_acquisitions_observed = sum(is.finite(d$vglut2_minus_vglut1_log2)),
-             stringsAsFactors = FALSE)
-}))
-rownames(animal) <- NULL
+acq$retained_under_floor <- acq$Sample %in% carry$Sample[carry$retained_under_floor]
+by_animal <- function(a) {
+  out <- do.call(rbind, lapply(split(a, paste(a$AnimalID, a$lamina)), function(d) {
+    data.frame(AnimalID = d$AnimalID[1], group = d$group[1], lamina = d$lamina[1],
+               n_acquisitions = sum(is.finite(d$inhibitory_presynaptic_share_log2)),
+               inhibitory_presynaptic_share_log2 = mean(d$inhibitory_presynaptic_share_log2, na.rm = TRUE),
+               inhibitory_postsynaptic_share_log2 = mean(d$inhibitory_postsynaptic_share_log2, na.rm = TRUE),
+               gad2_vgat_share_log2 = mean(d$gad2_vgat_share_log2, na.rm = TRUE),
+               vglut2_minus_vglut1_log2 = if (any(is.finite(d$vglut2_minus_vglut1_log2)))
+                 mean(d$vglut2_minus_vglut1_log2, na.rm = TRUE) else NA_real_,
+               vglut2_acquisitions_observed = sum(is.finite(d$vglut2_minus_vglut1_log2)),
+               stringsAsFactors = FALSE)
+  }))
+  rownames(out) <- NULL
+  out
+}
+animal <- by_animal(acq)
 animal$presynaptic_share_centred <- animal$inhibitory_presynaptic_share_log2 -
   stats::ave(animal$inhibitory_presynaptic_share_log2, animal$AnimalID, FUN = function(x) mean(x, na.rm = TRUE))
 animal$postsynaptic_share_centred <- animal$inhibitory_postsynaptic_share_log2 -
@@ -165,24 +173,27 @@ paired <- function(d, a, b, value = "inhibitory_presynaptic_share_log2") {
   v <- x[[value]] - y[[value]]
   v[is.finite(v)]
 }
+pair_row <- function(d, p, set_name) {
+  v <- paired(d, p[1], p[2])
+  tt <- stats::t.test(v)
+  g2 <- paired(d, p[1], p[2], "gad2_vgat_share_log2")
+  data.frame(animal_set = set_name, lamina_a = p[1], lamina_b = p[2],
+             comparison_type = if (sub("_.*", "", p[1]) == sub("_.*", "", p[2])) "strata within a region" else
+               "same stratum across regions",
+             estimate = mean(v), std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1],
+             ci_high = tt$conf.int[2], df = unname(tt$parameter), t_value = unname(tt$statistic),
+             p_value = tt$p.value, n_animals = length(v), animals_positive = sum(v > 0),
+             estimate_gad2_vgat_only = mean(g2),
+             animals = paste(sort(intersect(d$AnimalID[d$lamina == p[1] & is.finite(d$inhibitory_presynaptic_share_log2)],
+                                            d$AnimalID[d$lamina == p[2] & is.finite(d$inhibitory_presynaptic_share_log2)])),
+                             collapse = "; "), stringsAsFactors = FALSE)
+}
 share_contrasts <- list()
 for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
   gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
   d <- animal[animal$group %in% gs, , drop = FALSE]
   for (p in SHARE_PAIRS) {
-    v <- paired(d, p[1], p[2])
-    tt <- stats::t.test(v)
-    g2 <- paired(d, p[1], p[2], "gad2_vgat_share_log2")
-    row <- data.frame(animal_set = set_name, lamina_a = p[1], lamina_b = p[2],
-                      comparison_type = if (sub("_.*", "", p[1]) == sub("_.*", "", p[2])) "strata within a region" else
-                        "same stratum across regions",
-                      estimate = mean(v), std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1],
-                      ci_high = tt$conf.int[2], df = unname(tt$parameter), t_value = unname(tt$statistic),
-                      p_value = tt$p.value, n_animals = length(v), animals_positive = sum(v > 0),
-                      estimate_gad2_vgat_only = mean(g2),
-                      animals = paste(sort(intersect(d$AnimalID[d$lamina == p[1] & is.finite(d$inhibitory_presynaptic_share_log2)],
-                                                     d$AnimalID[d$lamina == p[2] & is.finite(d$inhibitory_presynaptic_share_log2)])),
-                                      collapse = "; "), stringsAsFactors = FALSE)
+    row <- pair_row(d, p, set_name)
     if (set_name == CONTRAST_GROUP) {
       row$pooled_std_error <- se_pooled
       row$pooled_df <- dfe
@@ -210,6 +221,45 @@ share_contrasts$role <- ifelse(share_contrasts$animal_set == CONTRAST_GROUP, "pr
 share_contrasts$method <- paste0("per-animal difference of the lamina shares (a - b), one-sample t test over animals; BH over ",
                                  "the ", length(SHARE_PAIRS), " pre-declared pairs of each animal set; pooled_*: the ",
                                  "lamina + animal model with one pooled residual (sensitivity, control animals)")
+share_contrasts$sensitivity <- "none"
+
+# ---- DG po sensitivities (post hoc, 2026-11-16) -------------------------------------------
+# Rows for the pairs with DG po, for an animal set the sensitivity changes; not corrected (p_adjust NA).
+is_po <- acq$lamina == "DG_po" & is.finite(acq$inhibitory_presynaptic_share_log2)
+po_hemispheres <- split(acq$hemisphere[is_po], acq$AnimalID[is_po])
+mo_matched <- vapply(seq_len(nrow(acq)), function(i)
+  acq$lamina[i] != "DG_mo" || acq$hemisphere[i] %in% po_hemispheres[[acq$AnimalID[i]]], logical(1))
+strict_left_out <- sort(unique(acq$AnimalID[acq$retained_under_floor]))
+one_hemisphere <- sort(names(po_hemispheres)[lengths(lapply(po_hemispheres, unique)) == 1L])
+SENSITIVITIES <- list(
+  "strict carry-over rule" = list(
+    acq = acq[!acq$retained_under_floor, , drop = FALSE], changed = strict_left_out,
+    what = "every flagged DG po acquisition dropped, so an animal kept only by the floor leaves the pair"),
+  "hemisphere-matched DG mo" = list(
+    acq = acq[mo_matched, , drop = FALSE], changed = one_hemisphere,
+    what = "an animal whose DG po comes from one hemisphere only is compared with the DG mo of that hemisphere"))
+sens_rows <- list()
+for (sn in names(SENSITIVITIES)) {
+  sa <- by_animal(SENSITIVITIES[[sn]]$acq)
+  for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
+    gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
+    if (!any(unique(animal$AnimalID[animal$group %in% gs]) %in% SENSITIVITIES[[sn]]$changed)) next
+    d <- sa[sa$group %in% gs, , drop = FALSE]
+    for (p in Filter(function(p) "DG_po" %in% p, SHARE_PAIRS)) {
+      if (length(paired(d, p[1], p[2])) < 2L) next
+      row <- pair_row(d, p, set_name)
+      row$pooled_std_error <- row$pooled_df <- row$pooled_p_value <- row$p_adjust <- row$pooled_p_adjust <- NA_real_
+      row$group <- set_name
+      row$role <- if (set_name == CONTRAST_GROUP) "sensitivity (control animals; post hoc, not corrected)" else
+        "sensitivity (stressed animals; post hoc, not corrected)"
+      row$method <- paste0("per-animal difference of the lamina shares (a - b), one-sample t test over animals; ",
+                           SENSITIVITIES[[sn]]$what, "; post hoc, not corrected")
+      row$sensitivity <- sn
+      sens_rows[[length(sens_rows) + 1L]] <- row
+    }
+  }
+}
+share_contrasts <- rbind(share_contrasts, do.call(rbind, sens_rows))
 
 utils::write.csv(acq, OUT$share_acquisition, row.names = FALSE)
 utils::write.csv(animal[order(animal$group, animal$AnimalID, match(animal$lamina, LAMINAE)), ], OUT$share_animal, row.names = FALSE)
@@ -223,7 +273,11 @@ write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE), outputs
                                      comparison_animals = sort(unique(con$AnimalID)),
                                      replication_animals = sort(unique(animal$AnimalID[animal$group != CONTRAST_GROUP])),
                                      carryover_threshold = carry$carryover_threshold[1],
-                                     excluded_acquisitions = carry$Sample[carry$excluded], inferential_p_values = TRUE,
+                                     flagged_acquisitions = carry$Sample[carry$flagged],
+                                     retained_under_floor = carry$Sample[carry$retained_under_floor],
+                                     excluded_acquisitions = carry$Sample[carry$excluded],
+                                     strict_rule_left_out = strict_left_out,
+                                     dg_po_one_hemisphere = one_hemisphere, inferential_p_values = TRUE,
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = "The animal is the unit; retained hemisphere acquisitions are averaged within animal; the per-pair animals are in the contrasts table.")
 message("Laminar inhibitory share complete")

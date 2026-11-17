@@ -6,7 +6,7 @@
 # review: the afferent class was dominated by a 22-cell locus coeruleus type,
 # the control class held proteins hippocampal cells make, classes overlapped.
 # Later on 2026-10-28: carry-over rule shared with j and l, pinned reference hash,
-# animals named in the outputs)
+# animals named in the outputs. 2026-11-16: DG po floor, strict-rule sensitivity)
 #
 # USAGE (from the repository root)
 #   Rscript analysis/spatial_validation/map_afferent_sources.R
@@ -42,10 +42,9 @@
 # claim, official symbols). The reference table is pinned by its SHA-256
 # (README of data/external/allen_abc_wmb_10x).
 #
-# ACQUISITIONS: DG po acquisitions with somatic carry-over are excluded by the
-# rule of map_input_territories (R/spatial/neuropil_lamina_utils.R); an animal
-# without a retained acquisition of every lamina is left out (manifest:
-# animals_left_out).
+# ACQUISITIONS: DG po by the somatic carry-over rule with its per-animal floor
+# (R/spatial/neuropil_lamina_utils.R; shared with j and l); an animal without a
+# retained acquisition of every lamina is left out (manifest: animals_left_out).
 #
 # SCORE: per animal and lamina, the mean over a class's proteins of the
 # protein-centred laminar profile (as in map_input_territories), against 1000
@@ -61,6 +60,13 @@
 # the two laminae; across the control animals a one-sample t test, BH over the
 # contrasts of each animal set (8 without a control class). Stressed animals:
 # replication only, tested the same way, never pooled.
+#
+# SENSITIVITY (post hoc, 2026-11-16; rows with sensitivity = "strict carry-over
+# rule", written when an animal is kept only by the floor): the strict rule
+# leaves that animal out. As it also narrows the universe and so the classes
+# (CON results move even when no CON animal is kept by the floor), these rows
+# are a full rerun without it: classes, random sets and scores rebuilt from the
+# same seed, i.e. the previous rule's result; every animal set, BH as above.
 #
 #
 #
@@ -161,7 +167,7 @@ use <- ft$joint_qc_eligible %in% TRUE & ft$gene_level_claim_allowed %in% TRUE & 
 mat <- mat[use, , drop = FALSE]
 obs <- obs[use, , drop = FALSE]
 rownames(mat) <- rownames(obs) <- symbol[use]
-# soma carry-over into DG po: the rule of map_input_territories (R/spatial/neuropil_lamina_utils.R)
+# soma carry-over into DG po, with the per-animal floor (R/spatial/neuropil_lamina_utils.R)
 carry <- dg_po_carryover(info, obs, LAMINAE, SOMA_UNITS)
 info <- info[info$lamina %in% LAMINAE & !info$Sample %in% carry$Sample[carry$excluded], , drop = FALSE]
 mat <- mat[, info$Sample, drop = FALSE]
@@ -190,82 +196,93 @@ ref <- utils::read.csv(ABC, check.names = FALSE, stringsAsFactors = FALSE)
 ref <- ref[!duplicated(ref$gene_symbol), , drop = FALSE]
 if (!all(unlist(SOURCES) %in% names(ref))) stop("Source types absent from the ABC table: ",
                                                 paste(setdiff(unlist(SOURCES), names(ref)), collapse = ", "), call. = FALSE)
-universe <- Reduce(intersect, lapply(profiles, rownames))
-universe <- intersect(universe, ref$gene_symbol)
-X <- as.matrix(ref[match(universe, ref$gene_symbol), unlist(SOURCES), drop = FALSE])
-rownames(X) <- universe
-GX <- vapply(SOURCES, function(cc) apply(X[, cc, drop = FALSE], 1, max), numeric(length(universe)))
-rownames(GX) <- universe
-rowmax <- function(g) apply(GX[, g, drop = FALSE], 1, max)
-resident_max <- rowmax(RESIDENT)
-afferent_max <- rowmax(AFFERENT)
-non_projecting_max <- rowmax(NON_PROJECTING)
-entorhinal_max <- rowmax(ENTORHINAL)
-other_afferent_max <- rowmax(OTHER_AFFERENT)
 every_type <- names(SOURCES)
-made_by <- function(g, min_margin, n = 30L) {
-  margin <- GX[, g] - rowmax(setdiff(RESIDENT, g))
-  above_outside <- GX[, g] > rowmax(setdiff(every_type, RESIDENT))
-  ok <- GX[, g] >= 3 & margin >= min_margin & above_outside
-  utils::head(names(sort(margin[ok], decreasing = TRUE)), n)
+# The classes of one run. The universe is the proteins observed in every animal of the run, so the animal set
+# shapes the classes (see the strict carry-over rule below).
+origin_classes <- function(animals) {
+  universe <- intersect(Reduce(intersect, lapply(profiles[animals], rownames)), ref$gene_symbol)
+  X <- as.matrix(ref[match(universe, ref$gene_symbol), unlist(SOURCES), drop = FALSE])
+  rownames(X) <- universe
+  GX <- vapply(SOURCES, function(cc) apply(X[, cc, drop = FALSE], 1, max), numeric(length(universe)))
+  rownames(GX) <- universe
+  rowmax <- function(g) apply(GX[, g, drop = FALSE], 1, max)
+  resident_max <- rowmax(RESIDENT)
+  afferent_max <- rowmax(AFFERENT)
+  non_projecting_max <- rowmax(NON_PROJECTING)
+  entorhinal_max <- rowmax(ENTORHINAL)
+  other_afferent_max <- rowmax(OTHER_AFFERENT)
+  made_by <- function(g, min_margin, n = 30L) {
+    margin <- GX[, g] - rowmax(setdiff(RESIDENT, g))
+    above_outside <- GX[, g] > rowmax(setdiff(every_type, RESIDENT))
+    ok <- GX[, g] >= 3 & margin >= min_margin & above_outside
+    utils::head(names(sort(margin[ok], decreasing = TRUE)), n)
+  }
+  is_entorhinal <- entorhinal_max >= 3 & entorhinal_max - resident_max >= 1.5
+  sets <- list(
+    entorhinal = universe[is_entorhinal],
+    other_afferent = universe[!is_entorhinal & other_afferent_max >= 3 & other_afferent_max - resident_max >= 1.5],
+    ca3 = made_by("CA3", 0.75), granule = made_by("DG granule", 0.75), ca1 = made_by("CA1", 0.75),
+    ca2 = made_by("CA2", 0.75),
+    interneuron = unique(unlist(lapply(c("Sst", "Pvalb", "Lamp5", "Vip", "Sncg"), made_by, min_margin = 0.75))),
+    astrocyte = made_by("Astrocytes", 1), vascular = made_by("Vascular", 1), oligodendrocyte = made_by("Oligodendrocytes", 1),
+    control = universe[non_projecting_max >= 3 & resident_max < 2 & afferent_max < 2])
+  if (anyDuplicated(unlist(sets))) stop("Origin classes overlap: ", paste(unique(unlist(sets)[duplicated(unlist(sets))]),
+                                                                         collapse = ", "), call. = FALSE)
+  control_tested <- length(sets$control) >= 5L
+  main <- setdiff(names(sets), "control")
+  if (any(lengths(sets[main]) < 5L)) stop("Origin class with fewer than five proteins: ",
+                                           paste(main[lengths(sets[main]) < 5L], collapse = ", "), call. = FALSE)
+  top_source <- colnames(GX)[apply(GX, 1, which.max)]
+  names(top_source) <- rownames(GX)
+  set_rows <- do.call(rbind, lapply(names(sets), function(k) if (length(sets[[k]])) data.frame(
+    origin_class = k, origin_label = CLASSES[[k]], gene_symbol = sets[[k]], top_source_type = unname(top_source[sets[[k]]]),
+    top_source_log2cpm = unname(apply(GX[sets[[k]], , drop = FALSE], 1, max)),
+    max_hippocampal_log2cpm = unname(resident_max[sets[[k]]]), max_entorhinal_log2cpm = unname(entorhinal_max[sets[[k]]]),
+    max_other_afferent_log2cpm = unname(other_afferent_max[sets[[k]]]),
+    max_non_projecting_log2cpm = unname(non_projecting_max[sets[[k]]]),
+    tested = k != "control" || control_tested, stringsAsFactors = FALSE)))
+  if (!control_tested) sets$control <- NULL
+  list(universe = universe, sets = sets, control_tested = control_tested, set_rows = set_rows)
 }
-is_entorhinal <- entorhinal_max >= 3 & entorhinal_max - resident_max >= 1.5
-sets <- list(
-  entorhinal = universe[is_entorhinal],
-  other_afferent = universe[!is_entorhinal & other_afferent_max >= 3 & other_afferent_max - resident_max >= 1.5],
-  ca3 = made_by("CA3", 0.75), granule = made_by("DG granule", 0.75), ca1 = made_by("CA1", 0.75),
-  ca2 = made_by("CA2", 0.75),
-  interneuron = unique(unlist(lapply(c("Sst", "Pvalb", "Lamp5", "Vip", "Sncg"), made_by, min_margin = 0.75))),
-  astrocyte = made_by("Astrocytes", 1), vascular = made_by("Vascular", 1), oligodendrocyte = made_by("Oligodendrocytes", 1),
-  control = universe[non_projecting_max >= 3 & resident_max < 2 & afferent_max < 2])
-if (anyDuplicated(unlist(sets))) stop("Origin classes overlap: ", paste(unique(unlist(sets)[duplicated(unlist(sets))]),
-                                                                       collapse = ", "), call. = FALSE)
-control_tested <- length(sets$control) >= 5L
-main <- setdiff(names(sets), "control")
-if (any(lengths(sets[main]) < 5L)) stop("Origin class with fewer than five proteins: ",
-                                         paste(main[lengths(sets[main]) < 5L], collapse = ", "), call. = FALSE)
-top_source <- colnames(GX)[apply(GX, 1, which.max)]
-names(top_source) <- rownames(GX)
-set_rows <- do.call(rbind, lapply(names(sets), function(k) if (length(sets[[k]])) data.frame(
-  origin_class = k, origin_label = CLASSES[[k]], gene_symbol = sets[[k]], top_source_type = unname(top_source[sets[[k]]]),
-  top_source_log2cpm = unname(apply(GX[sets[[k]], , drop = FALSE], 1, max)),
-  max_hippocampal_log2cpm = unname(resident_max[sets[[k]]]), max_entorhinal_log2cpm = unname(entorhinal_max[sets[[k]]]),
-  max_other_afferent_log2cpm = unname(other_afferent_max[sets[[k]]]),
-  max_non_projecting_log2cpm = unname(non_projecting_max[sets[[k]]]),
-  tested = k != "control" || control_tested, stringsAsFactors = FALSE)))
-if (!control_tested) sets$control <- NULL
-in_any <- unique(unlist(sets))
+cl <- origin_classes(names(profiles))
+universe <- cl$universe
+set_rows <- cl$set_rows
 
 # ---- scores against matched random sets ----------------------------------------------------
-scores <- list()
-for (a in names(profiles)) {
-  A <- profiles[[a]][universe, , drop = FALSE]
-  ab <- abundance[[a]][universe]
-  bin <- as.character(cut(ab, stats::quantile(ab, 0:10 / 10), include.lowest = TRUE))
-  names(bin) <- universe
-  pool <- setdiff(universe, in_any)
-  for (k in names(sets)) {
-    ids <- sets[[k]]
-    nul <- matrix(NA_real_, N_DRAWS, length(LAMINAE))
-    for (b in seq_len(N_DRAWS)) {
-      r <- character(0)
-      for (bb in unique(bin[ids])) {
-        n <- sum(bin[ids] == bb)
-        pl <- pool[bin[pool] == bb]
-        r <- c(r, sample(pl, n, replace = length(pl) < n))
+score_classes <- function(animals, cl) {
+  in_any <- unique(unlist(cl$sets))
+  out <- list()
+  for (a in animals) {
+    A <- profiles[[a]][cl$universe, , drop = FALSE]
+    ab <- abundance[[a]][cl$universe]
+    bin <- as.character(cut(ab, stats::quantile(ab, 0:10 / 10), include.lowest = TRUE))
+    names(bin) <- cl$universe
+    pool <- setdiff(cl$universe, in_any)
+    for (k in names(cl$sets)) {
+      ids <- cl$sets[[k]]
+      nul <- matrix(NA_real_, N_DRAWS, length(LAMINAE))
+      for (b in seq_len(N_DRAWS)) {
+        r <- character(0)
+        for (bb in unique(bin[ids])) {
+          n <- sum(bin[ids] == bb)
+          pl <- pool[bin[pool] == bb]
+          r <- c(r, sample(pl, n, replace = length(pl) < n))
+        }
+        nul[b, ] <- colMeans(A[r, , drop = FALSE])
       }
-      nul[b, ] <- colMeans(A[r, , drop = FALSE])
+      sc <- colMeans(A[ids, , drop = FALSE])
+      out[[length(out) + 1L]] <- data.frame(
+        AnimalID = a, group = group_of[[a]], origin_class = k, origin_label = CLASSES[[k]], lamina = LAMINAE,
+        n_proteins = length(ids), score = unname(sc), null_mean = colMeans(nul), null_sd = apply(nul, 2, stats::sd),
+        stringsAsFactors = FALSE)
     }
-    sc <- colMeans(A[ids, , drop = FALSE])
-    scores[[length(scores) + 1L]] <- data.frame(
-      AnimalID = a, group = group_of[[a]], origin_class = k, origin_label = CLASSES[[k]], lamina = LAMINAE,
-      n_proteins = length(ids), score = unname(sc), null_mean = colMeans(nul), null_sd = apply(nul, 2, stats::sd),
-      stringsAsFactors = FALSE)
   }
+  out <- do.call(rbind, out)
+  rownames(out) <- NULL
+  out$z <- (out$score - out$null_mean) / out$null_sd
+  out
 }
-scores <- do.call(rbind, scores)
-rownames(scores) <- NULL
-scores$z <- (scores$score - scores$null_mean) / scores$null_sd
+scores <- score_classes(names(profiles), cl)
 
 # ---- contrasts ----------------------------------------------------------------------------
 excess_diff <- function(s, k, a, b) {
@@ -275,68 +292,86 @@ excess_diff <- function(s, k, a, b) {
   xb <- xb[match(xa$AnimalID, xb$AnimalID), , drop = FALSE]
   stats::setNames((xa$score - xb$score) - (xa$null_mean - xb$null_mean), xa$AnimalID)
 }
-specs <- lapply(CONTRASTS, function(cc) list(class = cc[1], minus = NA_character_, a = cc[2], b = cc[3], expectation = cc[4]))
-if (control_tested) specs <- c(specs,
-  lapply(CONTROL_PAIRS, function(pp) list(class = "control", minus = NA_character_, a = pp[1], b = pp[2],
-                                          expectation = "control (not expected)")),
-  lapply(CONTROL_PAIRS, function(pp) list(class = "entorhinal", minus = "control", a = pp[1], b = pp[2],
-                                          expectation = "entorhinal minus control")))
-contrasts <- list()
-for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
-  gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
-  s <- scores[scores$group %in% gs, , drop = FALSE]
-  for (sp in specs) {
-    v <- excess_diff(s, sp$class, sp$a, sp$b)
-    if (!is.na(sp$minus)) v <- v - excess_diff(s, sp$minus, sp$a, sp$b)[names(v)]
-    tt <- stats::t.test(v)
-    contrasts[[length(contrasts) + 1L]] <- data.frame(
-      animal_set = set_name, origin_class = sp$class, minus_class = sp$minus, origin_label = CLASSES[[sp$class]],
-      lamina_a = sp$a, lamina_b = sp$b, expectation = sp$expectation, estimate = mean(v),
-      std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
-      df = unname(tt$parameter), t_value = unname(tt$statistic), p_value = tt$p.value, n_animals = length(v),
-      animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]),
-      animals = paste(sort(names(v)), collapse = "; "), stringsAsFactors = FALSE)
-  }
+contrast_specs <- function(control_tested) {
+  specs <- lapply(CONTRASTS, function(cc) list(class = cc[1], minus = NA_character_, a = cc[2], b = cc[3], expectation = cc[4]))
+  if (control_tested) specs <- c(specs,
+    lapply(CONTROL_PAIRS, function(pp) list(class = "control", minus = NA_character_, a = pp[1], b = pp[2],
+                                            expectation = "control (not expected)")),
+    lapply(CONTROL_PAIRS, function(pp) list(class = "entorhinal", minus = "control", a = pp[1], b = pp[2],
+                                            expectation = "entorhinal minus control")))
+  specs
 }
-contrasts <- do.call(rbind, contrasts)
-contrasts$p_adjust <- NA_real_
-for (set_name in unique(contrasts$animal_set)) {
-  i <- contrasts$animal_set == set_name
-  contrasts$p_adjust[i] <- stats::p.adjust(contrasts$p_value[i], method = "BH")
-}
-contrasts$role <- ifelse(contrasts$animal_set == CONTRAST_GROUP, "primary (control animals)",
-                         "replication (stressed animals, never pooled with the controls)")
-contrasts$method <- paste0("per animal: excess difference between the laminae (class score minus the abundance-matched ",
-                           "random-set mean, ", N_DRAWS, " draws); one-sample t test over animals; BH over the ",
-                           length(specs), " contrasts of each animal set")
 # Context in the DG (added 2026-11-04): astrocyte and vascular proteins DG mo - po, and the entorhinal excess minus each,
-# the comparison the Results make for the perforant-path target outside the fissure. Computed after the BH step, so the
+# the comparison the Results make for the perforant-path target outside the fissure. Outside the BH step, so the
 # pre-declared contrasts and their adjusted P are unchanged; post hoc, not corrected (p_adjust NA).
 CONTEXT_SPECS <- list(list(class = "astrocyte", minus = NA_character_, a = "DG_mo", b = "DG_po", expectation = "context (DG, post hoc)"),
                       list(class = "vascular", minus = NA_character_, a = "DG_mo", b = "DG_po", expectation = "context (DG, post hoc)"),
                       list(class = "entorhinal", minus = "astrocyte", a = "DG_mo", b = "DG_po", expectation = "entorhinal minus context (DG, post hoc)"),
                       list(class = "entorhinal", minus = "vascular", a = "DG_mo", b = "DG_po", expectation = "entorhinal minus context (DG, post hoc)"))
-context <- list()
-for (set_name in c(CONTRAST_GROUP, "RES+SUS")) {
-  gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
-  s <- scores[scores$group %in% gs, , drop = FALSE]
-  for (sp in CONTEXT_SPECS) {
-    v <- excess_diff(s, sp$class, sp$a, sp$b)
-    if (!is.na(sp$minus)) v <- v - excess_diff(s, sp$minus, sp$a, sp$b)[names(v)]
-    tt <- stats::t.test(v)
-    context[[length(context) + 1L]] <- data.frame(
-      animal_set = set_name, origin_class = sp$class, minus_class = sp$minus, origin_label = CLASSES[[sp$class]],
-      lamina_a = sp$a, lamina_b = sp$b, expectation = sp$expectation, estimate = mean(v),
-      std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
-      df = unname(tt$parameter), t_value = unname(tt$statistic), p_value = tt$p.value, n_animals = length(v),
-      animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]),
-      animals = paste(sort(names(v)), collapse = "; "), p_adjust = NA_real_,
-      role = if (set_name == CONTRAST_GROUP) "context (control animals; post hoc, not corrected)" else "context (stressed animals; post hoc, not corrected)",
-      method = paste0("per animal: excess difference between the laminae (class score minus the abundance-matched random-set mean, ",
-                      N_DRAWS, " draws); one-sample t test over animals; post hoc context, not corrected"), stringsAsFactors = FALSE)
+METHOD <- paste0("per animal: excess difference between the laminae (class score minus the abundance-matched ",
+                 "random-set mean, ", N_DRAWS, " draws); one-sample t test over animals; ")
+contrast_rows <- function(s, spec_list, set_name, sets) do.call(rbind, lapply(spec_list, function(sp) {
+  v <- excess_diff(s, sp$class, sp$a, sp$b)
+  if (!is.na(sp$minus)) v <- v - excess_diff(s, sp$minus, sp$a, sp$b)[names(v)]
+  tt <- stats::t.test(v)
+  data.frame(
+    animal_set = set_name, origin_class = sp$class, minus_class = sp$minus, origin_label = CLASSES[[sp$class]],
+    lamina_a = sp$a, lamina_b = sp$b, expectation = sp$expectation, estimate = mean(v),
+    std_error = stats::sd(v) / sqrt(length(v)), ci_low = tt$conf.int[1], ci_high = tt$conf.int[2],
+    df = unname(tt$parameter), t_value = unname(tt$statistic), p_value = tt$p.value, n_animals = length(v),
+    animals_positive = sum(v > 0), n_proteins = length(sets[[sp$class]]),
+    animals = paste(sort(names(v)), collapse = "; "), stringsAsFactors = FALSE)
+}))
+# One run's contrasts: the pre-declared ones of every animal set (BH within the set), then the context rows.
+#   role(set_name, context) gives the role text; note is appended to the method text
+contrast_table <- function(scores, cl, set_names, role, note = "") {
+  specs <- contrast_specs(cl$control_tested)
+  declared <- list()
+  context <- list()
+  for (set_name in set_names) {
+    gs <- if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")
+    s <- scores[scores$group %in% gs, , drop = FALSE]
+    rows <- contrast_rows(s, specs, set_name, cl$sets)
+    rows$p_adjust <- stats::p.adjust(rows$p_value, method = "BH")
+    rows$role <- role(set_name, FALSE)
+    rows$method <- paste0(METHOD, "BH over the ", length(specs), " contrasts of each animal set", note)
+    declared[[length(declared) + 1L]] <- rows
+    rows <- contrast_rows(s, CONTEXT_SPECS, set_name, cl$sets)
+    rows$p_adjust <- NA_real_
+    rows$role <- role(set_name, TRUE)
+    rows$method <- paste0(METHOD, "post hoc context, not corrected", note)
+    context[[length(context) + 1L]] <- rows
   }
+  rbind(do.call(rbind, declared), do.call(rbind, context))
 }
-contrasts <- rbind(contrasts, do.call(rbind, context))
+contrasts <- contrast_table(scores, cl, c(CONTRAST_GROUP, "RES+SUS"), function(set_name, context) {
+  if (context) paste0("context (", if (set_name == CONTRAST_GROUP) "control" else "stressed", " animals; post hoc, not corrected)")
+  else if (set_name == CONTRAST_GROUP) "primary (control animals)" else "replication (stressed animals, never pooled with the controls)"
+})
+contrasts$sensitivity <- "none"
+
+# Strict carry-over rule (sensitivity, 2026-11-16): the animals kept only by the DG po floor left out. They also narrow
+# the universe and so the classes, so this is a full rerun without them (classes, random sets and scores rebuilt from
+# the same seed: the run the previous rule gave), for every animal set with at least two animals.
+floor_animals <- intersect(sort(unique(carry$AnimalID[carry$retained_under_floor])), names(profiles))
+strict_cl <- NULL
+if (length(floor_animals)) {
+  strict_animals <- setdiff(names(profiles), floor_animals)
+  strict_cl <- origin_classes(strict_animals)
+  set.seed(SEED)
+  strict_scores <- score_classes(strict_animals, strict_cl)
+  without <- paste(floor_animals, collapse = ", ")
+  strict_sets <- Filter(function(set_name) sum(strict_scores$group[!duplicated(strict_scores$AnimalID)] %in%
+                                                 if (set_name == CONTRAST_GROUP) CONTRAST_GROUP else c("RES", "SUS")) >= 2L,
+                        c(CONTRAST_GROUP, "RES+SUS"))
+  strict <- contrast_table(strict_scores, strict_cl, strict_sets, function(set_name, context) paste0(
+    if (context) "context" else "sensitivity", " (", if (set_name == CONTRAST_GROUP) "control" else "stressed",
+    " animals; strict carry-over rule, run without ", without, if (context) "; post hoc, not corrected", ")"),
+    note = paste0("; strict carry-over rule: rerun without ", without, " (kept only by the DG po floor), universe, ",
+                  "classes, random sets and scores rebuilt from the same seed"))
+  strict$sensitivity <- "strict carry-over rule"
+  contrasts <- rbind(contrasts, strict)
+}
 
 utils::write.csv(set_rows, OUT$sets, row.names = FALSE)
 utils::write.csv(scores, OUT$scores, row.names = FALSE)
@@ -345,13 +380,19 @@ write_run_manifest(MANIFEST, inputs = list(joint_bundle = JOINT_BUNDLE, abc_refe
                    parameters = list(scale = "joint shared-core normalisation, observed values only (no imputation)",
                                      laminae = LAMINAE, resident_types = RESIDENT, afferent_types = AFFERENT,
                                      non_projecting_types = NON_PROJECTING, class_sizes = as.list(table(set_rows$origin_class)),
-                                     control_class_tested = control_tested,
+                                     control_class_tested = cl$control_tested,
                                      universe_proteins = length(universe), null = paste(N_DRAWS, "abundance-decile-matched sets"),
                                      seed = SEED, comparison_group = CONTRAST_GROUP,
                                      control_animals = sort(names(profiles)[group_of == CONTRAST_GROUP]),
                                      replication_animals = sort(names(profiles)[group_of != CONTRAST_GROUP]),
                                      animals_left_out = left_out, carryover_threshold = carry$carryover_threshold[1],
-                                     excluded_acquisitions = carry$Sample[carry$excluded], abc_reference_sha256 = ABC_SHA256,
+                                     flagged_acquisitions = carry$Sample[carry$flagged],
+                                     retained_under_floor = carry$Sample[carry$retained_under_floor],
+                                     excluded_acquisitions = carry$Sample[carry$excluded],
+                                     strict_rule_left_out = floor_animals,
+                                     strict_rule_universe_proteins = if (is.null(strict_cl)) NA_integer_ else length(strict_cl$universe),
+                                     strict_rule_class_sizes = if (is.null(strict_cl)) list() else as.list(table(strict_cl$set_rows$origin_class)),
+                                     abc_reference_sha256 = ABC_SHA256,
                                      inferential_p_values = TRUE, provenance = run_output_provenance(OUT, SCRIPT_ID)),
                    notes = "mRNA of a source cell type (other animals, ABC atlas) is a proxy for where a protein is made; the animal is the unit.")
 message("Afferent sources complete: ", length(profiles), " animals, ", length(universe), " proteins")
