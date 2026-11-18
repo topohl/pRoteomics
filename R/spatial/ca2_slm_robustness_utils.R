@@ -269,16 +269,21 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   # -------------------------------------------------- QC-fail sensitivity
   # A removal of animals that are not in the design (A764 in the 3/3/2 rerun)
-  # is not computed: it would only repeat the canonical effect.
+  # is not computed: it would only repeat the canonical effect. An animal is
+  # removed whole only when none of its acquisitions in this unit passed QC;
+  # with one good hemisphere only the failed acquisition is left out (below).
+  removable <- function(drop) csr_removable_animals(intersect(drop, animals), sm, ctx$qc_fail_samples)
   drop_animals <- function(drop) {
-    k <- !(animals %in% drop)
+    k <- !(animals %in% removable(drop))
     if (all(k)) return(NA_real_)
     if (!sum(st[k] == "SUS") || !sum(st[k] == "RES")) return(NA_real_)
     csr_effect(av[k], st[k])
   }
   drop_label <- function(drop) {
-    k <- !(animals %in% drop)
-    csr_removal_interpretation(sum(st[k] == "SUS"), sum(st[k] == "RES"), computed = !all(k))
+    if (!length(intersect(drop, animals))) return(csr_removal_interpretation(0L, 0L, computed = FALSE))
+    if (!length(removable(drop))) return(csr_kept_animal_interpretation())
+    k <- !(animals %in% removable(drop))
+    csr_removal_interpretation(sum(st[k] == "SUS"), sum(st[k] == "RES"))
   }
   e_755 <- drop_animals("755"); e_764 <- drop_animals("764")
   e_both <- drop_animals(c("755", "764"))
@@ -317,14 +322,17 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   # ------------------------------------------------------ stability flags
   loo_sign_stable <- length(sgn) > 0L && all(sgn)
-  # A whole-animal removal decides a class only when it leaves at least
-  # csr_min_observed_animals() animals in each group, as the removal of both QC-failed
-  # animals never did in the 3/3/3 design. Otherwise (A755 in the 3/3/2 rerun: 1 SUS
-  # versus 3 RES) its effect is reported, labelled descriptive only, and the flag is NA;
-  # the QC check that decides is then the removal of the QC-failed hemisphere alone.
+  # A whole-animal removal is made only for an animal none of whose acquisitions in this
+  # unit passed QC (Tobias, 2026-11-18: with one good hemisphere only the failed acquisition
+  # is left out, and that hemisphere check decides). It decides a class only when it leaves
+  # at least csr_min_observed_animals() animals in each group; otherwise its effect is
+  # reported, labelled descriptive only, and the flag is NA. The flag is NA when no animal
+  # is removed.
   animal_flag <- function(drop, e) {
+    drop <- removable(drop)
+    if (!length(drop)) return(NA)
     k <- !(animals %in% drop)
-    if (!all(k) && csr_removal_needs_label(sum(st[k] == "SUS"), sum(st[k] == "RES"))) return(NA)
+    if (csr_removal_needs_label(sum(st[k] == "SUS"), sum(st[k] == "RES"))) return(NA)
     isTRUE(!csr_same_sign(e, canon_fc)) ||
       isTRUE(csr_rel_change(e, canon_fc) > csr_magnitude_collapse_cut())
   }
@@ -520,6 +528,18 @@ csr_removal_needs_label <- function(n_sus, n_res) {
 
 # computed = FALSE: none of the animals to remove is in the design, so no
 # effect was formed.
+# An animal is removed whole only when none of its acquisitions in the unit passed QC; when
+# one hemisphere is fine, only the failed acquisition is left out (Tobias, 2026-11-18).
+csr_removable_animals <- function(drop, sample_meta, qc_fail_samples) {
+  drop[vapply(drop, function(a) {
+    s <- sample_meta$sample_id[as.character(sample_meta$AnimalID) == a]
+    length(s) > 0L && all(s %in% qc_fail_samples)
+  }, logical(1))]
+}
+csr_kept_animal_interpretation <- function() {
+  "not computed: the animal keeps a hemisphere that passed QC, so only its failed acquisition is left out"
+}
+
 csr_removal_interpretation <- function(n_sus, n_res, computed = TRUE) {
   if (!computed) return("not computed: the animal is not in this design")
   if (csr_removal_needs_label(n_sus, n_res)) {
@@ -572,7 +592,9 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
   flagged <- ctx[ctx$qc_flag != "PASS", , drop = FALSE]
   fail_sus <- ctx[ctx$qc_flag == "FAIL" & ctx$StressGroup == "SUS", , drop = FALSE]
   k <- nrow(fail_sus)
-  k_an <- length(unique(fail_sus$AnimalID))
+  # QC-failed SUS animals that are removed whole: none of their acquisitions passed QC
+  k_an <- sum(vapply(unique(fail_sus$AnimalID),
+                     function(a) all(ctx$qc_flag[ctx$AnimalID == a] == "FAIL"), logical(1)))
 
   miss <- tapply(ctx$fraction_missing_preimputation, ctx$StressGroup, mean)
   miss_dir <- if (!all(c("SUS", "RES") %in% names(miss))) "missingness in SUS and RES not compared" else
@@ -624,7 +646,11 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
   removed <- if (k_an == 2L) "both QC-failed SUS animals" else
     if (k_an == 1L) "the QC-failed SUS animal" else
       sprintf("all %s QC-failed SUS animals", csr_number_word(k_an))
-  qc_removal <- if (!k_an) "No SUS animal is QC-failed, so no QC-fail removal is made." else
+  qc_removal <- if (!k) "No SUS acquisition is QC-failed, so no QC-fail removal is made." else
+    if (!k_an) paste0("No animal is removed for QC: ",
+                      if (k == 1L) "the QC-failed SUS acquisition is left out alone, and the animal's other hemisphere, "
+                      else "the QC-failed SUS acquisitions are left out alone, and each animal's other hemisphere, ",
+                      "which passed QC, is kept.") else
     paste0("Removing ", removed, " leaves ", n_sus - k_an, " versus ", n_res,
            if (csr_removal_needs_label(n_sus - k_an, n_res)) {
              if (csr_removal_needs_label(n_sus - 1L, n_res))

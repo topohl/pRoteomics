@@ -412,6 +412,8 @@ removal_label_cols <- c(effect_excluding_A755 = "effect_excluding_A755_interpret
                         effect_excluding_both_QC_fail_SUS = "effect_excluding_both_interpretation")
 removal_eval <- if (is.null(sctx)) NULL else lapply(names(removal_sets), function(eff) {
   drop <- intersect(removal_sets[[eff]], as.character(sctx$AnimalID))
+  # an animal is removed whole only when none of its acquisitions passed QC (csr_removable_animals)
+  drop <- drop[vapply(drop, function(a) all(sctx$qc_flag[as.character(sctx$AnimalID) == a] == "FAIL"), logical(1))]
   left <- sctx[!as.character(sctx$AnimalID) %in% drop, , drop = FALSE]
   n_sus <- length(unique(left$AnimalID[left$StressGroup == "SUS"]))
   n_res <- length(unique(left$AnimalID[left$StressGroup == "RES"]))

@@ -154,22 +154,22 @@ testthat::test_that("per-protein QC-fail removals follow the animals in the desi
     csr_protein_robustness("P1", canon, imputed, mask, ctx)$summary
   }
   full <- one_protein(TRUE)
-  testthat::expect_false(grepl("DESCRIPTIVE ONLY", full$effect_excluding_A755_interpretation))
-  testthat::expect_false(grepl("DESCRIPTIVE ONLY", full$effect_excluding_A764_interpretation))
-  testthat::expect_identical(full$effect_excluding_both_interpretation,
-    "DESCRIPTIVE ONLY: 1 SUS versus 3 RES is not a valid group comparison")
-  testthat::expect_true(is.finite(full$effect_excluding_A764))
+  # each QC-failed animal keeps a hemisphere that passed QC, so no animal is removed whole
+  for (nm in c("A755", "A764")) {
+    testthat::expect_true(is.na(full[[paste0("effect_excluding_", nm)]]), info = nm)
+    testthat::expect_identical(full[[paste0("effect_excluding_", nm, "_interpretation")]],
+                               csr_kept_animal_interpretation(), info = nm)
+    testthat::expect_true(is.na(full[[paste0(nm, "_sensitive")]]), info = nm)
+  }
+  testthat::expect_identical(full$effect_excluding_both_interpretation, csr_kept_animal_interpretation())
 
   rerun <- one_protein(FALSE)
-  # without A764, removing A755 leaves one SUS animal
-  testthat::expect_identical(rerun$effect_excluding_A755_interpretation,
-    "DESCRIPTIVE ONLY: 1 SUS versus 3 RES is not a valid group comparison")
-  testthat::expect_match(rerun$effect_excluding_both_interpretation, "^DESCRIPTIVE ONLY")
-  testthat::expect_equal(rerun$effect_excluding_both_QC_fail_SUS, rerun$effect_excluding_A755)
+  testthat::expect_true(is.na(rerun$effect_excluding_A755))
+  testthat::expect_identical(rerun$effect_excluding_A755_interpretation, csr_kept_animal_interpretation())
   # an absent animal is not removed and no effect is reported for it
   testthat::expect_true(is.na(rerun$effect_excluding_A764))
-  testthat::expect_match(rerun$effect_excluding_A764_interpretation, "^not computed")
-  testthat::expect_false(rerun$A764_sensitive)
+  testthat::expect_match(rerun$effect_excluding_A764_interpretation, "^not computed: the animal is not in this design")
+  testthat::expect_true(is.na(rerun$A764_sensitive))
   # the reasons name the QC-failed samples of the design present
   testthat::expect_identical(full$CA2_SLM_robustness_class, "robust_to_missingness_and_QC")
   testthat::expect_match(full$classification_reason, "not dependent on either QC-failed SUS sample", fixed = TRUE)
@@ -177,12 +177,13 @@ testthat::test_that("per-protein QC-fail removals follow the animals in the desi
   testthat::expect_match(rerun$classification_reason, "not dependent on the QC-failed SUS sample", fixed = TRUE)
 })
 
-testthat::test_that("a whole-animal removal that leaves one animal in a group decides no class", {
+testthat::test_that("an animal with a hemisphere that passed QC is never removed whole", {
   # RES at 0; A111 at -0.2; A755 at -1.0 in both hemispheres (its Left acquisition is QC-FAILED);
-  # A764, when present, at -0.2. Dropping A755 shrinks the effect by more than half; dropping
+  # A764, when present, at -0.2. Dropping A755 would shrink the effect by more than half; dropping
   # only its QC-failed hemisphere changes nothing.
-  one_protein <- function(with_764) {
+  one_protein <- function(with_764, both_755_fail = FALSE) {
     s <- synthetic_ctx(with_764)
+    if (both_755_fail) s$qc_flag[s$AnimalID == "755"] <- "FAIL"
     animals <- sort(unique(s$AnimalID))
     stress <- stats::setNames(s$StressGroup[match(animals, s$AnimalID)], animals)
     val <- c(CON = 0.5, RES = 0, SUS = -0.2)[s$StressGroup]
@@ -198,18 +199,22 @@ testthat::test_that("a whole-animal removal that leaves one animal in a group de
                         pval = 1e-4, padj = 0.01, stringsAsFactors = FALSE)
     csr_protein_robustness("P1", canon, imputed, mask, ctx)$summary
   }
-  # 3/3/3: dropping A755 leaves A111 and A764 (2 versus 3) and decides the class
-  full <- one_protein(TRUE)
+  # A755's Right acquisition passed QC: A755 is kept and only its Left acquisition is left out
+  for (w in c(TRUE, FALSE)) {
+    r <- one_protein(w)
+    testthat::expect_true(is.na(r$A755_sensitive))
+    testthat::expect_true(is.na(r$effect_excluding_A755))
+    testthat::expect_false(r$qc_failed_hemisphere_sensitive)
+    testthat::expect_identical(r$CA2_SLM_robustness_class, "robust_to_missingness_and_QC")
+  }
+  # with both of its acquisitions QC-failed A755 is removed whole: in 3/3/3 that leaves 2 versus 3 and decides
+  full <- one_protein(TRUE, both_755_fail = TRUE)
   testthat::expect_true(full$A755_sensitive)
   testthat::expect_identical(full$CA2_SLM_robustness_class, "not_claimable_due_to_QC")
-  # 3/3/2: dropping A755 leaves A111 alone (1 versus 3); reported, labelled, not deciding
-  rerun <- one_protein(FALSE)
+  # in 3/3/2 it leaves A111 alone (1 versus 3): reported, labelled, deciding no class
+  rerun <- one_protein(FALSE, both_755_fail = TRUE)
   testthat::expect_true(is.na(rerun$A755_sensitive))
-  testthat::expect_gt(abs(rerun$effect_excluding_A755 - rerun$canonical_log2FC_SUS_minus_RES),
-                      0.5 * abs(rerun$canonical_log2FC_SUS_minus_RES))
   testthat::expect_match(rerun$effect_excluding_A755_interpretation, "^DESCRIPTIVE ONLY")
-  testthat::expect_false(rerun$qc_failed_hemisphere_sensitive)
-  testthat::expect_identical(rerun$CA2_SLM_robustness_class, "robust_to_missingness_and_QC")
 })
 
 testthat::test_that("generated wording follows the design in the sample context", {
@@ -225,8 +230,8 @@ testthat::test_that("generated wording follows the design in the sample context"
   testthat::expect_identical(t9$loo_design,
                              "Leave-one-animal-out on a 3-versus-3 design leaves 2 versus 3.")
   testthat::expect_identical(t9$qc_fail_removal, paste0(
-    "Removing both QC-failed SUS animals leaves 1 versus 3, which is NOT a valid group ",
-    "comparison and is labelled descriptive-only wherever it appears."))
+    "No animal is removed for QC: the QC-failed SUS acquisitions are left out alone, and each animal's ",
+    "other hemisphere, which passed QC, is kept."))
   testthat::expect_identical(t9$missingness_direction, "higher missingness in SUS than RES")
   testthat::expect_identical(c(t9$n_samples, t9$n_sus_res_samples, t9$n_animals), c(18L, 12L, 9L))
 
@@ -241,11 +246,13 @@ testthat::test_that("generated wording follows the design in the sample context"
     "Leave-one-animal-out on a 2-versus-3 design leaves 1 versus 3 or 2 versus 2. A leave-out that leaves ",
     "fewer than 2 animals in a group is descriptive only; it enters the classes only through the requirement ",
     "that the sign is stable under every leave-out."))
-  testthat::expect_match(t8$qc_fail_removal,
+  testthat::expect_identical(t8$qc_fail_removal, paste0(
+    "No animal is removed for QC: the QC-failed SUS acquisition is left out alone, and the animal's ",
+    "other hemisphere, which passed QC, is kept."))
+  # an animal with no acquisition that passed QC is removed whole, as before
+  s <- synthetic_ctx(FALSE); s$qc_flag[s$AnimalID == "755"] <- "FAIL"
+  testthat::expect_match(csr_design_text(s)$qc_fail_removal,
     "^Removing the QC-failed SUS animal leaves 1 versus 3, which is NOT a valid group comparison")
-  # in 3/3/2 that removal decides no class, and the text says so
-  testthat::expect_match(t8$qc_fail_removal, "and decides no class", fixed = TRUE)
-  testthat::expect_false(grepl("wherever it appears", t8$qc_fail_removal, fixed = TRUE))
   testthat::expect_identical(c(t8$n_samples, t8$n_sus_res_samples, t8$n_animals), c(16L, 10L, 8L))
   # without the neuropil QC table the share is stated for CA2-SLM alone
   testthat::expect_identical(csr_design_text(synthetic_ctx(FALSE))$flagged_share_with_flags,
@@ -386,31 +393,37 @@ testthat::test_that("leave-one-out removes exactly one animal at a time", {
   testthat::expect_true(all(l$can_change_estimate[l$omitted_StressGroup %in% c("SUS", "RES")]))
 })
 
-testthat::test_that("the QC-fail analyses exclude exactly the named animals", {
-  testthat::skip_if_not(have(ROB("CA2_SLM_DAP_robustness.csv")), "audit not run")
+testthat::test_that("the QC-fail analyses remove only animals without a passing hemisphere, and exactly them", {
+  testthat::skip_if_not(have(ROB("CA2_SLM_DAP_robustness.csv")) &&
+                          have(ROB("CA2_SLM_sample_context.csv")), "audit not run")
   r <- rd(ROB("CA2_SLM_DAP_robustness.csv"))
   l <- rd(ROB("CA2_SLM_leave_one_animal_out_long.csv"))
-  # the A755-out effect must equal the leave-one-out effect for animal 755,
-  # which proves it removed 755 and nothing else
-  m <- match(paste(r$original_identifier, "755"),
-             paste(l$original_identifier, l$omitted_AnimalID))
-  testthat::expect_equal(r$effect_excluding_A755, l$loo_effect[m])
-  # without A764 in the design both sides are NA (an all-NA column reads as logical)
-  m4 <- match(paste(r$original_identifier, "764"),
-              paste(l$original_identifier, l$omitted_AnimalID))
-  testthat::expect_equal(as.numeric(r$effect_excluding_A764), as.numeric(l$loo_effect[m4]))
-  # and they are not the same analysis
-  testthat::expect_false(isTRUE(all.equal(r$effect_excluding_A755,
-                                          r$effect_excluding_A764)))
+  sc <- rd(ROB("CA2_SLM_sample_context.csv"))
+  for (a in c("755", "764")) {
+    eff <- as.numeric(r[[paste0("effect_excluding_A", a)]])
+    flags <- sc$qc_flag[as.character(sc$AnimalID) == a]
+    if (length(flags) && all(flags == "FAIL")) {
+      # removed whole: the effect equals the leave-one-out effect for that animal
+      m <- match(paste(r$original_identifier, a), paste(l$original_identifier, l$omitted_AnimalID))
+      testthat::expect_equal(eff, as.numeric(l$loo_effect[m]), info = a)
+    } else {
+      # absent, or kept for its passing hemisphere: no whole-animal effect
+      testthat::expect_true(all(is.na(eff)), info = a)
+    }
+  }
 })
 
-testthat::test_that("removing both QC-failed SUS animals is labelled descriptive-only", {
-  testthat::skip_if_not(have(ROB("CA2_SLM_DAP_robustness.csv")), "audit not run")
+testthat::test_that("removing both QC-failed SUS animals follows the whole-animal rule", {
+  testthat::skip_if_not(have(ROB("CA2_SLM_DAP_robustness.csv")) &&
+                          have(ROB("CA2_SLM_sample_context.csv")), "audit not run")
   r <- rd(ROB("CA2_SLM_DAP_robustness.csv"))
-  testthat::expect_true(all(grepl("DESCRIPTIVE ONLY",
-                                  r$effect_excluding_both_interpretation)))
-  if (!unpinned) testthat::expect_true(all(grepl("1 SUS versus 3 RES",
-                                                 r$effect_excluding_both_interpretation)))
+  sc <- rd(ROB("CA2_SLM_sample_context.csv"))
+  gone <- Filter(function(a) { f <- sc$qc_flag[as.character(sc$AnimalID) == a]; length(f) && all(f == "FAIL") },
+                 c("755", "764"))
+  if (!length(gone)) {
+    testthat::expect_true(all(is.na(r$effect_excluding_both_QC_fail_SUS)))
+    testthat::expect_true(all(grepl("^not computed", r$effect_excluding_both_interpretation)))
+  }
   # it is computed, but it never feeds a robustness class
   u <- paste(deparse(body(csr_classify)), collapse = "\n")
   testthat::expect_false(grepl("excluding_both", u))
@@ -426,6 +439,7 @@ testthat::test_that("every QC-fail removal leaving fewer than two animals in a g
   sets <- list(A755 = "755", A764 = "764", both = c("755", "764"))
   for (nm in names(sets)) {
     drop <- intersect(sets[[nm]], as.character(sc$AnimalID))
+    drop <- drop[vapply(drop, function(a) all(sc$qc_flag[as.character(sc$AnimalID) == a] == "FAIL"), logical(1))]
     left <- sc[!as.character(sc$AnimalID) %in% drop, ]
     n_sus <- length(unique(left$AnimalID[left$StressGroup == "SUS"]))
     n_res <- length(unique(left$AnimalID[left$StressGroup == "RES"]))
