@@ -10,7 +10,7 @@
 # Script: analysis/spatial_validation/describe_proteomic_animals.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv; +1 more
+# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv; +1 more
 # Produces: results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv; results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv; +4 more
 # Dataset behavior: global; reads the joint acquisition bundle and the three animal-level matrices.
 # Notes: Descriptive: no test. Missingness before imputation per acquisition, within-compartment PCA with the share of
@@ -55,7 +55,7 @@ cli <- integration_cli(default_dataset = "all")
 JOINT_BUNDLE <- preprocessing_find("joint_compartment_qc_matrices.rds", owner = "build_joint_protigy_input",
                                    legacy_stage = "01_preprocessing", legacy_substep = "joint_compartment_qc",
                                    scope = "global", child = "models", legacy_family = "processed")
-OUTCOMES <- path_external("behaviour_outcomes", "behaviour_outcomes_ov4.csv")
+OUTCOMES <- path_external("behaviour_outcomes", "behaviour_outcomes_ov6.csv")
 OUTCOME_INFO <- path_external("behaviour_outcomes", "outcome_info.csv")
 OUT <- list(
   missingness = file.path(CANONICAL_PATHS$tables, "acquisition_missingness.csv"),
@@ -109,7 +109,7 @@ imputed_rows <- function(ds) {
 FILTER_N <- vapply(names(DATASETS), imputed_rows, integer(1))
 info <- utils::read.csv(OUTCOME_INFO, stringsAsFactors = FALSE)
 if (!identical(info$sha256[info$item == "output"], unname(tools::sha256sum(OUTCOMES))))
-  stop("behaviour_outcomes_ov4.csv differs from outcome_info.csv; rebuild it with its script.", call. = FALSE)
+  stop("behaviour_outcomes_ov6.csv differs from outcome_info.csv; rebuild it with its script.", call. = FALSE)
 
 jb <- readRDS(JOINT_BUNDLE); md <- jb$metadata; ft <- jb$feature_table
 S <- md$.joint_sample_id

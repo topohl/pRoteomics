@@ -9,7 +9,7 @@
 # Script: analysis/spatial_validation/couple_network_edges_to_outcomes.R
 # Stage: coupling
 # Scope: global
-# Consumes: required results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores.csv; data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv; data/external/behaviour_outcomes/outcome_info.csv
+# Consumes: required results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores.csv; data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv; data/external/behaviour_outcomes/outcome_info.csv
 # Produces: results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_correlations.csv; results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_values.csv
 # Dataset behavior: global; the eight candidate neuropil edges of test_network_behaviour_coupling.
 # Notes: Replaces the outcomes of the earlier coupling (an April 2026 workbook copy and the retired GAMM movement score,
@@ -43,7 +43,7 @@ cli <- integration_cli(default_dataset = "all")
 
 EDGES <- repo_path("results", "integration", "test_network_behaviour_coupling", "global", "tables", "animal_level_candidate_edge_scores.csv")
 EDGES_SHA256 <- "c5285d754614908cdc3f3aedc0ca29f80725dee42d48a901d245bd8e5e3a8d5d"
-OUTCOMES <- path_external("behaviour_outcomes", "behaviour_outcomes_ov4.csv")
+OUTCOMES <- path_external("behaviour_outcomes", "behaviour_outcomes_ov6.csv")
 OUTCOME_INFO <- path_external("behaviour_outcomes", "outcome_info.csv")
 OUT <- list(
   correlations = file.path(CANONICAL_PATHS$tables, "edge_outcome_correlations.csv"),
@@ -65,7 +65,7 @@ if (!identical(edges_sha256_used, EDGES_SHA256) && !edges_unpinned)
   stop("The stored edge scores differ from the pinned table of the 2026-10-26 coupling run.", call. = FALSE)
 info <- utils::read.csv(OUTCOME_INFO, stringsAsFactors = FALSE)
 if (!identical(info$sha256[info$item == "output"], unname(tools::sha256sum(OUTCOMES))))
-  stop("behaviour_outcomes_ov4.csv differs from outcome_info.csv; rebuild it with its script.", call. = FALSE)
+  stop("behaviour_outcomes_ov6.csv differs from outcome_info.csv; rebuild it with its script.", call. = FALSE)
 invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
 
 edges <- utils::read.csv(EDGES, stringsAsFactors = FALSE, colClasses = c(AnimalID = "character"))

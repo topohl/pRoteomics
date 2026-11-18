@@ -1089,7 +1089,7 @@ stages:
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_soma/neuron_soma_animal_level.gct"
           - "data/processed/01_preprocessing/protigy_input_animal_level/microglia/microglia_animal_level.gct"
           - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
-          - "data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv"
+          - "data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv"
           - "data/external/behaviour_outcomes/outcome_info.csv"
         consumes_optional: []
         recomputes_core_state: false
@@ -1105,7 +1105,7 @@ stages:
           - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_values.csv"
         consumes_required:
           - "results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores.csv"
-          - "data/external/behaviour_outcomes/behaviour_outcomes_ov4.csv"
+          - "data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv"
           - "data/external/behaviour_outcomes/outcome_info.csv"
         consumes_optional: []
         recomputes_core_state: false
