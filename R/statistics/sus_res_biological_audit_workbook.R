@@ -122,7 +122,7 @@ write_sus_res_biological_audit_workbook <- function(
   )
   dap_human <- dap_human[order(-dap_human$`FDR-supported DAPs`, dap_human$Dataset, dap_human$`Spatial unit`, method = "radix"), , drop = FALSE]
 
-  wb <- openxlsx::createWorkbook(creator = "Codex downstream presentation layer")
+  wb <- openxlsx::createWorkbook(creator = "pRoteomics downstream presentation layer")
   sheets <- c("Overview", "Spatial Map", "Theme Detail", "GO Term Audit", "DAP Summary", "Provenance")
   tab_colours <- rep("#5B6770", length(sheets))
   invisible(Map(function(sheet, tab_colour) openxlsx::addWorksheet(wb, sheet, gridLines = FALSE, tabColour = tab_colour), sheets, tab_colours))
