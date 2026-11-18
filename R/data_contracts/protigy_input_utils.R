@@ -942,3 +942,20 @@ protigy_prepare_animal_level <- function(expression,
   }
   result
 }
+
+# Protein groups with no mouse protein (keratins, trypsin and albumin of other species, from sample handling and
+# digestion) are left out of the group comparisons by the rule WGCNA uses (tokenize_wgcna_mouse_only): a group is
+# kept when at least one of its protein names ends in _MOUSE. Rows without a protein name are left as they are.
+protigy_drop_non_mouse_groups <- function(expression) {
+  name_col <- intersect(c("T: Protein.Names", "Protein.Names"), colnames(expression))
+  if (length(name_col) != 1L) {
+    stop("Expression must contain exactly one protein-name column (T: Protein.Names or Protein.Names).", call. = FALSE)
+  }
+  names_raw <- as.character(expression[[name_col]])
+  has_name <- !is.na(names_raw) & nzchar(trimws(names_raw))
+  mouse <- vapply(strsplit(toupper(names_raw), ";", fixed = TRUE),
+                  function(t) any(grepl("_MOUSE$", trimws(t))), logical(1))
+  drop <- has_name & !mouse
+  list(expression = expression[!drop, , drop = FALSE],
+       dropped = data.frame(source_row = which(drop), protein_names = names_raw[drop], stringsAsFactors = FALSE))
+}

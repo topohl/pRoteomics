@@ -4,7 +4,10 @@
 # Existing imputed log2 values are averaged across available valid Left/Right
 # hemispheres within AnimalID x canonical spatial unit. A single valid hemisphere
 # is retained without hemisphere imputation. No transformation, normalization,
-# protein remapping, or downstream analysis occurs.
+# protein remapping, or downstream analysis occurs. Protein groups with no mouse
+# protein (keratins, trypsin, albumin of other species) are left out, by the rule
+# WGCNA uses (protigy_drop_non_mouse_groups); they are listed in
+# excluded_non_mouse_protein_groups.csv.
 
 suppressPackageStartupMessages({
   required_packages <- c("readxl", "writexl")
@@ -70,6 +73,7 @@ output_paths <- function(dataset) {
     audit = file.path(table_dir, "aggregation_audit.csv"),
     summary = file.path(table_dir, "aggregation_summary.csv"),
     assignment = file.path(table_dir, "source_sample_assignment.csv"),
+    non_mouse = file.path(table_dir, "excluded_non_mouse_protein_groups.csv"),
     manifest = file.path(log_dir, "run_manifest.yml")
   )
 }
@@ -191,6 +195,8 @@ run_one <- function(dataset) {
     stringsAsFactors = FALSE,
     check.names = FALSE
   )
+  non_mouse <- protigy_drop_non_mouse_groups(expression)
+  expression <- non_mouse$expression
   metadata <- as.data.frame(
     readxl::read_excel(inputs$metadata_file),
     stringsAsFactors = FALSE,
@@ -209,6 +215,7 @@ run_one <- function(dataset) {
   dir_create(paths$table_dir)
   dir_create(paths$log_dir)
   utils::write.csv(bundle$aggregation_audit, paths$audit, row.names = FALSE, na = "")
+  utils::write.csv(non_mouse$dropped, paths$non_mouse, row.names = FALSE, na = "")
   utils::write.csv(summary, paths$summary, row.names = FALSE, na = "")
   utils::write.csv(
     bundle$source_sample_assignment,
@@ -230,7 +237,8 @@ run_one <- function(dataset) {
   outputs <- c(
     aggregation_audit = paths$audit,
     aggregation_summary = paths$summary,
-    source_sample_assignment = paths$assignment
+    source_sample_assignment = paths$assignment,
+    excluded_non_mouse_protein_groups = paths$non_mouse
   )
   if (isTRUE(bundle$valid)) {
     outputs <- c(
@@ -251,6 +259,8 @@ run_one <- function(dataset) {
       dataset = dataset,
       canonical_spatial_unit = bundle$spatial_unit,
       biological_replicate = "AnimalID",
+      non_mouse_protein_groups_excluded = nrow(non_mouse$dropped),
+      non_mouse_rule = "left out when no protein name of the group ends in _MOUSE (as WGCNA)",
       protigy_row_descriptor = "Description",
       protigy_row_descriptor_count = 1L,
       protein_description_source = bundle$description_source,
