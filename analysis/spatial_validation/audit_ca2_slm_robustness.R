@@ -242,13 +242,15 @@ rob <- rob |> dplyr::relocate(dplyr::any_of(c(
 
 # ================== normalisation-bias context (protein-independent shift)
 #
-# Per-sample median centring uses only OBSERVED values, so a heavily missing
-# sample gets an inflated median and every one of its proteins is displaced
-# downwards - including proteins with no imputed value at all. Measured here
-# on proteins observed in every CA2_slm sample, so imputation cannot contribute.
+# Under all-observed median centring (config/normalisation.yml), a heavily
+# missing sample gets an inflated median and every one of its proteins is
+# displaced downwards - including proteins with no imputed value at all. Measured here
+# on this run's centred values of the proteins observed in every CA2_slm
+# sample, so imputation cannot contribute.
 
 message("Measuring the missingness-driven normalisation displacement")
-bias <- csr_normalization_bias_context(RAW, neuro$sample_id, sample_meta)
+bias <- csr_normalization_bias_context(RAW, neuro$sample_id, sample_meta, imputed_path = IMPUTED)
+message("  centred values: ", bias$centred_values_source)
 message(sprintf("  cor(missingness, observed median) = %+.3f", bias$cor_missing_vs_median))
 message(sprintf("  cor(missingness, centred value of always-observed proteins) = %+.3f",
                 bias$cor_missing_vs_centred))
@@ -268,7 +270,7 @@ rob$exceeds_global_displacement <-
   abs(rob$canonical_log2FC_SUS_minus_RES) > abs(bias$sus_minus_res_displacement)
 rob$displacement_note <- paste0(
   "the displacement is a protein-independent consequence of per-sample median ",
-  "centring under unequal missingness, measured on the ", bias$n_always_observed,
+  "centring under unequal missingness, measured on this run's centred values of the ", bias$n_always_observed,
   " proteins observed in all ", nrow(sample_meta), " CA2_slm samples; it is NOT a refitted statistic")
 
 # ======================================= PART 13: the fully observed subset

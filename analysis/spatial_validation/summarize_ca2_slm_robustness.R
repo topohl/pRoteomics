@@ -278,7 +278,7 @@ claim_status <- data.frame(
     not_claimable_txt,
     sprintf("%d cannot be evaluated: fewer than %d fully observed animals in at least one group", n_by("insufficient_observed_data"), csr_min_observed_animals()),
     sprintf(paste0("Canonical DA showed a concentration of SUS-RES differences in CA2-SLM, but this spatial unit also displayed substantial group-differential missingness%s. Protein-level sensitivity analyses were therefore used to distinguish robust effects from imputation/QC-sensitive findings. %d of %d effects remain robust; a protein-independent normalisation displacement of %+.3f log2 (SUS minus RES) arising from per-sample median centring under unequal missingness applies to every protein in the unit."),
-            if (is.null(dtxt) || !dtxt$n_qc_fail_sus_samples) "" else paste0(" and included ", dtxt$qc_fail_sus_samples),
+            if (is.null(dtxt)) "" else paste0(", highest in ", dtxt$shallowest_sus),
             n_by("robust_to_missingness_and_QC"), nrow(rob), disp),
     paste0("NOT permitted unless explicitly scoped to the robustness-qualified subset: ",
            paste(CA2_RESTRICTED_PHRASES, collapse = "; "))),
@@ -388,14 +388,17 @@ add("LOO_removes_exactly_one_animal", TRUE,
     if (loo_ok) "PASS" else "FAIL",
     paste0("each protein has exactly one leave-one-out row per AnimalID, ", n_loo_animals, " in total"))
 
-# A764 is not part of the 3/3/2 rerun; the QC-failed animals expected are those of 755 and 764 that are in the design.
-qc_fail_expected <- if (is.null(sctx)) character(0) else intersect(c("755", "764"), as.character(sctx$AnimalID))
-add("A755_A764_identities_correct", TRUE,
-    if (!is.null(sctx) && "755" %in% qc_fail_expected &&
-        identical(sort(unique(as.character(
-          sctx$AnimalID[sctx$qc_flag == "FAIL"]))), qc_fail_expected))
+# The audit's QC flags must be this run's dataset QC calls for the CA2-SLM samples. Which acquisitions fail depends
+# on the QC metrics and on the centring, so no animal is assumed.
+qc_table_flag <- if (is.null(sctx) || is.null(qc_flags)) NULL else
+  as.character(qc_flags$outlier_flag[match(sctx$sample_id, qc_flags$Sample)])
+qc_fail_ctx <- if (is.null(sctx)) NULL else sctx[sctx$qc_flag == "FAIL", , drop = FALSE]
+add("QC_flags_match_dataset_QC", TRUE,
+    if (!is.null(qc_table_flag) && !anyNA(qc_table_flag) && identical(as.character(sctx$qc_flag), qc_table_flag))
       "PASS" else "FAIL",
-    paste0("the QC-FAILED CA2-SLM samples belong to the SUS animal(s) ", paste(qc_fail_expected, collapse = " and ")))
+    if (is.null(qc_table_flag)) "the sample context or the dataset QC table is missing" else
+      paste0("the audit's QC flags of the ", nrow(sctx), " CA2-SLM samples are compared with the dataset QC table; QC-FAILED: ",
+             if (!nrow(qc_fail_ctx)) "none" else paste(csr_sample_labels(qc_fail_ctx, with_flag = FALSE), collapse = ", ")))
 
 add("A755_out_excludes_only_A755", TRUE,
     if (!is.null(loo) && all(loo$omitted_AnimalID[loo$omitted_AnimalID == "755"] == "755"))

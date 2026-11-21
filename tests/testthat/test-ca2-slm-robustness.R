@@ -227,6 +227,8 @@ testthat::test_that("generated wording follows the design in the sample context"
   testthat::expect_identical(t9$qc_fail_sus_samples, "two QC-failed SUS samples")
   testthat::expect_identical(t9$qc_fail_most_missing,
                              "the two QC-FAILED SUS samples are the two most missing")
+  testthat::expect_identical(t9$shallowest_sus,
+    "A755 Left, the shallowest of the 18 CA2-SLM samples, with 25.0% of the analysed proteins not detected")
   testthat::expect_identical(t9$loo_design,
                              "Leave-one-animal-out on a 3-versus-3 design leaves 2 versus 3.")
   testthat::expect_identical(t9$qc_fail_removal, paste0(
@@ -242,6 +244,12 @@ testthat::test_that("generated wording follows the design in the sample context"
     "1 of the 3 QC-flagged neuropil samples - a QC-FAILED SUS acquisition (A755 Left)")
   testthat::expect_identical(t8$qc_fail_sus_samples, "one QC-failed SUS sample")
   testthat::expect_identical(t8$qc_fail_most_missing, "the QC-FAILED SUS sample is the most missing")
+  testthat::expect_identical(t8$shallowest_sus,
+    "A755 Left, the shallowest of the 16 CA2-SLM samples, with 25.0% of the analysed proteins not detected")
+  # when a non-SUS sample is shallower, the SUS hemisphere is named as the shallowest SUS hemisphere
+  s2 <- synthetic_ctx(FALSE); s2$fraction_missing_preimputation[s2$AnimalID == "765" & s2$hemisphere == "R"] <- 0.30
+  testthat::expect_identical(csr_design_text(s2)$shallowest_sus,
+    "A755 Left, the shallowest SUS hemisphere, with 25.0% of the analysed proteins not detected")
   testthat::expect_identical(t8$loo_design, paste0(
     "Leave-one-animal-out on a 2-versus-3 design leaves 1 versus 3 or 2 versus 2. A leave-out that leaves ",
     "fewer than 2 animals in a group is descriptive only; it enters the classes only through the requirement ",

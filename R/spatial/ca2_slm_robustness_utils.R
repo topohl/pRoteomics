@@ -138,18 +138,28 @@ csr_preimputation_mask <- function(raw_path, dataset_samples, unit_samples) {
 
 # ------------------------------------------- normalisation bias context
 #
-# archive/01_preprocessing/01_impute.r median-centres each sample column on its
-# OBSERVED values (step 4) before imputing (step 6). When a sample is heavily
-# missing, only the more abundant proteins are detected, so its observed
-# median is inflated; subtracting that inflated median then displaces EVERY
-# protein in that sample downwards, including proteins with no imputed value
-# anywhere. This function measures that displacement directly, using only
-# proteins observed in every sample of the unit, so imputation cannot enter.
-csr_normalization_bias_context <- function(raw_path, dataset_samples, sample_meta) {
+# archive/01_preprocessing/01_impute.r centres each sample column on one median
+# before imputing; config/normalisation.yml chooses the median of the sample's
+# OBSERVED values (all_observed_median, primary) or of the proteins quantified
+# in every sample of the compartment (complete_case_median). Under all-observed
+# centring a heavily missing sample detects only its more abundant proteins, so
+# its median is inflated and subtracting it displaces EVERY protein in that
+# sample downwards, including proteins with no imputed value anywhere. This
+# function measures the SUS-RES displacement on the proteins observed in every
+# sample of the unit, so imputation cannot enter. With imputed_path (this run's
+# sample-level matrix) it is measured on the values the run analysed, whichever
+# centring the run used; without it, on raw values centred on each sample's
+# observed median over the unit's analysed rows. Rows are matched by
+# Protein.Group, which is unique where Protein.Names is not.
+csr_normalization_bias_context <- function(raw_path, dataset_samples, sample_meta, imputed_path = NULL) {
   raw <- utils::read.delim(raw_path, check.names = FALSE, stringsAsFactors = FALSE)
+  if (!"Protein.Group" %in% names(raw) || anyDuplicated(raw$Protein.Group))
+    stop("the raw matrix needs a unique Protein.Group column", call. = FALSE)
   sub <- as.matrix(raw[, intersect(dataset_samples, names(raw)), drop = FALSE])
   storage.mode(sub) <- "double"
-  sub <- sub[rowMeans(is.na(sub)) <= 0.7, , drop = FALSE]
+  keep <- rowMeans(is.na(sub)) <= 0.7
+  sub <- sub[keep, , drop = FALSE]
+  rownames(sub) <- raw$Protein.Group[keep]
   lg <- log2(sub)
   cols <- sample_meta$sample_id
   unit <- lg[, cols, drop = FALSE]
@@ -157,7 +167,24 @@ csr_normalization_bias_context <- function(raw_path, dataset_samples, sample_met
   med <- apply(unit, 2, stats::median, na.rm = TRUE)
   miss <- colMeans(is.na(unit))
   complete_rows <- stats::complete.cases(unit)
-  centred <- sweep(unit[complete_rows, , drop = FALSE], 2, med, "-")
+  if (is.null(imputed_path)) {
+    centred <- sweep(unit[complete_rows, , drop = FALSE], 2, med, "-")
+    centred_source <- "raw log2 values centred on each sample's observed median over the unit's analysed rows"
+  } else {
+    x <- as.data.frame(readxl::read_excel(imputed_path))
+    if (!"Protein.Group" %in% names(x) || anyDuplicated(x$Protein.Group))
+      stop("the imputed matrix needs a unique Protein.Group column: ", imputed_path, call. = FALSE)
+    absent <- setdiff(cols, names(x))
+    if (length(absent))
+      stop("the imputed matrix lacks ", length(absent), " unit sample column(s): ", imputed_path, call. = FALSE)
+    rows <- match(rownames(unit)[complete_rows], x$Protein.Group)
+    if (anyNA(rows))
+      stop(sum(is.na(rows)), " always-observed protein group(s) are absent from the imputed matrix: ",
+           imputed_path, call. = FALSE)
+    centred <- as.matrix(x[rows, cols, drop = FALSE])
+    storage.mode(centred) <- "double"
+    centred_source <- "this run's centred sample values (imputed matrix; every protein used is observed in all unit samples)"
+  }
 
   per_sample <- data.frame(
     sample_id = cols,
@@ -169,6 +196,7 @@ csr_normalization_bias_context <- function(raw_path, dataset_samples, sample_met
     median_observed_log2 = as.numeric(med),
     n_proteins_observed_in_every_sample = sum(complete_rows),
     mean_centred_value_of_always_observed_proteins = as.numeric(colMeans(centred)),
+    centred_values_source = centred_source,
     stringsAsFactors = FALSE)
 
   # per animal, the displacement is the mean of its two hemispheres, exactly
@@ -184,7 +212,8 @@ csr_normalization_bias_context <- function(raw_path, dataset_samples, sample_met
        cor_missing_vs_median = stats::cor(miss, med),
        cor_missing_vs_centred = stats::cor(
          miss, per_sample$mean_centred_value_of_always_observed_proteins),
-       n_always_observed = sum(complete_rows))
+       n_always_observed = sum(complete_rows),
+       centred_values_source = centred_source)
 }
 
 # ------------------------------------------------------- effect helpers
@@ -661,6 +690,17 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
            } else
              sprintf(", which keeps at least %d animals in each group.", csr_min_observed_animals()))
 
+  # the SUS hemisphere with the most proteins undetected before imputation, named by depth rather than QC flag
+  sus <- ctx[ctx$StressGroup == "SUS" & is.finite(ctx$fraction_missing_preimputation), , drop = FALSE]
+  shallowest <- if (!nrow(sus)) "no SUS sample with a known missingness" else {
+    top <- sus[which.max(sus$fraction_missing_preimputation), , drop = FALSE]
+    n_more_missing <- sum(ctx$fraction_missing_preimputation > top$fraction_missing_preimputation, na.rm = TRUE)
+    sprintf("%s, the shallowest %s, with %.1f%% of the analysed proteins not detected",
+            csr_sample_labels(top, with_flag = FALSE),
+            if (!n_more_missing) sprintf("of the %d CA2-SLM samples", nrow(ctx)) else "SUS hemisphere",
+            100 * top$fraction_missing_preimputation)
+  }
+
   list(n_sus = n_sus, n_res = n_res, n_animals = length(unique(ctx$AnimalID)),
        n_samples = nrow(ctx), n_sus_res_samples = sum(ctx$StressGroup %in% c("SUS", "RES")),
        n_qc_fail_sus_samples = k, n_qc_fail_sus_animals = k_an,
@@ -669,5 +709,6 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
        flagged_share_with_failed = paste0(share(FALSE), " - ", of_them),
        qc_fail_sus_samples = paste(csr_number_word(k), if (k == 1L) "QC-failed SUS sample" else "QC-failed SUS samples"),
        qc_fail_most_missing = most_missing,
+       shallowest_sus = shallowest,
        loo_design = loo, qc_fail_removal = qc_removal)
 }
