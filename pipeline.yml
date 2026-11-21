@@ -1267,7 +1267,7 @@ stages:
           - "config/marker_panels/wgcna_reference_marker_sets.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Protein-level atlas over the UNION of the WGCNA candidate shortlist and every SUS-RES FDR-supported protein, deduplicated by dataset x ProteinGroupID. Baseline spatial identity is established from CON animals only; SUS-RES statistics are JOINED from canonical outputs and never recomputed. The effect-at-identity classification uses a prespecified within-protein high-affinity rule (upper third of that protein's own spatial ranking)."
+        notes: "Protein-level atlas over the UNION of the WGCNA candidate shortlist and every SUS-RES FDR-supported protein, deduplicated by dataset x ProteinGroupID. Baseline spatial identity is established from CON animals only; SUS-RES statistics are JOINED from canonical outputs and never recomputed. The effect-at-identity classification uses a prespecified within-protein high-affinity rule (upper third of that protein's own spatial ranking). This script and the CA2 SLM audits read each other (the audits take its module and tier columns; it joins the stress-identity claimability table), and on a fresh tree it first runs successfully only after the integration stage, so a fresh tree needs a third networks pass (or a rerun of the networks scripts from this one on) before the atlas carries the CA2 SLM audit."
       - script: "analysis/spatial_validation/quantify_neuropil_detection_context.R"
         required: false
         datasets: ["neuron_neuropil"]
