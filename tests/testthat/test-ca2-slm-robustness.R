@@ -579,8 +579,10 @@ testthat::test_that("the atlas gains claimability fields without losing any prot
   }
   # no FDR-supported protein is removed and no FDR value is blanked
   f <- a[a$is_sus_res_fdr_supported %in% TRUE, ]
-  testthat::expect_true(all(is.finite(f$sus_res_strongest_BH_FDR)))
-  testthat::expect_true(all(f$sus_res_strongest_BH_FDR <= 0.05))
+  # FDR support may come from another unit than the one with the largest effect ('strongest'), so the
+  # invariant is on the smallest FDR across units
+  testthat::expect_true(all(is.finite(f$sus_res_min_BH_FDR)))
+  testthat::expect_true(all(f$sus_res_min_BH_FDR <= 0.05))
   # a protein that was never audited must not read as claimable
   testthat::expect_false(any(f$QC_claimability == "not_audited" &
                                f$claimable_for_biological_interpretation %in% TRUE))
