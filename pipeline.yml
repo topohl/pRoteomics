@@ -123,7 +123,7 @@ stages:
         scope: "dataset_specific"
         produces: ["results/qc/assess_dataset_quality/<dataset>/tables/dataset_qc_report.xlsx", "results/qc/assess_dataset_quality/<dataset>/reports/dataset_qc_summary.md"]
         consumes_required: ["results/preprocessing/map_protein_identifiers/<dataset>/tables/mapped/forward/per_file/*.csv", "data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv"]
-        consumes_optional: ["data/metadata/*.xlsx"]
+        consumes_optional: ["data/metadata/*.xlsx", "data/raw/pg_matrix/quicksearch.pg_matrix.tsv"]
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Baseline dataset QC."

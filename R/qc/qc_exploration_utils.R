@@ -771,3 +771,22 @@ qc_dry_run_contract <- function(script, dataset, matrix_file = NULL, metadata_fi
   if (length(extra)) for (line in extra) dry_run_line("Check", line)
   invisible(if (is.null(matrix_file) || file.exists(matrix_file)) 0L else 1L)
 }
+
+# Per-sample missingness before imputation. An imputed matrix has no NA left, so missingness read from it is empty.
+# The raw DIA-NN matrix holds a literal NA for every missing value; the 70% row filter of
+# archive/01_preprocessing/01_impute.r (step 5, over the dataset's samples) is reproduced so that the rows counted are
+# the rows the pipeline analysed. Annotation columns are never counted as samples.
+qc_preimputation_missingness <- function(raw_path, samples, max_missing = 0.7) {
+  raw <- utils::read.delim(raw_path, check.names = FALSE, stringsAsFactors = FALSE)
+  present <- intersect(samples, names(raw))
+  if (length(present) != length(samples)) {
+    stop("The raw matrix lacks ", length(samples) - length(present), " of the ", length(samples),
+         " QC sample columns: ", raw_path, call. = FALSE)
+  }
+  m <- as.matrix(raw[, present, drop = FALSE])
+  storage.mode(m) <- "double"
+  na <- is.na(m)
+  na <- na[rowMeans(na) <= max_missing, , drop = FALSE]
+  data.frame(Sample = present, n_proteins_total = nrow(na), n_proteins_detected = as.integer(colSums(!na)),
+             missing_fraction = as.numeric(colMeans(na)), stringsAsFactors = FALSE, row.names = NULL)
+}

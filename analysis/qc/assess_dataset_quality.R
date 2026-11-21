@@ -4,7 +4,8 @@
 # Script: analysis/qc/assess_dataset_quality.R
 # Stage: qc
 # Scope: dataset_specific
-# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx
+# Consumes: required data/processed/02_id_mapping/mapped/<dataset>/forward/per_file/*.csv; optional data/metadata/*.xlsx,
+#   data/raw/pg_matrix/quicksearch.pg_matrix.tsv (sample missingness before imputation)
 # Produces: results/qc/assess_dataset_quality/<dataset>/tables/dataset_qc_report.xlsx; results/qc/assess_dataset_quality/<dataset>/reports/dataset_qc_summary.md
 # Dataset behavior: runs for neuron_neuropil,neuron_soma,microglia according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Baseline dataset QC.
@@ -40,7 +41,8 @@ if (run$dry_run) {
     paths = PATHS,
     extra = c(
       "Writes missingness, imputation footprint, sample/protein counts, PCA, metadata structure, abundance distributions, and outlier flags.",
-      "Use PROTEOMICS_DATASET_QC_MATRIX_FILE to point at a pre-imputation matrix when available."
+      "Use PROTEOMICS_DATASET_QC_MATRIX_FILE to point at a pre-imputation matrix when available.",
+      "With an imputed input, sample missingness is read from the raw matrix (PROTEOMICS_DATASET_QC_RAW_MATRIX_FILE overrides its path)."
     )
   )
   quit(status = status, save = "no")
@@ -72,6 +74,29 @@ sample_qc <- data.frame(
 ) |>
   dplyr::left_join(meta, by = "Sample")
 
+# Sample missingness must come from before imputation: an imputed matrix has no NA left, so missing_fraction and
+# n_proteins_detected read from it are empty and the outlier flags would rest on abundance alone. The row count of
+# the raw 70% filter is checked against the QC matrix, so the fractions describe the analysed proteins.
+RAW_MATRIX <- Sys.getenv("PROTEOMICS_DATASET_QC_RAW_MATRIX_FILE",
+                         unset = repo_path("data", "raw", "pg_matrix", "quicksearch.pg_matrix.tsv"))
+missingness_source <- "input matrix"
+if (input_appears_imputed) {
+  if (!file.exists(RAW_MATRIX)) {
+    missingness_source <- "input matrix (imputed, and no raw matrix found: sample missingness is not informative)"
+  } else {
+    pre <- qc_preimputation_missingness(RAW_MATRIX, colnames(raw_mat))
+    if (pre$n_proteins_total[[1]] != nrow(raw_mat)) {
+      stop("The 70% filter keeps ", pre$n_proteins_total[[1]], " raw rows but the QC matrix has ", nrow(raw_mat),
+           " rows, so pre-imputation missingness would not describe the analysed proteins: ", RAW_MATRIX, call. = FALSE)
+    }
+    i <- match(sample_qc$Sample, pre$Sample)
+    sample_qc$n_proteins_detected <- pre$n_proteins_detected[i]
+    sample_qc$missing_fraction <- pre$missing_fraction[i]
+    missingness_source <- paste0("pre-imputation raw matrix (", relative_to(RAW_MATRIX), "), over the ",
+                                 nrow(raw_mat), " analysed rows")
+  }
+}
+
 protein_qc <- data.frame(
   Protein = rownames(raw_mat),
   n_samples_total = ncol(raw_mat),
@@ -92,6 +117,7 @@ imputation_footprint <- data.frame(
   n_missing_raw = sum(is.na(raw_mat)),
   missing_fraction_raw = mean(is.na(raw_mat)),
   n_values_median_imputed_for_pca = sum(is.na(raw_mat[rownames(mat_for_pca), colnames(mat_for_pca), drop = FALSE])),
+  sample_missingness_source = missingness_source,
   imputation_note = if (input_appears_imputed) {
     "Input filename suggests upstream imputation; pre-imputation missingness may be underestimated."
   } else {
@@ -302,6 +328,7 @@ summary_lines <- c(
   paste0("Proteins: ", nrow(raw_mat)),
   paste0("Raw missing fraction: ", signif(mean(is.na(raw_mat)), 3)),
   paste0("Input appears imputed: ", input_appears_imputed),
+  paste0("Sample missingness from: ", missingness_source),
   paste0("Outlier flags: PASS=", sum(sample_outliers$outlier_flag == "PASS"), "; WARN=", sum(sample_outliers$outlier_flag == "WARN"), "; FAIL=", sum(sample_outliers$outlier_flag == "FAIL")),
   paste0("Exploratory UMAP/t-SNE requested: ", run$run_embeddings, " (not primary evidence)"),
   "",
