@@ -253,6 +253,8 @@ disp <- if (is.null(bias)) NA_real_ else {
   mean(pa[gg == "SUS"]) - mean(pa[gg == "RES"])
 }
 run_centring <- csr_run_centring(IMPUTED)
+depth_set_on <- if (!is.null(thr) && "set_on" %in% names(thr))
+  as.character(thr$set_on[thr$constant == "depth_leave_out_z"])[1] else NA_character_
 
 # CA2-SLM having the highest pre-imputation missingness of the neuropil units and
 # the lowest baseline abundance holds in the 3/3/3 data and in the 3/3/2 rerun.
@@ -398,6 +400,13 @@ qc_fail_ctx <- if (is.null(sctx)) NULL else sctx[sctx$qc_flag == "FAIL", , drop 
 # the leave-out follows the depth rule on this run's dataset QC missingness
 lo_expected <- if (is.null(sctx) || is.null(qc_flags) || !"missing_fraction_robust_z" %in% names(qc_flags)) NULL else
   qc_flags$missing_fraction_robust_z[match(sctx$sample_id, qc_flags$Sample)] > csr_depth_leave_out_z()
+# the stress-identity annotation (read by the atlas and the immunostaining screen) must carry the audit's current class
+ann_class <- if (is.null(rob_ann) || !all(c("ProteinGroupID", "CA2_SLM_robustness_class") %in% names(rob_ann))) NULL else
+  as.character(rob_ann$CA2_SLM_robustness_class[match(rob$ProteinGroupID, rob_ann$ProteinGroupID)])
+add("stress_identity_annotation_current", TRUE,
+    if (!is.null(ann_class) && identical(ann_class, as.character(rob$CA2_SLM_robustness_class))) "PASS" else "FAIL",
+    if (is.null(ann_class)) "the stress-identity annotation of the audit is missing; rerun audit_stress_identity_robustness.R" else
+      "the stress-identity annotation carries the audit's current class for every CA2-SLM protein")
 add("leave_out_follows_depth_rule", TRUE,
     if (!is.null(lo_expected) && !anyNA(lo_expected) && !is.null(sctx$left_out) &&
         identical(as.logical(sctx$left_out), lo_expected)) "PASS" else "FAIL",
@@ -630,7 +639,7 @@ readme <- data.frame(Note = c(
   paste("EXACT RESOLUTION OF THE SENSITIVITY ANALYSES.",
         if (is.null(dtxt)) "" else paste(dtxt$loo_design, dtxt$leave_out_removal),
         "These are robustness diagnostics, not new hypothesis tests, and no new FDR is attached to any of them."),
-  "PRESPECIFIED RULES. An animal counts toward an observed-only effect only if BOTH hemispheres were detected, and an observed-only effect needs at least two such animals in EACH group. Imputation dependence is minimal at or below a 25% change in effect magnitude and strong above 50%. Losing more than half the canonical magnitude is a collapse. Every threshold is a named constant and none references a module, gene or tier. The leave-out check removes the CA2-SLM acquisitions whose pre-imputation missingness robust z exceeds 3; this cut was set on 2026-11-21, after the sample QC call proved to depend on the centring while the missingness does not, and replaces the QC-FAILED criterion. The class not_claimable_due_to_QC and the columns named after QC-failed hemispheres keep their names for their consumers and refer to this leave-out.",
+  paste0("PRESPECIFIED RULES. An animal counts toward an observed-only effect only if BOTH hemispheres were detected, and an observed-only effect needs at least two such animals in EACH group. Imputation dependence is minimal at or below a 25% change in effect magnitude and strong above 50%. Losing more than half the canonical magnitude is a collapse. Every threshold is a named constant and none references a module, gene or tier. The leave-out check removes the CA2-SLM acquisitions whose pre-imputation missingness robust z exceeds ", format(csr_depth_leave_out_z()), " (in this run: ", if (is.null(dtxt)) "not known" else dtxt$left_out_list, "); this cut was set on ", if (is.na(depth_set_on)) "a date not recorded" else depth_set_on, ", after the sample QC call proved to depend on the centring while the missingness does not, and replaces the QC-FAILED criterion. The class not_claimable_due_to_QC and the columns named after QC-failed hemispheres keep their names for their consumers and refer to this leave-out."),
   paste0("ANIMAL IDENTITY. The behaviour/physiology consumers were rerun against a fail-closed canonical AnimalID contract. The withdrawn normaliser truncated digit runs longer than four, zero-padded bare numerals while leaving A-prefixed ids at their original width, and required at least three digits - so the proteomics A111 never matched the behaviour OR111, and only one of ",
          if (identical(dtxt$n_animals, 9L)) "nine animals" else "the nine animals of the original 3/3/3 design",
          " had ever joined.")),

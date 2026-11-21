@@ -1,11 +1,12 @@
 # =====================================================================
 # CA2-SLM DAP robustness engine.
 #
-# Every threshold in this file is PRESPECIFIED and stated as a named constant.
+# Every threshold in this file is stated as a named constant and, except the leave-out depth cut
+# csr_depth_leave_out_z() (set 2026-11-21 and recorded with that date), PRESPECIFIED.
 # None was chosen after inspecting which proteins are biologically attractive,
 # and no classification rule references a module, a gene symbol, a candidate
 # tier or any other annotation. The classifier sees only observation counts,
-# effect estimates and QC sample identity.
+# effect estimates, QC sample identity and the depth leave-out.
 #
 # Nothing here recomputes a differential statistic. The canonical log2fc, pval
 # and padj are carried through verbatim; every quantity produced here is a
@@ -308,6 +309,9 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
   # that are not in the design (A764 in the 3/3/2 rerun) is not computed: it would only repeat the canonical effect.
   # An animal is removed whole only when all of its acquisitions in this unit are left out; otherwise only the
   # shallow acquisition is left out (below).
+  if (is.null(ctx$leave_out_samples))
+    stop("ctx has no leave_out_samples, so the leave-out check would drop nothing; build it from the sample context",
+         call. = FALSE)
   removable <- function(drop) csr_removable_animals(intersect(drop, animals), sm, ctx$leave_out_samples)
   drop_animals <- function(drop) {
     k <- !(animals %in% removable(drop))
@@ -358,9 +362,9 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   # ------------------------------------------------------ stability flags
   loo_sign_stable <- length(sgn) > 0L && all(sgn)
-  # A whole-animal removal is made only for an animal none of whose acquisitions in this
-  # unit passed QC (Tobias, 2026-11-18: with one good hemisphere only the failed acquisition
-  # is left out, and that hemisphere check decides). It decides a class only when it leaves
+  # A whole-animal removal is made only for an animal all of whose acquisitions in this unit
+  # are left out (Tobias, 2026-11-18 and 2026-11-21: with one hemisphere kept only the shallow
+  # acquisition is left out, and that hemisphere check decides). It decides a class only when it leaves
   # at least csr_min_observed_animals() animals in each group; otherwise its effect is
   # reported, labelled descriptive only, and the flag is NA. The flag is NA when no animal
   # is removed.
@@ -380,12 +384,14 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   cls <- csr_classify(fully_observed, estimable, obs_sign, imp_class,
                       loo_sign_stable, a755, a764, hemi, imp_rel)
-  # the reasons are worded for two shallow SUS samples (the published design); a shallow hemisphere of another
-  # group (a CON sample can be shallow) does not enter a SUS-RES effect and is not counted
-  n_fail <- sum(sm$StressGroup[match(ctx$leave_out_samples, sm$sample_id)] == "SUS", na.rm = TRUE)
-  if (n_fail != 2L)
+  # the reasons are worded for two shallow SUS samples (the published design); a shallow CON hemisphere does not
+  # enter a SUS-RES effect and is not counted, a shallow RES hemisphere does and is named
+  lo_grp <- sm$StressGroup[match(ctx$leave_out_samples, sm$sample_id)]
+  n_fail <- sum(lo_grp %in% c("SUS", "RES"))
+  who <- if (any(lo_grp %in% "RES")) "SUS or RES sample" else "SUS sample"
+  if (n_fail != 2L || who != "SUS sample")
     cls$reason <- sub("either shallow SUS sample",
-                      if (n_fail == 1L) "the shallow SUS sample" else "any shallow SUS sample",
+                      paste(if (n_fail == 1L) "the shallow" else if (n_fail == 2L) "either shallow" else "any shallow", who),
                       cls$reason, fixed = TRUE)
 
   summary <- data.frame(
@@ -684,6 +690,12 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
   # QC-FAILED ones: the QC call depends on the centring, the missingness does not
   if (is.null(ctx$left_out)) stop("the sample context has no left_out column; rerun the CA2-SLM audit", call. = FALSE)
   lo_sus <- ctx[ctx$left_out %in% TRUE & ctx$StressGroup == "SUS", , drop = FALSE]
+  lo_all <- ctx[ctx$left_out %in% TRUE, , drop = FALSE]
+  lo_all <- lo_all[order(suppressWarnings(as.numeric(lo_all$AnimalID)), lo_all$AnimalID, lo_all$hemisphere), , drop = FALSE]
+  left_out_list <- if (!nrow(lo_all)) "none" else
+    paste(paste0(csr_sample_labels(lo_all, with_flag = FALSE), " (", lo_all$StressGroup,
+                 ifelse(lo_all$StressGroup %in% c("SUS", "RES"), "", ", outside the SUS-RES contrast"), ")"),
+          collapse = ", ")
   k_lo <- nrow(lo_sus)
   k_lo_an <- sum(vapply(unique(lo_sus$AnimalID),
                         function(a) all(ctx$left_out[ctx$AnimalID == a] %in% TRUE), logical(1)))
@@ -725,7 +737,7 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
        qc_fail_sus_samples = paste(csr_number_word(k), if (k == 1L) "QC-failed SUS sample" else "QC-failed SUS samples"),
        qc_fail_most_missing = most_missing,
        shallowest_sus = shallowest, shallowest_sus_is_most_missing = top_is_most_missing,
-       n_left_out_sus_samples = k_lo, n_left_out_sus_animals = k_lo_an,
+       n_left_out_sus_samples = k_lo, n_left_out_sus_animals = k_lo_an, left_out_list = left_out_list,
        loo_design = loo, leave_out_removal = qc_removal)
 }
 

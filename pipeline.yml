@@ -1423,6 +1423,7 @@ stages:
           - "data/metadata/TPE9_sample_metadata_males.xlsx"
           - "data/processed/01_preprocessing/protigy_input_animal_level/neuron_neuropil/neuron_neuropil_animal_level.gct"
           - "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*samples_missing70pct.xlsx"
+          - "results/qc/assess_dataset_quality/neuron_neuropil/tables/dataset_qc_outlier_flags.csv"
         consumes_optional:
           - "results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv"
           - "results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv"
@@ -1484,7 +1485,7 @@ stages:
           - "results/preprocessing/map_protein_identifiers/neuron_neuropil/tables/mapped/forward/per_file/*sus_*res.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Candidate QC/robustness figures, the reviewer workbook and the CA2-SLM validation contract; a critical FAIL exits non-zero. PROTEOMICS_CA2_SLM_UNPINNED=true (a rerun on other data) replaces the pin to the published 28 hits by set equality with the contrast; the generated wording follows the design in the sample context. Figures are NEW candidates that replace no manuscript figure contract, and each writes its own source-data CSV. The contract asserts that canonical differential abundance is unchanged and carried verbatim, that no p.adjust or model fit appears anywhere in the robustness layer, that leave-one-out removes exactly one AnimalID, that the A755-out and A764-out analyses exclude exactly those animals, that removing both QC-failed SUS animals is labelled descriptive-only, and that frozen WGCNA state and the network layer are untouched."
+        notes: "Candidate QC/robustness figures, the reviewer workbook and the CA2-SLM validation contract; a critical FAIL exits non-zero. PROTEOMICS_CA2_SLM_UNPINNED=true (a rerun on other data) replaces the pin to the published 28 hits by set equality with the contrast; the generated wording follows the design in the sample context. Figures are NEW candidates that replace no manuscript figure contract, and each writes its own source-data CSV. The contract asserts that canonical differential abundance is unchanged and carried verbatim, that no p.adjust or model fit appears anywhere in the robustness layer, that leave-one-out removes exactly one AnimalID, that the A755-out and A764-out analyses exclude exactly those animals, that removing both shallow SUS animals (the depth leave-out) is labelled descriptive-only, and that frozen WGCNA state and the network layer are untouched."
   coupling:
     description: "Behavior/physiology coupling for networks, modules, and selected proteomic summaries."
     scripts:

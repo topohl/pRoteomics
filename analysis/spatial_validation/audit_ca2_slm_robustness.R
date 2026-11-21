@@ -7,7 +7,8 @@
 #   imputation, and the shallow SUS samples (pre-imputation missingness z > 3; until 2026-11-21 the QC-failed ones)?
 #
 #   This is NOT an attempt to rescue the CA2-SLM signal, and NOT an attempt to
-#   eliminate it. Every rule below is fixed before any protein is inspected.
+#   eliminate it. Every rule below is fixed before any protein is inspected, except the depth cut of the
+#   leave-out (csr_depth_leave_out_z, set 2026-11-21 after the QC call proved to depend on the centring).
 #
 # WHAT IS AND IS NOT RECOMPUTED
 #   The canonical differential abundance is READ, never refitted. log2fc, pval
@@ -52,7 +53,7 @@
 # Script: analysis/spatial_validation/audit_ca2_slm_robustness.R
 # Stage: networks
 # Scope: global
-# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/metadata/TPE9_sample_metadata_males.xlsx; +2 more; optional results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
+# Consumes: required data/processed/02_id_mapping/mapped/neuron_neuropil/forward/per_file/CA2slmsus_CA2slmres.csv; data/raw/pg_matrix/quicksearch.pg_matrix.tsv; data/metadata/TPE9_sample_metadata_males.xlsx; +2 more; results/qc/assess_dataset_quality/neuron_neuropil/tables/dataset_qc_outlier_flags.csv (pre-imputation missingness z of the leave-out); optional results/tables/03_qc_exploration/00_dataset_qc_report/neuron_neuropil/dataset_qc_outlier_flags.csv; results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv
 # Produces: results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_DAP_robustness.csv; results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_leave_one_animal_out_long.csv; results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_fully_observed_DAP_audit.csv; +3 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: CA2-SLM DAP robustness audit.

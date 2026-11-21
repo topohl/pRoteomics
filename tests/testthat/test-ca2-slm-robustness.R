@@ -185,6 +185,30 @@ testthat::test_that("per-protein QC-fail removals follow the animals in the desi
   testthat::expect_match(con_fail$classification_reason, "not dependent on the shallow SUS sample", fixed = TRUE)
 })
 
+testthat::test_that("the leave-out drops exactly the shallow acquisitions, and refuses to run without them", {
+  s <- synthetic_ctx(FALSE)
+  s$qc_flag[s$AnimalID == "755" & s$hemisphere == "L"] <- "WARN"   # the rule follows depth, not the QC call
+  animals <- sort(unique(s$AnimalID))
+  stress <- stats::setNames(s$StressGroup[match(animals, s$AnimalID)], animals)
+  val <- unname(c(CON = 0.5, RES = 0, SUS = -1)[s$StressGroup])
+  val[s$AnimalID == "755" & s$hemisphere == "L"] <- -7               # the shallow acquisition carries the effect
+  imputed <- matrix(val, nrow = 1L, dimnames = list("P1", s$sample_id))
+  mask <- stats::setNames(rep(FALSE, nrow(s)), s$sample_id)
+  av <- tapply(val, s$AnimalID, mean)
+  fc <- mean(av[names(stress)[stress == "SUS"]]) - mean(av[names(stress)[stress == "RES"]])   # -2.5
+  canon <- data.frame(ProteinGroupID = "PG1", official_gene_symbol = "G1", log2fc = fc,
+                      pval = 1e-4, padj = 0.01, stringsAsFactors = FALSE)
+  ctx <- list(sample_meta = s, animals = animals, stress = stress, leave_out_samples = s$sample_id[s$left_out],
+              sample_of = function(a, h) s$sample_id[s$AnimalID == a & s$hemisphere == h][1])
+  r <- csr_protein_robustness("P1", canon, imputed, mask, ctx)$summary
+  # without A755 Left, A755 is its Right hemisphere (-1), so SUS is -1 against RES 0
+  testthat::expect_equal(r$effect_dropping_QC_failed_hemispheres, -1, tolerance = 1e-12)
+  testthat::expect_true(r$qc_failed_hemisphere_sensitive)
+  testthat::expect_identical(r$CA2_SLM_robustness_class, "not_claimable_due_to_QC")
+  ctx$leave_out_samples <- NULL
+  testthat::expect_error(csr_protein_robustness("P1", canon, imputed, mask, ctx), "leave_out_samples")
+})
+
 testthat::test_that("an animal with a hemisphere that passed QC is never removed whole", {
   # RES at 0; A111 at -0.2; A755 at -1.0 in both hemispheres (its Left acquisition is QC-FAILED);
   # A764, when present, at -0.2. Dropping A755 would shrink the effect by more than half; dropping
@@ -271,6 +295,11 @@ testthat::test_that("generated wording follows the design in the sample context"
   w <- synthetic_ctx(FALSE); w$qc_flag[w$AnimalID == "755"] <- "WARN"
   testthat::expect_identical(csr_design_text(w)$leave_out_removal, t8$leave_out_removal)
   testthat::expect_identical(csr_design_text(w)$n_left_out_sus_samples, 1L)
+  # every left-out acquisition is named, a CON one as outside the SUS-RES contrast
+  testthat::expect_identical(t8$left_out_list, "A755 Left (SUS)")
+  w2 <- synthetic_ctx(FALSE); w2$left_out[w2$AnimalID == "765" & w2$hemisphere == "R"] <- TRUE
+  testthat::expect_identical(csr_design_text(w2)$left_out_list,
+                             "A755 Left (SUS), A765 Right (CON, outside the SUS-RES contrast)")
   # an animal with no acquisition that passed QC is removed whole, as before
   s <- synthetic_ctx(FALSE); s$left_out[s$AnimalID == "755"] <- TRUE
   testthat::expect_match(csr_design_text(s)$leave_out_removal,
