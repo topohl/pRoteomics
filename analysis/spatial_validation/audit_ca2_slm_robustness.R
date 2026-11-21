@@ -268,10 +268,14 @@ rob$fraction_of_effect_explained_by_displacement <- ifelse(
   bias$sus_minus_res_displacement / rob$canonical_log2FC_SUS_minus_RES)
 rob$exceeds_global_displacement <-
   abs(rob$canonical_log2FC_SUS_minus_RES) > abs(bias$sus_minus_res_displacement)
+run_centring <- csr_run_centring(IMPUTED)
 rob$displacement_note <- paste0(
-  "the displacement is a protein-independent consequence of per-sample median ",
-  "centring under unequal missingness, measured on this run's centred values of the ", bias$n_always_observed,
-  " proteins observed in all ", nrow(sample_meta), " CA2_slm samples; it is NOT a refitted statistic")
+  "the displacement is the protein-independent SUS-RES difference of this run's centred values on the ",
+  bias$n_always_observed, " proteins observed in all ", nrow(sample_meta), " CA2_slm samples, ",
+  if (identical(run_centring, "complete_case_median"))
+    "under complete-case centring, which does not tie a sample's centring constant to its missingness"
+  else "a consequence of per-sample median centring under unequal missingness",
+  "; it is NOT a refitted statistic")
 
 # ======================================= PART 13: the fully observed subset
 

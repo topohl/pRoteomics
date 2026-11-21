@@ -137,8 +137,9 @@ testthat::test_that("a QC-fail removal leaving fewer than two animals in a group
 })
 
 testthat::test_that("per-protein QC-fail removals follow the animals in the design", {
-  one_protein <- function(with_764) {
+  one_protein <- function(with_764, extra_fail = character()) {
     s <- synthetic_ctx(with_764)
+    s$qc_flag[paste0(s$AnimalID, s$hemisphere) %in% extra_fail] <- "FAIL"
     animals <- sort(unique(s$AnimalID))
     stress <- stats::setNames(s$StressGroup[match(animals, s$AnimalID)], animals)
     val <- c(CON = 0.5, RES = 0, SUS = -1)[s$StressGroup] + 0.01 * seq_len(nrow(s))
@@ -175,6 +176,9 @@ testthat::test_that("per-protein QC-fail removals follow the animals in the desi
   testthat::expect_match(full$classification_reason, "not dependent on either QC-failed SUS sample", fixed = TRUE)
   testthat::expect_identical(rerun$CA2_SLM_robustness_class, "robust_to_missingness_and_QC")
   testthat::expect_match(rerun$classification_reason, "not dependent on the QC-failed SUS sample", fixed = TRUE)
+  # a QC-failed CON hemisphere does not enter a SUS-RES effect and is not counted as a SUS sample
+  con_fail <- one_protein(FALSE, "765R")
+  testthat::expect_match(con_fail$classification_reason, "not dependent on the QC-failed SUS sample", fixed = TRUE)
 })
 
 testthat::test_that("an animal with a hemisphere that passed QC is never removed whole", {
@@ -250,6 +254,8 @@ testthat::test_that("generated wording follows the design in the sample context"
   s2 <- synthetic_ctx(FALSE); s2$fraction_missing_preimputation[s2$AnimalID == "765" & s2$hemisphere == "R"] <- 0.30
   testthat::expect_identical(csr_design_text(s2)$shallowest_sus,
     "A755 Left, the shallowest SUS hemisphere, with 25.0% of the analysed proteins not detected")
+  testthat::expect_false(csr_design_text(s2)$shallowest_sus_is_most_missing)
+  testthat::expect_true(t8$shallowest_sus_is_most_missing)
   testthat::expect_identical(t8$loo_design, paste0(
     "Leave-one-animal-out on a 2-versus-3 design leaves 1 versus 3 or 2 versus 2. A leave-out that leaves ",
     "fewer than 2 animals in a group is descriptive only; it enters the classes only through the requirement ",

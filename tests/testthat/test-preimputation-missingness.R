@@ -55,3 +55,14 @@ testthat::test_that("the CA2 displacement is measured on the run's own centred v
   openxlsx::write.xlsx(imp[imp$Protein.Group != "PG2", ], x, overwrite = TRUE)
   testthat::expect_error(csr_normalization_bias_context(f, smp, meta, imputed_path = x), "absent from the imputed matrix")
 })
+
+testthat::test_that("the CA2 displacement wording follows the run's centring stamp", {
+  d <- tempfile(); dir.create(d); f <- file.path(d, "imputed.xlsx")
+  testthat::expect_true(is.na(csr_run_centring(f)))
+  yaml::write_yaml(list(sample_centring = "complete_case_median"), file.path(d, "normalisation_stamp.yml"))
+  testthat::expect_identical(csr_run_centring(f), "complete_case_median")
+  testthat::expect_match(csr_displacement_origin("complete_case_median"), "measured under complete-case centring", fixed = TRUE)
+  primary <- " arising from per-sample median centring under unequal missingness"
+  testthat::expect_identical(csr_displacement_origin("all_observed_median"), primary)
+  testthat::expect_identical(csr_displacement_origin(NA_character_), primary)
+})

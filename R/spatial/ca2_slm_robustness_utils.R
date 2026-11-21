@@ -373,8 +373,9 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   cls <- csr_classify(fully_observed, estimable, obs_sign, imp_class,
                       loo_sign_stable, a755, a764, hemi, imp_rel)
-  # the reasons are worded for the published design with two QC-failed SUS samples
-  n_fail <- length(ctx$qc_fail_samples)
+  # the reasons are worded for the published design with two QC-failed SUS samples; a QC-failed hemisphere of
+  # another group (a CON sample can fail) does not enter a SUS-RES effect and is not counted
+  n_fail <- sum(sm$StressGroup[match(ctx$qc_fail_samples, sm$sample_id)] == "SUS", na.rm = TRUE)
   if (n_fail != 2L)
     cls$reason <- sub("either QC-failed SUS sample",
                       if (n_fail == 1L) "the QC-failed SUS sample" else "any QC-failed SUS sample",
@@ -692,14 +693,14 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
 
   # the SUS hemisphere with the most proteins undetected before imputation, named by depth rather than QC flag
   sus <- ctx[ctx$StressGroup == "SUS" & is.finite(ctx$fraction_missing_preimputation), , drop = FALSE]
-  shallowest <- if (!nrow(sus)) "no SUS sample with a known missingness" else {
-    top <- sus[which.max(sus$fraction_missing_preimputation), , drop = FALSE]
-    n_more_missing <- sum(ctx$fraction_missing_preimputation > top$fraction_missing_preimputation, na.rm = TRUE)
+  top <- if (nrow(sus)) sus[which.max(sus$fraction_missing_preimputation), , drop = FALSE] else NULL
+  top_is_most_missing <- !is.null(top) &&
+    !any(ctx$fraction_missing_preimputation > top$fraction_missing_preimputation, na.rm = TRUE)
+  shallowest <- if (is.null(top)) "no SUS sample with a known missingness" else
     sprintf("%s, the shallowest %s, with %.1f%% of the analysed proteins not detected",
             csr_sample_labels(top, with_flag = FALSE),
-            if (!n_more_missing) sprintf("of the %d CA2-SLM samples", nrow(ctx)) else "SUS hemisphere",
+            if (top_is_most_missing) sprintf("of the %d CA2-SLM samples", nrow(ctx)) else "SUS hemisphere",
             100 * top$fraction_missing_preimputation)
-  }
 
   list(n_sus = n_sus, n_res = n_res, n_animals = length(unique(ctx$AnimalID)),
        n_samples = nrow(ctx), n_sus_res_samples = sum(ctx$StressGroup %in% c("SUS", "RES")),
@@ -709,6 +710,23 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
        flagged_share_with_failed = paste0(share(FALSE), " - ", of_them),
        qc_fail_sus_samples = paste(csr_number_word(k), if (k == 1L) "QC-failed SUS sample" else "QC-failed SUS samples"),
        qc_fail_most_missing = most_missing,
-       shallowest_sus = shallowest,
+       shallowest_sus = shallowest, shallowest_sus_is_most_missing = top_is_most_missing,
        loo_design = loo, qc_fail_removal = qc_removal)
+}
+
+# The run's sample centring, from the stamp the imputation writes next to its workbooks (config/normalisation.yml
+# decides it); NA when there is no stamp.
+csr_run_centring <- function(imputed_path) {
+  if (!length(imputed_path) || is.na(imputed_path)) return(NA_character_)
+  stamp <- file.path(dirname(imputed_path), "normalisation_stamp.yml")
+  if (!file.exists(stamp)) return(NA_character_)
+  as.character(yaml::read_yaml(stamp)$sample_centring %||% NA_character_)
+}
+
+# How the CA2-SLM displacement arises, for the generated wording. Under all-observed centring a sample's missingness
+# sets its centring constant; under complete-case centring it does not, so the old explanation would be false.
+csr_displacement_origin <- function(centring) {
+  if (identical(centring, "complete_case_median"))
+    ", measured under complete-case centring (each sample centred on the proteins quantified in every sample of the compartment, so its missingness does not set its centring constant),"
+  else " arising from per-sample median centring under unequal missingness"
 }

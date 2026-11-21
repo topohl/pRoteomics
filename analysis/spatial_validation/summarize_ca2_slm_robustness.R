@@ -252,6 +252,7 @@ disp <- if (is.null(bias)) NA_real_ else {
   gg <- bias$StressGroup[match(names(pa), bias$AnimalID)]
   mean(pa[gg == "SUS"]) - mean(pa[gg == "RES"])
 }
+run_centring <- csr_run_centring(IMPUTED)
 
 # CA2-SLM having the highest pre-imputation missingness of the neuropil units and
 # the lowest baseline abundance holds in the 3/3/3 data and in the 3/3/2 rerun.
@@ -277,9 +278,10 @@ claim_status <- data.frame(
     sprintf("%d of %d remain robust to missingness and QC: %s", n_by("robust_to_missingness_and_QC"), nrow(rob), paste(robust_genes, collapse = ", ")),
     not_claimable_txt,
     sprintf("%d cannot be evaluated: fewer than %d fully observed animals in at least one group", n_by("insufficient_observed_data"), csr_min_observed_animals()),
-    sprintf(paste0("Canonical DA showed a concentration of SUS-RES differences in CA2-SLM, but this spatial unit also displayed substantial group-differential missingness%s. Protein-level sensitivity analyses were therefore used to distinguish robust effects from imputation/QC-sensitive findings. %d of %d effects remain robust; a protein-independent normalisation displacement of %+.3f log2 (SUS minus RES) arising from per-sample median centring under unequal missingness applies to every protein in the unit."),
-            if (is.null(dtxt)) "" else paste0(", highest in ", dtxt$shallowest_sus),
-            n_by("robust_to_missingness_and_QC"), nrow(rob), disp),
+    sprintf(paste0("Canonical DA showed a concentration of SUS-RES differences in CA2-SLM, but this spatial unit also displayed substantial group-differential missingness%s. Protein-level sensitivity analyses were therefore used to distinguish robust effects from imputation/QC-sensitive findings. %d of %d effects remain robust; a protein-independent normalisation displacement of %+.3f log2 (SUS minus RES)%s applies to every protein in the unit."),
+            if (is.null(dtxt)) "" else if (isTRUE(dtxt$shallowest_sus_is_most_missing))
+              paste0(", highest in ", dtxt$shallowest_sus) else paste0(" (", dtxt$shallowest_sus, ")"),
+            n_by("robust_to_missingness_and_QC"), nrow(rob), disp, csr_displacement_origin(run_centring)),
     paste0("NOT permitted unless explicitly scoped to the robustness-qualified subset: ",
            paste(CA2_RESTRICTED_PHRASES, collapse = "; "))),
   stringsAsFactors = FALSE)
@@ -602,6 +604,10 @@ readme <- data.frame(Note = c(
            sprintf("None was excluded: Exclude is FALSE for all %d neuropil samples.", n_neuropil_samples)),
   sprintf("WHAT THE MODEL SAW. Each animal-level value is the unweighted mean of that animal's Left and Right POST-imputation log2 values, so the contrast is %s versus %s and an undetected hemisphere still contributes a drawn value. Imputation status is therefore derived from the PRE-imputation raw matrix; the post-imputation matrix has no NA left and cannot answer the question.",
           na_or(dtxt$n_sus), na_or(dtxt$n_res)),
+  if (identical(run_centring, "complete_case_median"))
+    paste0("NORMALISATION. This run centres each sample on the median of the proteins quantified in every sample of the compartment (complete_case_median), so a sample's missingness does not set its centring constant. ",
+           sprintf("On the proteins observed in all %s CA2-SLM samples the SUS-RES displacement is %+.3f log2", na_or(dtxt$n_samples), disp),
+           if (is.finite(disp_r)) sprintf(", and missingness correlates with a sample's centred level at r = %.2f.", disp_r) else ".") else
   paste0("A NORMALISATION ARTIFACT UNDERLIES PART OF THE SIGNAL. Each sample is median-centred on its OBSERVED values before imputation. A heavily missing sample detects only its more abundant proteins, so its observed median is inflated and centring then displaces EVERY protein in that sample downwards - including proteins with no imputed value anywhere. ",
          sprintf("Measured on proteins observed in all %s CA2-SLM samples, missingness predicts that displacement ", na_or(dtxt$n_samples)),
          if (is.finite(disp_r) && abs(disp_r) >= 0.95) "almost perfectly" else sprintf("with r = %.2f", disp_r),

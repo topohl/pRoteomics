@@ -82,6 +82,10 @@ RAW_MATRIX <- Sys.getenv("PROTEOMICS_DATASET_QC_RAW_MATRIX_FILE",
 missingness_source <- "input matrix"
 if (input_appears_imputed) {
   if (!file.exists(RAW_MATRIX)) {
+    if (nzchar(Sys.getenv("PROTEOMICS_DATASET_QC_RAW_MATRIX_FILE")))
+      stop("PROTEOMICS_DATASET_QC_RAW_MATRIX_FILE points to a missing file: ", RAW_MATRIX, call. = FALSE)
+    warning("No raw matrix at ", RAW_MATRIX, ": sample missingness is read from the imputed input, where it is empty, ",
+            "so the outlier flags rest on abundance alone.", call. = FALSE)
     missingness_source <- "input matrix (imputed, and no raw matrix found: sample missingness is not informative)"
   } else {
     pre <- qc_preimputation_missingness(RAW_MATRIX, colnames(raw_mat))
@@ -136,9 +140,13 @@ outlier_metrics <- intersect(c("missing_fraction", "n_proteins_detected", "media
 outlier_z <- as.data.frame(lapply(sample_qc[outlier_metrics], robust_z), check.names = FALSE)
 names(outlier_z) <- paste0(outlier_metrics, "_robust_z")
 outlier_z_abs <- lapply(outlier_z, abs)
+# Every sample has the same number of analysed rows, so n_proteins_detected mirrors missing_fraction (same |z|). It is
+# reported but not counted a second time: a sample FAILs when two different measures (missingness, median abundance,
+# mean abundance) exceed |z| = 3, and WARNs when one does.
+counted_z <- setdiff(names(outlier_z), "n_proteins_detected_robust_z")
 sample_outliers <- dplyr::bind_cols(sample_qc["Sample"], outlier_z) |>
   dplyr::mutate(
-    n_outlier_metrics = rowSums(abs(dplyr::across(dplyr::ends_with("_robust_z"))) > 3, na.rm = TRUE),
+    n_outlier_metrics = rowSums(abs(as.matrix(outlier_z[counted_z])) > 3, na.rm = TRUE),
     max_abs_robust_z = do.call(pmax, c(outlier_z_abs, na.rm = TRUE)),
     outlier_flag = dplyr::case_when(
       .data$n_outlier_metrics >= 2 ~ "FAIL",
