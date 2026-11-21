@@ -262,8 +262,8 @@ units_txt <- if (n_units) sprintf("the %d neuropil units", n_units) else "the ne
 desc_only <- function(col) if (col %in% names(rob)) grepl("^DESCRIPTIVE ONLY", rob[[col]]) else rep(FALSE, nrow(rob))
 desc_flag_ok <- all(is.na(rob$A755_sensitive[desc_only("effect_excluding_A755_interpretation")])) &&
   all(is.na(rob$A764_sensitive[desc_only("effect_excluding_A764_interpretation")]))
-not_claimable_txt <- sprintf("%d reverse or lose more than half their magnitude when a QC-failed SUS acquisition is removed",
-                             n_by("not_claimable_due_to_QC"))
+not_claimable_txt <- sprintf("%d reverse or lose more than half their magnitude when a shallow SUS acquisition (pre-imputation missingness z > %s) is left out",
+                             n_by("not_claimable_due_to_QC"), format(csr_depth_leave_out_z()))
 claim_status <- data.frame(
   item = c("canonical_result", "qc_context", "robust_subset",
            "not_claimable", "not_evaluable", "approved_wording",
@@ -395,6 +395,16 @@ add("LOO_removes_exactly_one_animal", TRUE,
 qc_table_flag <- if (is.null(sctx) || is.null(qc_flags)) NULL else
   as.character(qc_flags$outlier_flag[match(sctx$sample_id, qc_flags$Sample)])
 qc_fail_ctx <- if (is.null(sctx)) NULL else sctx[sctx$qc_flag == "FAIL", , drop = FALSE]
+# the leave-out follows the depth rule on this run's dataset QC missingness
+lo_expected <- if (is.null(sctx) || is.null(qc_flags) || !"missing_fraction_robust_z" %in% names(qc_flags)) NULL else
+  qc_flags$missing_fraction_robust_z[match(sctx$sample_id, qc_flags$Sample)] > csr_depth_leave_out_z()
+add("leave_out_follows_depth_rule", TRUE,
+    if (!is.null(lo_expected) && !anyNA(lo_expected) && !is.null(sctx$left_out) &&
+        identical(as.logical(sctx$left_out), lo_expected)) "PASS" else "FAIL",
+    if (is.null(lo_expected)) "the sample context or the dataset QC missingness is missing" else
+      paste0("left out (pre-imputation missingness z > ", csr_depth_leave_out_z(), "): ",
+             if (!any(lo_expected, na.rm = TRUE)) "none" else
+               paste(csr_sample_labels(sctx[lo_expected %in% TRUE, , drop = FALSE], with_flag = FALSE), collapse = ", ")))
 add("QC_flags_match_dataset_QC", TRUE,
     if (!is.null(qc_table_flag) && !anyNA(qc_table_flag) && identical(as.character(sctx$qc_flag), qc_table_flag))
       "PASS" else "FAIL",
@@ -417,8 +427,9 @@ removal_label_cols <- c(effect_excluding_A755 = "effect_excluding_A755_interpret
                         effect_excluding_both_QC_fail_SUS = "effect_excluding_both_interpretation")
 removal_eval <- if (is.null(sctx)) NULL else lapply(names(removal_sets), function(eff) {
   drop <- intersect(removal_sets[[eff]], as.character(sctx$AnimalID))
-  # an animal is removed whole only when none of its acquisitions passed QC (csr_removable_animals)
-  drop <- drop[vapply(drop, function(a) all(sctx$qc_flag[as.character(sctx$AnimalID) == a] == "FAIL"), logical(1))]
+  # an animal is removed whole only when all of its acquisitions are left out (csr_removable_animals)
+  if (is.null(sctx$left_out)) stop("the sample context has no left_out column; rerun the CA2-SLM audit", call. = FALSE)
+  drop <- drop[vapply(drop, function(a) all(sctx$left_out[as.character(sctx$AnimalID) == a] %in% TRUE), logical(1))]
   left <- sctx[!as.character(sctx$AnimalID) %in% drop, , drop = FALSE]
   n_sus <- length(unique(left$AnimalID[left$StressGroup == "SUS"]))
   n_res <- length(unique(left$AnimalID[left$StressGroup == "RES"]))
@@ -428,8 +439,8 @@ removal_eval <- if (is.null(sctx)) NULL else lapply(names(removal_sets), functio
   needs <- length(drop) > 0L && csr_removal_needs_label(n_sus, n_res)
   ok <- if (!length(drop)) unlabelled && all(is.na(rob[[eff]])) else if (needs) labelled else unlabelled
   what <- if (eff != "effect_excluding_both_QC_fail_SUS") paste0("removing A", drop) else
-    if (length(drop) == 2L) "removing both QC-failed SUS animals" else
-      paste0("removing the QC-failed SUS animals present (", paste0("A", drop, collapse = ", "), ")")
+    if (length(drop) == 2L) "removing both shallow SUS animals" else
+      paste0("removing the shallow SUS animals present (", paste0("A", drop, collapse = ", "), ")")
   list(eff = eff, ok = ok, needs = needs,
        text = if (length(drop)) sprintf("%s leaves %d versus %d", what, n_sus, n_res) else NA_character_)
 })
@@ -441,9 +452,9 @@ removal_bad <- c(if (is.null(removal_eval)) character(0) else
   if (!desc_flag_ok) "the sensitivity flags of descriptive-only removals (must be NA: they decide no class)")
 add("both_QC_fail_removal_labelled_descriptive", TRUE,
     if (removal_ok) "PASS" else "FAIL",
-    if (is.null(removal_eval)) "sample context missing; group sizes after QC-fail removal not known" else
+    if (is.null(removal_eval)) "sample context missing; group sizes after the leave-out not known" else
       paste0(if (length(removal_needs)) paste(removal_needs, collapse = "; ") else
-               sprintf("no QC-fail removal leaves fewer than %d animals in a group", csr_min_observed_animals()),
+               sprintf("no leave-out removal leaves fewer than %d animals in a group", csr_min_observed_animals()),
              if (!removal_ok) paste0("; label or value inconsistent with the rule for ", csr_and_list(removal_bad)) else
                if (length(removal_needs) == 1L) " and is labelled descriptive-only" else
                  if (length(removal_needs) > 1L) "; each is labelled descriptive-only" else ""))
@@ -453,9 +464,13 @@ add("classification_ignores_annotation", TRUE,
                sub("csr_classify.*?\\n\\}", "", srcu))) "PASS" else "WARN",
     "the classifier reads only observation counts, effects and QC identity")
 add("thresholds_prespecified", TRUE,
-    if (!is.null(thr) && all(thr$prespecified %in% TRUE)) "PASS" else "FAIL",
+    if (!is.null(thr) && all(thr$prespecified %in% TRUE |
+                             (if ("set_on" %in% names(thr)) !is.na(thr$set_on) & nzchar(thr$set_on) else FALSE))) "PASS" else "FAIL",
     paste0(if (is.null(thr)) 0 else nrow(thr),
-           " classification thresholds are declared as named constants"))
+           " thresholds are declared as named constants; prespecified",
+           if (!is.null(thr) && "set_on" %in% names(thr) && any(!thr$prespecified %in% TRUE))
+             paste0(" except ", paste(sprintf("%s (set %s)", thr$constant[!thr$prespecified %in% TRUE],
+                                               thr$set_on[!thr$prespecified %in% TRUE]), collapse = ", ")) else ""))
 
 add("observed_only_requires_minimum_n", TRUE,
     if (all(rob$observed_only_estimable ==
@@ -613,9 +628,9 @@ readme <- data.frame(Note = c(
          if (is.finite(disp_r) && abs(disp_r) >= 0.95) "almost perfectly" else sprintf("with r = %.2f", disp_r),
          if (is.null(dtxt)) "." else paste0(", and ", dtxt$qc_fail_most_missing, ".")),
   paste("EXACT RESOLUTION OF THE SENSITIVITY ANALYSES.",
-        if (is.null(dtxt)) "" else paste(dtxt$loo_design, dtxt$qc_fail_removal),
+        if (is.null(dtxt)) "" else paste(dtxt$loo_design, dtxt$leave_out_removal),
         "These are robustness diagnostics, not new hypothesis tests, and no new FDR is attached to any of them."),
-  "PRESPECIFIED RULES. An animal counts toward an observed-only effect only if BOTH hemispheres were detected, and an observed-only effect needs at least two such animals in EACH group. Imputation dependence is minimal at or below a 25% change in effect magnitude and strong above 50%. Losing more than half the canonical magnitude is a collapse. Every threshold is a named constant and none references a module, gene or tier.",
+  "PRESPECIFIED RULES. An animal counts toward an observed-only effect only if BOTH hemispheres were detected, and an observed-only effect needs at least two such animals in EACH group. Imputation dependence is minimal at or below a 25% change in effect magnitude and strong above 50%. Losing more than half the canonical magnitude is a collapse. Every threshold is a named constant and none references a module, gene or tier. The leave-out check removes the CA2-SLM acquisitions whose pre-imputation missingness robust z exceeds 3; this cut was set on 2026-11-21, after the sample QC call proved to depend on the centring while the missingness does not, and replaces the QC-FAILED criterion. The class not_claimable_due_to_QC and the columns named after QC-failed hemispheres keep their names for their consumers and refer to this leave-out.",
   paste0("ANIMAL IDENTITY. The behaviour/physiology consumers were rerun against a fail-closed canonical AnimalID contract. The withdrawn normaliser truncated digit runs longer than four, zero-padded bare numerals while leaving A-prefixed ids at their original width, and required at least three digits - so the proteomics A111 never matched the behaviour OR111, and only one of ",
          if (identical(dtxt$n_animals, 9L)) "nine animals" else "the nine animals of the original 3/3/3 design",
          " had ever joined.")),

@@ -38,23 +38,29 @@ csr_imputation_strong_cut <- function() 0.50
 # Losing more than this fraction of the canonical magnitude is a collapse.
 csr_magnitude_collapse_cut <- function() 0.50
 
+# Pre-imputation missingness robust z (within the compartment) above which a CA2-SLM acquisition is left out in the
+# leave-out check. Set 2026-11-21, after the sample QC call turned out to depend on the centring while the missingness
+# does not; it replaces "QC-FAILED" as the criterion. Not prespecified, so recorded with its date.
+csr_depth_leave_out_z <- function() 3
+
 csr_contract_version <- function() "ca2_slm_robustness_v1"
 
 csr_thresholds <- function() {
   data.frame(
     constant = c("fdr_threshold", "min_observed_animals_per_group",
                  "imputation_minimal_cut", "imputation_strong_cut",
-                 "magnitude_collapse_cut"),
+                 "magnitude_collapse_cut", "depth_leave_out_z"),
     value = c(csr_fdr_threshold(), csr_min_observed_animals(),
               csr_imputation_minimal_cut(), csr_imputation_strong_cut(),
-              csr_magnitude_collapse_cut()),
+              csr_magnitude_collapse_cut(), csr_depth_leave_out_z()),
     meaning = c(
       "canonical DAP threshold, matching R/statistics/sus_res_spatial_dap_atlas_utils.R",
       "fully observed animals required in EACH group for an observed-only effect",
       "relative change in effect magnitude up to which imputation dependence is minimal",
       "relative change above which imputation dependence is strong",
-      "fraction of canonical magnitude whose loss counts as a collapse"),
-    prespecified = TRUE, stringsAsFactors = FALSE)
+      "fraction of canonical magnitude whose loss counts as a collapse",
+      "pre-imputation missingness robust z above which a CA2-SLM acquisition is left out in the leave-out check"),
+    prespecified = c(rep(TRUE, 5L), FALSE), set_on = c(rep("", 5L), "2026-11-21"), stringsAsFactors = FALSE)
 }
 
 # ExpGroup 1/2/3 -> CON/RES/SUS, matching 01_preprocessing/06_merged_metadata.
@@ -296,12 +302,13 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
   eff <- loo$loo_effect[loo$can_change_estimate]
   sgn <- loo$sign_retained[loo$can_change_estimate]
 
-  # -------------------------------------------------- QC-fail sensitivity
-  # A removal of animals that are not in the design (A764 in the 3/3/2 rerun)
-  # is not computed: it would only repeat the canonical effect. An animal is
-  # removed whole only when none of its acquisitions in this unit passed QC;
-  # with one good hemisphere only the failed acquisition is left out (below).
-  removable <- function(drop) csr_removable_animals(intersect(drop, animals), sm, ctx$qc_fail_samples)
+  # -------------------------------------------------- leave-out sensitivity
+  # The acquisitions left out are the shallow ones (pre-imputation missingness z above csr_depth_leave_out_z()),
+  # the same under either centring; the class and column names keep "QC" for their consumers. A removal of animals
+  # that are not in the design (A764 in the 3/3/2 rerun) is not computed: it would only repeat the canonical effect.
+  # An animal is removed whole only when all of its acquisitions in this unit are left out; otherwise only the
+  # shallow acquisition is left out (below).
+  removable <- function(drop) csr_removable_animals(intersect(drop, animals), sm, ctx$leave_out_samples)
   drop_animals <- function(drop) {
     k <- !(animals %in% removable(drop))
     if (all(k)) return(NA_real_)
@@ -317,11 +324,11 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
   e_755 <- drop_animals("755"); e_764 <- drop_animals("764")
   e_both <- drop_animals(c("755", "764"))
 
-  # Keep the animal, drop only its QC-FAILED hemisphere. This asks whether the
-  # failing acquisition drives the effect without sacrificing a replicate, and
+  # Keep the animal, drop only its shallow hemisphere. This asks whether the
+  # shallow acquisition drives the effect without sacrificing a replicate, and
   # is the diagnostic a whole-animal drop cannot give.
   av_hemi <- csr_animal_values(sample_vals, sample_animal,
-                               drop_samples = ctx$qc_fail_samples)[animals]
+                               drop_samples = ctx$leave_out_samples)[animals]
   e_hemi <- csr_effect(av_hemi, st)
 
   # ------------------------------------------------ imputation dependence
@@ -373,12 +380,12 @@ csr_protein_robustness <- function(protein_key, canonical, imputed, mask_row,
 
   cls <- csr_classify(fully_observed, estimable, obs_sign, imp_class,
                       loo_sign_stable, a755, a764, hemi, imp_rel)
-  # the reasons are worded for the published design with two QC-failed SUS samples; a QC-failed hemisphere of
-  # another group (a CON sample can fail) does not enter a SUS-RES effect and is not counted
-  n_fail <- sum(sm$StressGroup[match(ctx$qc_fail_samples, sm$sample_id)] == "SUS", na.rm = TRUE)
+  # the reasons are worded for two shallow SUS samples (the published design); a shallow hemisphere of another
+  # group (a CON sample can be shallow) does not enter a SUS-RES effect and is not counted
+  n_fail <- sum(sm$StressGroup[match(ctx$leave_out_samples, sm$sample_id)] == "SUS", na.rm = TRUE)
   if (n_fail != 2L)
-    cls$reason <- sub("either QC-failed SUS sample",
-                      if (n_fail == 1L) "the QC-failed SUS sample" else "any QC-failed SUS sample",
+    cls$reason <- sub("either shallow SUS sample",
+                      if (n_fail == 1L) "the shallow SUS sample" else "any shallow SUS sample",
                       cls$reason, fixed = TRUE)
 
   summary <- data.frame(
@@ -476,7 +483,7 @@ csr_classify <- function(fully_observed, estimable, obs_sign_retained, imp_class
   a755 <- isTRUE(a755); a764 <- isTRUE(a764); hemi <- isTRUE(hemi)
   if (a755 || a764 || hemi) {
     which_ <- paste(c(if (a755) "dropping A755", if (a764) "dropping A764",
-                      if (hemi) "dropping the QC-failed hemispheres"), collapse = ", ")
+                      if (hemi) "dropping the shallow hemispheres"), collapse = ", ")
     return(list(class = "not_claimable_due_to_QC",
                 reason = paste0("the effect reverses or loses more than ",
                                 pct(csr_magnitude_collapse_cut()), " of its magnitude when ",
@@ -498,10 +505,10 @@ csr_classify <- function(fully_observed, estimable, obs_sign_retained, imp_class
                 reason = paste0("imputation dependence at most minimal (", imp_class,
                                 "), observed-only sign retained, sign stable under ",
                                 "leave-one-animal-out, and not dependent on either ",
-                                "QC-failed SUS sample")))
+                                "shallow SUS sample")))
   }
   list(class = "supported_but_QC_sensitive",
-       reason = paste0("direction is consistent and neither a single animal nor a QC ",
+       reason = paste0("direction is consistent and neither a single animal nor a shallow ",
                        "sample reverses it, but the magnitude is materially influenced ",
                        "by missingness or imputation (", imp_class, ", change ",
                        pct(imp_rel), ")"))
@@ -558,16 +565,16 @@ csr_removal_needs_label <- function(n_sus, n_res) {
 
 # computed = FALSE: none of the animals to remove is in the design, so no
 # effect was formed.
-# An animal is removed whole only when none of its acquisitions in the unit passed QC; when
-# one hemisphere is fine, only the failed acquisition is left out (Tobias, 2026-11-18).
-csr_removable_animals <- function(drop, sample_meta, qc_fail_samples) {
+# An animal is removed whole only when all of its acquisitions in the unit are left out; when
+# one hemisphere is fine, only the shallow acquisition is left out (Tobias, 2026-11-18 and 2026-11-21).
+csr_removable_animals <- function(drop, sample_meta, left_out_samples) {
   drop[vapply(drop, function(a) {
     s <- sample_meta$sample_id[as.character(sample_meta$AnimalID) == a]
-    length(s) > 0L && all(s %in% qc_fail_samples)
+    length(s) > 0L && all(s %in% left_out_samples)
   }, logical(1))]
 }
 csr_kept_animal_interpretation <- function() {
-  "not computed: the animal keeps a hemisphere that passed QC, so only its failed acquisition is left out"
+  "not computed: the animal keeps a hemisphere that is not left out, so only its shallow acquisition is left out"
 }
 
 csr_removal_interpretation <- function(n_sus, n_res, computed = TRUE) {
@@ -673,19 +680,26 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
                                       "it enters the classes only through the requirement that the sign is stable ",
                                       "under every leave-out."), csr_min_observed_animals()))
 
-  removed <- if (k_an == 2L) "both QC-failed SUS animals" else
-    if (k_an == 1L) "the QC-failed SUS animal" else
-      sprintf("all %s QC-failed SUS animals", csr_number_word(k_an))
-  qc_removal <- if (!k) "No SUS acquisition is QC-failed, so no QC-fail removal is made." else
-    if (!k_an) paste0("No animal is removed for QC: ",
-                      if (k == 1L) "the QC-failed SUS acquisition is left out alone, and the animal's other hemisphere, "
-                      else "the QC-failed SUS acquisitions are left out alone, and each animal's other hemisphere, ",
-                      "which passed QC, is kept.") else
-    paste0("Removing ", removed, " leaves ", n_sus - k_an, " versus ", n_res,
-           if (csr_removal_needs_label(n_sus - k_an, n_res)) {
+  # the leave-out check removes the shallow acquisitions (missingness z above csr_depth_leave_out_z()), not the
+  # QC-FAILED ones: the QC call depends on the centring, the missingness does not
+  if (is.null(ctx$left_out)) stop("the sample context has no left_out column; rerun the CA2-SLM audit", call. = FALSE)
+  lo_sus <- ctx[ctx$left_out %in% TRUE & ctx$StressGroup == "SUS", , drop = FALSE]
+  k_lo <- nrow(lo_sus)
+  k_lo_an <- sum(vapply(unique(lo_sus$AnimalID),
+                        function(a) all(ctx$left_out[ctx$AnimalID == a] %in% TRUE), logical(1)))
+  removed <- if (k_lo_an == 2L) "both shallow SUS animals" else
+    if (k_lo_an == 1L) "the shallow SUS animal" else
+      sprintf("all %s shallow SUS animals", csr_number_word(k_lo_an))
+  qc_removal <- if (!k_lo) "No SUS acquisition is above the leave-out depth cut, so nothing is left out." else
+    if (!k_lo_an) paste0("No animal is removed: ",
+                         if (k_lo == 1L) "the shallow SUS acquisition is left out alone, and the animal's other hemisphere "
+                         else "the shallow SUS acquisitions are left out alone, and each animal's other hemisphere ",
+                         "is kept.") else
+    paste0("Removing ", removed, " leaves ", n_sus - k_lo_an, " versus ", n_res,
+           if (csr_removal_needs_label(n_sus - k_lo_an, n_res)) {
              if (csr_removal_needs_label(n_sus - 1L, n_res))
                paste0(", which is NOT a valid group comparison: its effect is reported, labelled DESCRIPTIVE ONLY, ",
-                      "and decides no class. The QC check that decides is the removal of the QC-failed ",
+                      "and decides no class. The check that decides is leaving out the shallow ",
                       "acquisition alone, which keeps the animal's other hemisphere.") else
                ", which is NOT a valid group comparison and is labelled descriptive-only wherever it appears."
            } else
@@ -711,7 +725,8 @@ csr_design_text <- function(ctx, n_flagged_neuropil = NA_integer_) {
        qc_fail_sus_samples = paste(csr_number_word(k), if (k == 1L) "QC-failed SUS sample" else "QC-failed SUS samples"),
        qc_fail_most_missing = most_missing,
        shallowest_sus = shallowest, shallowest_sus_is_most_missing = top_is_most_missing,
-       loo_design = loo, qc_fail_removal = qc_removal)
+       n_left_out_sus_samples = k_lo, n_left_out_sus_animals = k_lo_an,
+       loo_design = loo, leave_out_removal = qc_removal)
 }
 
 # The run's sample centring, from the stamp the imputation writes next to its workbooks (config/normalisation.yml

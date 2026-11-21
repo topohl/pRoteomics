@@ -4,7 +4,7 @@
 # THE QUESTION
 #   Which of the FDR-supported CA2-SLM SUS-vs-RES DAPs (28 in the published
 #   3/3/3 design) remain supported independently of differential missingness,
-#   imputation, and the QC-failed SUS samples?
+#   imputation, and the shallow SUS samples (pre-imputation missingness z > 3; until 2026-11-21 the QC-failed ones)?
 #
 #   This is NOT an attempt to rescue the CA2-SLM signal, and NOT an attempt to
 #   eliminate it. Every rule below is fixed before any protein is inspected.
@@ -141,10 +141,22 @@ if (file.exists(QC)) {
   qc_flag[!is.na(m)] <- q$outlier_flag[m[!is.na(m)]]
 }
 ca2$qc_flag <- unname(qc_flag[ca2$sample_id])
-qc_fail_samples <- ca2$sample_id[ca2$qc_flag == "FAIL"]
-qc_fail_animals <- sort(unique(ca2$AnimalID[ca2$qc_flag == "FAIL"]))
 message("  QC in CA2_slm: ", paste(sprintf("%s_%s=%s", ca2$AnimalID, ca2$Hemi,
         ca2$qc_flag)[ca2$qc_flag != "PASS"], collapse = " "))
+# The leave-out check removes the shallow acquisitions: pre-imputation missingness robust z (within the compartment,
+# from the run's dataset QC table) above csr_depth_leave_out_z(). Missingness does not depend on the centring.
+miss_z <- if (!file.exists(QC)) NULL else {
+  qz <- utils::read.csv(QC, stringsAsFactors = FALSE)
+  if ("missing_fraction_robust_z" %in% names(qz)) qz$missing_fraction_robust_z[match(ca2$sample_id, qz$Sample)] else NULL
+}
+if (is.null(miss_z) || anyNA(miss_z))
+  stop("the dataset QC table carries no pre-imputation missingness z for every CA2_slm sample; ",
+       "rerun analysis/qc/assess_dataset_quality.R first", call. = FALSE)
+ca2$missing_fraction_robust_z <- miss_z
+ca2$left_out <- miss_z > csr_depth_leave_out_z()
+leave_out_samples <- ca2$sample_id[ca2$left_out]
+message("  left out (pre-imputation missingness z > ", csr_depth_leave_out_z(), "): ",
+        paste(sprintf("%s_%s", ca2$AnimalID, ca2$Hemi)[ca2$left_out], collapse = " "))
 
 # ==================================== PRE-imputation observation mask
 
@@ -166,6 +178,8 @@ sample_meta <- data.frame(
   StressGroup = ca2$StressGroup,
   plate = ca2$plate,
   qc_flag = ca2$qc_flag,
+  missing_fraction_robust_z = ca2$missing_fraction_robust_z,
+  left_out = ca2$left_out,
   stringsAsFactors = FALSE)
 animals <- sort(unique(sample_meta$AnimalID))
 stress <- stats::setNames(
@@ -173,7 +187,7 @@ stress <- stats::setNames(
 
 ctx <- list(
   sample_meta = sample_meta, animals = animals, stress = stress,
-  qc_fail_samples = qc_fail_samples,
+  leave_out_samples = leave_out_samples,
   sample_of = function(a, h) sample_meta$sample_id[
     sample_meta$AnimalID == a & sample_meta$hemisphere == h][1])
 
