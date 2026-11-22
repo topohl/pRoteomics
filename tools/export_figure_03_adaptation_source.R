@@ -1,7 +1,8 @@
 #!/usr/bin/env Rscript
 # Export the exact three Figure 3 exemplar contexts for downstream rendering.
 # Existing GSEA results, ranked inputs and mapped protein DA values are read;
-# no enrichment or differential model is fitted.
+# no enrichment or differential model is fitted. Inputs are read from the
+# results/ layout (run_clusterprofiler_enrichment, map_protein_identifiers).
 
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 if (!file.exists(file.path(root, "pipeline.yml")))
@@ -48,9 +49,9 @@ for (i in seq_len(nrow(selection_spec))) {
   token <- gsub("_", "", unit)
   if (ds == "microglia") token <- paste0(token, "microglia")
   contrast_dir <- sprintf("%ssus_%sres", token, token)
-  base <- rel("data", "processed", "04_differential_expression_enrichment",
-              "clusterProfiler", ds, "phenotype_within_unit", unit_dir,
-              contrast_dir)
+  base <- rel("results", "differential_abundance",
+              "run_clusterprofiler_enrichment", ds, "models",
+              "phenotype_within_unit", unit_dir, contrast_dir)
   ranked_path <- file.path(base, "protein_group_audits",
                            "collapsed_gene_input.csv")
   gsea_path <- file.path(base, "GO", "BP", "GSEA_BP_results_full.csv")
@@ -107,8 +108,8 @@ for (i in seq_len(nrow(selection_spec))) {
   p_rows <- list()
   for (pair in list(c("res", "con"), c("sus", "con"), c("sus", "res"))) {
     filename <- sprintf("%s%s_%s%s.csv", token, pair[[1]], token, pair[[2]])
-    mapped_path <- rel("data", "processed", "02_id_mapping", "mapped", ds,
-                       "forward", "per_file", filename)
+    mapped_path <- rel("results", "preprocessing", "map_protein_identifiers",
+                       ds, "tables", "mapped", "forward", "per_file", filename)
     da <- read.csv(mapped_path, stringsAsFactors = FALSE)
     symbol_col <- intersect(c("official_gene_symbol", "gene_symbol"),
                             names(da))[[1]]
