@@ -70,3 +70,23 @@ testthat::test_that("unit specificity holds the declared contrasts and the Figur
   testthat::expect_equal(sum(s$kind == "per_unit"), 2 * 18)
   testthat::expect_true(all(c2$official_p_adjust < 0.05))
 })
+
+testthat::test_that("external concordance infers on the contrast-specific relabelling p", {
+  sg <- read_if(tab("compare_external_stress_studies", "external_concordance_signatures.csv"))
+  om <- read_if(tab("compare_external_stress_studies", "external_concordance_omnibus.csv"))
+  testthat::skip_if(is.null(sg) || is.null(om), "compare_external_stress_studies has not been run here")
+  for (x in list(sg, om)) {
+    testthat::expect_false("p_all_1680" %in% names(x))
+    testthat::expect_true(all(c("p_all", "p_contrast_specific", "n_relabellings", "n_contrast_specific") %in% names(x)))
+    two <- x$contrast != "stressed_vs_CON"
+    testthat::expect_true(all(x$n_contrast_specific[two] < x$n_relabellings[two]))
+    testthat::expect_true(all(x$n_contrast_specific[!two] == x$n_relabellings[!two]))
+  }
+  # BH (Tobias, 2026-11-22): on the contrast-specific p, within level, primary set only
+  pr <- sg[sg$set == "primary", ]
+  for (lv in unique(pr$level)) {
+    k <- pr$level == lv
+    testthat::expect_equal(pr$q_bh[k], stats::p.adjust(pr$p_contrast_specific[k], method = "BH"), tolerance = 1e-12)
+  }
+  testthat::expect_true(all(is.na(sg$q_bh[sg$set != "primary"])))
+})

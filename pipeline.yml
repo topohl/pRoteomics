@@ -1130,7 +1130,7 @@ stages:
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Concordance with published hippocampal stress datasets (added 2026-10-29): rank correlation of our per-unit SUS-CON, RES-CON, SUS-RES and stressed-CON t (Figure 3 model) with 18 rebuilt signatures (data/external/stress_signatures; 16 primary), at gene, GO-BP and Figure 3 theme-term level; exact null over all 1,680 assignments of the nine animals to three groups; plus agreement between the published signatures."
+        notes: "Concordance with published hippocampal stress datasets (added 2026-10-29): rank correlation of our per-unit SUS-CON, RES-CON, SUS-RES and stressed-CON t (Figure 3 model) with 18 rebuilt signatures (data/external/stress_signatures; 16 primary), at gene, GO-BP and Figure 3 theme-term level; exact relabelling null with the observed group sizes (560 assignments of the eight animals); inference and BH on the contrast-specific p (third group fixed for the two-group contrasts, all assignments for stressed - CON), p over all assignments reported for reference (Tobias, 2026-11-22); plus agreement between the published signatures."
       - script: "analysis/spatial_validation/quantify_empirical_compartments.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
