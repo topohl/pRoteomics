@@ -177,19 +177,13 @@ testthat::test_that("the export figure roots cover both namespaces and exclude b
   testthat::expect_match(fig, "canonical_ewce_figure_root()", fixed = TRUE)
 })
 
-testthat::test_that("the supplementary export globs reach the normalized tables only one level deep", {
+testthat::test_that("the supplementary export globs leave out the EWCE tables", {
+  # EWCE is not part of the deposit (Tobias, 2026-11-22), in either namespace.
+  # test-deposit-supplementary-scope.R holds the full rule.
   cfg <- repo_path("analysis", "publication_source_data", "config", "export_config.yml")
   testthat::skip_if(!file.exists(cfg))
-  txt <- readLines(cfg, warn = FALSE)
-  globs <- grep("run_ewce_celltype_enrichment", txt, value = TRUE)
-  testthat::expect_gte(length(globs), 2L)
-
-  # a single * cannot span comparison/<branch>/<dataset>, so a sensitivity
-  # branch cannot be picked up by the supplementary export
-  for (g in globs) {
-    testthat::expect_match(g, "run_ewce_celltype_enrichment/\\*/tables/")
-    testthat::expect_false(grepl("comparison", g, fixed = TRUE))
-  }
-  # the historical globs stay, so pre-migration outputs remain exportable
-  testthat::expect_true(any(grepl(paste0(LEGACY_NAMESPACE, "/EWCE_E9/"), txt, fixed = TRUE)))
+  globs <- unlist(yaml::read_yaml(cfg)$supplementary_table_globs, use.names = FALSE)
+  testthat::expect_gt(length(globs), 0L)
+  testthat::expect_false(any(grepl(AID, globs, fixed = TRUE)))
+  testthat::expect_false(any(grepl(LEGACY_NAMESPACE, globs, fixed = TRUE)))
 })

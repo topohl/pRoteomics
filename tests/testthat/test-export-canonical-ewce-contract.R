@@ -69,6 +69,8 @@ testthat::test_that("source-data and table filters retain canonical EWCE only", 
 })
 
 testthat::test_that("supplementary EWCE glob selects canonical tables, not comparison branches", {
+  # The glob is a fixture: the deposit config no longer lists EWCE tables
+  # (Tobias, 2026-11-22). This only checks that the filter drops comparison branches.
   root <- file.path(tempdir(), paste0("ewce_export_contract_", as.integer(stats::runif(1, 1, 1e9))))
   canonical_dir <- file.path(root, "results", "tables", "05_celltype_enrichment_EWCE", "EWCE_E9", "microglia")
   comparison_dir <- file.path(root, "results", "tables", "05_celltype_enrichment_EWCE", "EWCE_E9_comparison", "branch", "microglia")
