@@ -51,7 +51,8 @@ testthat::test_that("stress exposure tables cover every unit and keep the panel'
   pt <- read_if(tab("test_stress_exposure", "stress_exposure_panel_tests.csv"))
   testthat::skip_if(is.null(u) || is.null(pt), "test_stress_exposure has not been run here")
   testthat::expect_equal(nrow(u), 18)
-  testthat::expect_true(all(u$n_con == 3 & u$n_stressed == 6))
+  # eight animals: 3 CON and 5 stressed (3 RES, 2 SUS)
+  testthat::expect_true(all(u$n_con == 3 & u$n_stressed == 5))
   main <- pt[pt$acquisitions == "all", , drop = FALSE]
   testthat::expect_equal(as.integer(table(main$comparison)[c("stressed_vs_con", "sus_vs_res")]), c(20L, 20L))
   for (cmp in unique(main$comparison)) {
