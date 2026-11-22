@@ -1104,10 +1104,11 @@ stages:
           - "results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds"
           - "data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv"
           - "data/external/behaviour_outcomes/outcome_info.csv"
+          - "exports/publication_source_data/figure_03_adaptation/protein_zoom_values.csv"
         consumes_optional: []
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "The nine proteomic animals and their acquisitions (added 2026-10-30): missingness before imputation per acquisition in every unit, within-compartment PCA with the share of PC1-PC5 explained by unit, animal, group, MS plate and hemisphere, the design of the nine animals with their behaviour outcomes, and the animal-level values of the 21 Figure 3e-g exemplar proteins; descriptive."
+        notes: "The proteomic animals and their acquisitions (added 2026-10-30): missingness before imputation per acquisition in every unit, within-compartment PCA with the share of PC1-PC5 explained by unit, animal, group, MS plate and hemisphere, the design of the animals with their behaviour outcomes, and the animal-level values of the 21 Figure 3e-g exemplar proteins, read from the Figure 3 export (tools/export_figure_03_adaptation_source.R); descriptive."
       - script: "analysis/spatial_validation/couple_network_edges_to_outcomes.R"
         required: false
         datasets: ["global"]

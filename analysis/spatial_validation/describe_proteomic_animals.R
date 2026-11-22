@@ -10,7 +10,7 @@
 # Script: analysis/spatial_validation/describe_proteomic_animals.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv; +1 more
+# Consumes: required results/preprocessing/build_joint_protigy_input/global/models/joint_compartment_qc_matrices.rds; data/processed/01_preprocessing/protigy_input_animal_level/<dataset>/<dataset>_animal_level.gct; data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv; +2 more
 # Produces: results/spatial_validation/describe_proteomic_animals/global/tables/acquisition_missingness.csv; results/spatial_validation/describe_proteomic_animals/global/tables/compartment_pca_terms.csv; +4 more
 # Dataset behavior: global; reads the joint acquisition bundle and the three animal-level matrices.
 # Notes: Descriptive: no test. Missingness before imputation per acquisition, within-compartment PCA with the share of
@@ -32,9 +32,9 @@
 # behaviour outcomes of data/external/behaviour_outcomes (ISS = CombZ, its rank among the 59 males with an ISS, 1 = lowest;
 # early movement and its rank among the 53 RFID-tracked males, 1 = most active).
 #
-# EXEMPLAR PROTEINS: the seven leading-edge proteins of each Figure 3e-g exemplar (declared below from the Figure 3
-# export), their animal-level values (hemispheres averaged, imputed; the matrices of the Figure 3 model) in the
-# exemplar's unit, also centred on the mean of the three controls.
+# EXEMPLAR PROTEINS: the seven leading-edge proteins of each Figure 3e-g exemplar (read from the Figure 3 export of
+# tools/export_figure_03_adaptation_source.R), their animal-level values (hemispheres averaged, imputed; the matrices
+# of the Figure 3 model) in the exemplar's unit, also centred on the mean of the three controls.
 #
 #
 
@@ -70,33 +70,31 @@ DATASETS <- c(neuron_neuropil = "Neuropil", neuron_soma = "Neuronal soma", micro
 MISSING_FILTER <- 0.70
 N_PC <- 5L
 PCA_TERMS <- c(unit = "region_layer", animal = "animal_id", group = "experimental_group", plate = "plate", hemisphere = "ReplicateGroup")
-# The Figure 3e-g exemplars and their seven top-ranked leading-edge proteins (Figure 3 export protein_zoom_values.csv,
-# pRoteomics 83ace9b); unit = the animal-level matrix unit (region + layer).
-EXEMPLARS <- data.frame(
-  exemplar = rep(1:3, each = 7L),
-  dataset = rep(c("neuron_neuropil", "neuron_soma", "microglia"), each = 7L),
-  unit = rep(c("CA3sr", "CA2sp", "CA1microglia"), each = 7L),
-  gene = c("Synpo", "Cnr1", "Ly6h", "Plppr4", "Eif4ebp2", "App", "Dbi",
-           "Csdc2", "Lsm8", "Ddx23", "Cirbp", "Lsm3", "Dcps", "Rbm8a",
-           "Cox6b1", "Iscu", "Ndufv3", "Ndufs8", "Ndufv2", "Cox5b", "Uqcrh"),
-  ProteinGroupID = c("PG:neuron_neuropil:990B3F0D5E6E260C", "PG:neuron_neuropil:BA55EB377B089760", "PG:neuron_neuropil:249706BC590DAD1B",
-                     "PG:neuron_neuropil:493191D0CD9A0E44", "PG:neuron_neuropil:C14B5979D8B7C678", "PG:neuron_neuropil:9ED9E1D8CDD4F38F",
-                     "PG:neuron_neuropil:35B164D36402204D",
-                     "PG:neuron_soma:F6775AD7570E667B", "PG:neuron_soma:864D151CF63FEFEA", "PG:neuron_soma:2BA3E3CFECCD74B1",
-                     "PG:neuron_soma:3EB10AF9FA367139", "PG:neuron_soma:8DC1FF0CD676934A", "PG:neuron_soma:58ADD4989D3BFE69",
-                     "PG:neuron_soma:EDA7A0D8962ACEBA",
-                     "PG:microglia:54CE0440EE8DFE4A", "PG:microglia:539DC4664703DF4D", "PG:microglia:BA774D5D3E2C4456",
-                     "PG:microglia:38848678964070E2", "PG:microglia:B525F1EFE43C35B7", "PG:microglia:14EA55C14EBD3B63",
-                     "PG:microglia:AC490AEACC00E281"),
-  stringsAsFactors = FALSE)
+# The Figure 3e-g exemplars and their seven top-ranked leading-edge proteins, read from the Figure 3 export
+# (tools/export_figure_03_adaptation_source.R), so the animal values show the proteins Figure 3 shows; unit = the
+# animal-level matrix unit (region + layer).
+EXEMPLAR_SOURCE <- repo_path("exports", "publication_source_data", "figure_03_adaptation", "protein_zoom_values.csv")
+read_exemplars <- function(path) {
+  z <- utils::read.csv(path, stringsAsFactors = FALSE)
+  z <- z[z$contrast == "SUS - RES", , drop = FALSE]
+  unit <- gsub("_", "", z$spatial_unit)
+  z$unit <- ifelse(z$dataset == "microglia", paste0(unit, "microglia"), unit)
+  z <- z[order(z$exemplar), c("exemplar", "dataset", "unit", "gene", "ProteinGroupID")]   # export order kept within
+  if (nrow(z) != 21L || !identical(as.vector(table(z$exemplar)), rep(7L, 3L)) || anyDuplicated(z[c("exemplar", "gene")]))
+    stop("The Figure 3 export must list seven proteins for each of the three exemplars: ", path, call. = FALSE)
+  rownames(z) <- NULL
+  z
+}
 
 gct_paths <- vapply(names(DATASETS), animal_level_gct_path, "")
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] The proteomic animals: missingness, compartment PCA terms, design with behaviour, exemplar proteins.\n")
-  dry_run_inputs(SCRIPT_ID, c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO)))
+  dry_run_inputs(SCRIPT_ID, c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO,
+                                                      exemplars = EXEMPLAR_SOURCE)))
   quit(save = "no", status = 0L)
 }
-for (f in c(gct_paths, JOINT_BUNDLE, OUTCOMES, OUTCOME_INFO)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+for (f in c(gct_paths, JOINT_BUNDLE, OUTCOMES, OUTCOME_INFO, EXEMPLAR_SOURCE)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+EXEMPLARS <- read_exemplars(EXEMPLAR_SOURCE)
 invisible(lapply(CANONICAL_PATHS[c("tables", "manifests")], dir_create))
 # the analysed proteins per compartment = the rows of its imputed matrix (the 70%-missingness filter); the joint
 # bundle's filter below must keep exactly these (5,054 / 5,538 / 5,229 in the original design)
@@ -209,8 +207,8 @@ design <- do.call(rbind, lapply(animals, function(a) {
 design <- design[order(match(design$group, c("CON", "RES", "SUS")), design$ISS), , drop = FALSE]
 
 # ---- the exemplar proteins of Figure 3e-g, animal by animal ---------------------------------------------------------
-# The exemplars were declared from the original analysis; a protein group that the current data do not contain once
-# (another search can group proteins differently) is listed in the manifest instead of stopping the description.
+# The exemplars come from the Figure 3 export of this tree; a protein group that the animal-level data do not contain
+# once is listed in the manifest instead of stopping the description.
 n_animals <- length(unique(md$animal_id))
 ex_rows <- list(); ex_missing <- character()
 for (ds in unique(EXEMPLARS$dataset)) {
@@ -246,12 +244,13 @@ utils::write.csv(pca_scores, OUT$pca_scores, row.names = FALSE)
 utils::write.csv(design, OUT$design, row.names = FALSE)
 utils::write.csv(exemplars, OUT$exemplars, row.names = FALSE)
 utils::write.csv(ca2_groups, OUT$ca2_groups, row.names = FALSE)
-write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO),
+write_run_manifest(MANIFEST, inputs = c(as.list(gct_paths), list(joint_bundle = JOINT_BUNDLE, outcomes = OUTCOMES, outcome_info = OUTCOME_INFO,
+                                                                      exemplars = EXEMPLAR_SOURCE),
                                         as.list(stats::setNames(vapply(unique(EXEMPLARS$unit), function(u)
                                           mapped_unit_table_path(EXEMPLARS$dataset[match(u, EXEMPLARS$unit)], u), ""), unique(EXEMPLARS$unit)))),
                    outputs = OUT,
                    parameters = list(missing_filter = MISSING_FILTER, filter_n = as.list(FILTER_N), n_pc = N_PC, pca_terms = as.list(PCA_TERMS),
-                                     exemplars = "Figure 3e-g, seven top-ranked leading-edge proteins each (Figure 3 export, pRoteomics 83ace9b)",
+                                     exemplars = "Figure 3e-g, seven top-ranked leading-edge proteins each (exports/publication_source_data/figure_03_adaptation)",
                                      exemplars_not_found = if (length(ex_missing)) as.list(ex_missing) else "none",
                                      n_animals = n_animals,
                                      provenance = run_output_provenance(OUT, SCRIPT_ID)),
