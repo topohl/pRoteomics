@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **121 families**, **433 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **122 families**, **438 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -22,6 +22,7 @@ its outputs.
 | `results/differential_abundance/annotate_neuropil_reference/<dataset>` | `annotate_neuropil_reference.R` | 1 | 0 |
 | `results/differential_abundance/audit_gsea_protein_direction/<dataset>` | `audit_gsea_protein_direction.R` | 1 | 5 |
 | `results/differential_abundance/audit_stress_response_biology/global` | `audit_stress_response_biology.R` | 1 | 1 |
+| `results/differential_abundance/build_control_fingerprint/global` | `build_control_fingerprint.R` | 1 | 5 |
 | `results/differential_abundance/build_go_program_atlas/global` | `build_go_program_atlas.R` | 1 | 6 |
 | `results/differential_abundance/build_sus_res_dap_atlas/global` | `build_sus_res_dap_atlas.R` | 1 | 3 |
 | `results/differential_abundance/compare_external_stress_signatures/global` | `compare_external_stress_signatures.R` | 1 | 3 |

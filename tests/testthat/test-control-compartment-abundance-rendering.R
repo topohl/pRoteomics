@@ -561,3 +561,25 @@ testthat::test_that("Figure 2d difference candidate uses unscaled horizontal poi
   )
   testthat::expect_identical(plot$labels$colour, "Comparator preparation")
 })
+
+testthat::test_that("the pipeline writes the compact marker table of Extended Data Fig. 6f", {
+  ## kept for ED6f (Tobias, 2026-11-22); the runner passes no arguments, so a
+  ## second registry entry selects the compact mode by environment
+  text <- paste(readLines(repo_path("R", "control_compartment_abundance_workflow.R"),
+                          warn = FALSE), collapse = "\n")
+  testthat::expect_match(text, "Sys.getenv(\"PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE\",",
+                         fixed = TRUE)
+  reg <- yaml::read_yaml(repo_path("pipeline.yml"))
+  steps <- reg$stages$qc_cross_dataset$scripts
+  scripts <- vapply(steps, function(s) s$script, character(1))
+  rows <- which(scripts == "analysis/qc/render_compartment_abundance_figures.R")
+  testthat::expect_length(rows, 2L)
+  full <- steps[[rows[1]]]
+  compact <- steps[[rows[2]]]
+  testthat::expect_null(full$env)
+  testthat::expect_identical(compact$env$PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE, "true")
+  testthat::expect_true(paste0(
+    "results/qc/render_compartment_abundance_figures/global/tables/source_data/",
+    "figure2d_compact_recognizable_markers_v2_source_data.csv") %in% unlist(compact$produces))
+  testthat::expect_true(all(grepl("/source_data/v2_", unlist(compact$consumes_required))))
+})

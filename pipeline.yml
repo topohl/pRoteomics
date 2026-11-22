@@ -240,6 +240,19 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: false
         notes: "Authoritative v2 CON-only marker abundance/detection validation. Reconstructs observed raw-positive log2 values with joint shared-core sample offsets, preserves hemisphere and animal hierarchy, removes shared-core membership from the primary marker gate, uses centered-log2 medians/subpanel balance, and writes separately named shared-core/robust-z sensitivities. Existing v1 and v2 outputs are overwrite-protected; render-only regeneration requires an explicit environment guard."
+      - script: "analysis/qc/render_compartment_abundance_figures.R"
+        required: false
+        datasets: ["global"]
+        stage: "qc_cross_dataset"
+        scope: "global"
+        env:
+          PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE: "true"
+        produces: ["results/qc/render_compartment_abundance_figures/global/tables/source_data/figure2d_compact_recognizable_markers_v2_source_data.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/figure2d_compact_recognizable_markers_v2_provenance.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/figure2d_requested_marker_eligibility_audit_v2.csv", "results/qc/render_compartment_abundance_figures/global/plots/figure2d_compact_recognizable_markers_v2.svg", "results/qc/render_compartment_abundance_figures/global/manifests/figure2d_compact_recognizable_markers_v2_manifest.yml"]
+        consumes_required: ["results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_03_animal_level_abundance.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_04_all_marker_canonical_mapping_provenance.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_05_marker_by_dataset_detection_abundance.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_06_protein_intended_direction.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_11a_display_selection_eligible_alternatives.csv", "results/qc/render_compartment_abundance_figures/global/tables/source_data/v2_12_rank_abundance_data.csv"]
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "The compact compartment-marker table of Extended Data Fig. 6f (ten recognizable markers, three CON animals), drawn from the completed v2 tables of the run above; the same as --compact-recognizable-candidate, selected here by PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE because the runner passes no arguments. Presentation only: nothing is recomputed. Existing outputs are kept unless PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE_ALLOW_OVERWRITE=true. Like the opt-in mode, it rewrites manifests/sessionInfo.txt of this folder (kept for ED6f, Tobias 2026-11-22)."
   enrichment:
     description: "Differential abundance interpretation: enrichment manifests, GO/GSEA comparisons, neuropil/reference annotations, targeted signatures, program summaries, external overlaps, and EWCE."
     scripts:
@@ -1268,6 +1281,17 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Protein-level atlas over the UNION of the WGCNA candidate shortlist and every SUS-RES FDR-supported protein, deduplicated by dataset x ProteinGroupID. Baseline spatial identity is established from CON animals only; SUS-RES statistics are JOINED from canonical outputs and never recomputed. The effect-at-identity classification uses a prespecified within-protein high-affinity rule (upper third of that protein's own spatial ranking). This script and the CA2 SLM audits read each other (the audits take its module and tier columns; it joins the stress-identity claimability table), and on a fresh tree it first runs successfully only after the integration stage, so a fresh tree needs a third networks pass (or a rerun of the networks scripts from this one on) before the atlas carries the CA2 SLM audit."
+      - script: "analysis/differential_abundance/build_control_fingerprint.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces: ["results/differential_abundance/build_control_fingerprint/global/tables/con_baseline_profile_long.csv", "results/differential_abundance/build_control_fingerprint/global/tables/figure2_spatial_fingerprint_scores.csv", "results/differential_abundance/build_control_fingerprint/global/tables/figure2_spatial_fingerprint_proteins.csv", "results/differential_abundance/build_control_fingerprint/global/tables/figure2_spatial_fingerprint_selection.csv", "results/differential_abundance/build_control_fingerprint/global/manifests/run_manifest.yml"]
+        consumes_required: ["results/differential_abundance/validate_control_spatial_identity/global/tables/anatomical_protein_contrasts.csv", "results/differential_abundance/validate_control_spatial_identity/global/tables/kaulich_signature_mapping.csv", "config/marker_panels/wgcna_reference_marker_sets.csv", "config/manuscript_spatial_order.yml", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_neuropil_*samples_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_neuron_soma_*samples_missing70pct.xlsx", "data/processed/01_preprocessing/impute/*_pgmatrix_imputed_microglia_*samples_missing70pct.xlsx", "results/preprocessing/build_module_score_metadata/neuron_neuropil/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "results/preprocessing/build_module_score_metadata/neuron_soma/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "results/preprocessing/build_module_score_metadata/microglia/tables/sample_metadata_merged_clean_for_module_scores.xlsx", "data/external/MOUSE_10090_idmapping.dat", "data/metadata/TPE9_sample_metadata_males.xlsx"]
+        consumes_optional: ["results/spatial_validation/build_protein_spatial_atlas/global/tables/protein_baseline_spatial_profile.csv", "data/metadata/manual_mapping.xlsx", "data/metadata/manual_gene_annotation_overrides.csv"]
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Control-only spatial fingerprint of Extended Data Fig. 6c/e (three CON animals; kept, Tobias 2026-11-22): the CON baseline profile of every protein (level-2 CON means, within-protein z), mean z of external signatures (Kaulich 2025, config cell-class panels; ED6c) and the top two proteins of each CON-only anatomical contrast across all spatial units (ED6e). No stress group enters selection or values; descriptive, no model or test. Gene symbols from the canonical feature table; stops if a selected protein is missing from the proteins table. Ported from the retired manuscript producer figures/spatial_v6_fingerprint_selection.R (Exp9_manuscript 8e22dd9); the optional atlas baseline is a reproduction check only, so the step runs right after build_protein_spatial_atlas and checks the atlas of the same run."
       - script: "analysis/spatial_validation/quantify_neuropil_detection_context.R"
         required: false
         datasets: ["neuron_neuropil"]

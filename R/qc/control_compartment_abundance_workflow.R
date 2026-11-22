@@ -16,8 +16,13 @@ if (!global_arg %in% c("all", "global")) {
 }
 dry_run <- is_dry_run()
 render_only <- "--render-only" %in% commandArgs(trailingOnly = TRUE)
+## The pipeline runner passes no arguments, so its registry entry selects the
+## compact candidate (Extended Data Fig. 6f) with the environment switch
+## (Tobias, 2026-11-22).
 compact_candidate_only <- "--compact-recognizable-candidate" %in%
-  commandArgs(trailingOnly = TRUE)
+  commandArgs(trailingOnly = TRUE) ||
+  ca_as_logical(Sys.getenv("PROTEOMICS_CONTROL_ABUNDANCE_COMPACT_CANDIDATE",
+                           unset = "false"))
 compact_difference_only <- "--compact-enrichment-differences" %in%
   commandArgs(trailingOnly = TRUE)
 

@@ -17,7 +17,8 @@ source(repo_path("R", "differential_abundance_paths.R"))
 # normalized-first, with the historical copy only as a fallback.
 
 WRITERS <- c("annotate_neuropil_reference", "audit_gsea_protein_direction",
-             "audit_stress_response_biology", "build_go_program_atlas",
+             "audit_stress_response_biology", "build_control_fingerprint",
+             "build_go_program_atlas",
              "build_sus_res_dap_atlas", "compare_external_stress_signatures",
              "compare_go_enrichment", "run_clusterprofiler_enrichment",
              "summarize_biological_programs", "summarize_top_term_drivers",
@@ -73,7 +74,7 @@ syms <- function(e) {
 
 # --- section 23: writer truth, every writer, no sampling ------------------
 
-testthat::test_that("all twelve writers agree: registry, code and normalized path", {
+testthat::test_that("all thirteen writers agree: registry, code and normalized path", {
   s <- registry_steps()
   checked <- 0L
   for (aid in WRITERS) {
