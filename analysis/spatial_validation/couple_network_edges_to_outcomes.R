@@ -100,6 +100,7 @@ couple <- function(edge_file) {
 }
 primary <- couple(EDGES)
 cor_tbl <- primary$cor; values <- primary$values
+n_animals <- length(unique(values$AnimalID))
 check_tbl <- couple(EDGES_CHECK)$cor
 check_tbl$note <- "check: without the shallow CA2 SLM acquisitions of the robustness audit (A755 left, A765 right)"
 
