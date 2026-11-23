@@ -1197,6 +1197,50 @@ stages:
         recomputes_core_state: false
         safe_downstream_rerun: true
         notes: "Phenotype-blind external cell-type annotation of every module at three scopes (all / core_kME06 / top25) via the shared engine in R/ewce_gene_set_engine.R. Measured-proteome background; BH applied strictly within ewce_module_annotation_<dataset>_<scope>_<level> so the phenotype arm can never move these FDRs. External expression enrichment is NOT empirical compartment affinity and NOT a cell-proportion claim. WGCNA labels are unchanged."
+      - script: "analysis/spatial_validation/describe_module_control_geography.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/describe_module_control_geography/global/tables/module_control_spatial_class.csv"
+          - "results/spatial_validation/describe_module_control_geography/global/tables/module_control_profiles.csv"
+          - "results/spatial_validation/describe_module_control_geography/global/tables/neuropil_module_territory_plane.csv"
+          - "results/spatial_validation/describe_module_control_geography/global/tables/module_control_spatial_class_all_acquisitions.csv"
+          - "results/spatial_validation/describe_module_control_geography/global/tables/module_control_profiles_all_acquisitions.csv"
+          - "results/spatial_validation/describe_module_control_geography/global/tables/neuropil_module_territory_plane_all_acquisitions.csv"
+        consumes_required:
+          - "results/wgcna/test_module_phenotypes/neuron_neuropil/tables/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/wgcna/test_module_phenotypes/neuron_soma/tables/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/wgcna/test_module_phenotypes/microglia/tables/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Control geography of every WGCNA module for the Figure 4 candidate (added 2026-11-23): control spatial class (peak unit; unit partial R2 with within-animal-hemisphere shuffles; dominant / shared top / no structure), control profiles in eigengene SD, and the neuropil perforant-path and mossy-fibre contrasts with exact-enumeration territory and region R2 (BH over modules). Control animals only; DG po carry-over acquisitions left out as in Figure 2j-l, with an all-acquisition check. Phenotype-blind; no WGCNA refit."
+      - script: "analysis/spatial_validation/link_home_terms_to_modules.R"
+        required: false
+        datasets: ["global"]
+        stage: "networks"
+        scope: "global"
+        produces:
+          - "results/spatial_validation/link_home_terms_to_modules/global/tables/home_term_module_links.csv"
+          - "results/spatial_validation/link_home_terms_to_modules/global/tables/home_term_module_overlap.csv"
+          - "results/spatial_validation/link_home_terms_to_modules/global/tables/home_term_link_summary.csv"
+          - "results/spatial_validation/link_home_terms_to_modules/global/tables/home_term_base_rate.csv"
+        consumes_required:
+          - "results/spatial_validation/map_anatomical_programmes/global/tables/anatomical_programme_display_terms.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/tables/modules/WGCNA_modules_long.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_soma/models/wgcna_final_model_state.rds"
+          - "results/wgcna/test_module_phenotypes/neuron_soma/tables/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/tables/modules/WGCNA_modules_long.csv"
+          - "results/wgcna/build_wgcna_modules/neuron_neuropil/models/wgcna_final_model_state.rds"
+          - "results/wgcna/test_module_phenotypes/neuron_neuropil/tables/WGCNA_group_effect_hemisphere_values.csv"
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
+        consumes_optional: []
+        recomputes_core_state: false
+        safe_downstream_rerun: true
+        notes: "Figure 2f-i home terms against the WGCNA modules for the Figure 4 candidate (added 2026-11-23): carrier modules (one-sided Fisher, BH within term, FDR <= 0.05 and odds ratio >= 2), the link (best carrier peaks at the home unit in every control animal), the check without the term proteins and a selection-matched null (400 protein sets per term). Control animals only; DG po carry-over acquisitions left out. Phenotype-blind; no WGCNA refit."
       - script: "analysis/spatial_validation/decompose_bilateral_variance.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
