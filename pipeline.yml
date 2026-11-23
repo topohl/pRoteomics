@@ -1117,8 +1117,10 @@ stages:
         produces:
           - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_correlations.csv"
           - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_values.csv"
+          - "results/spatial_validation/couple_network_edges_to_outcomes/global/tables/edge_outcome_correlations_without_shallow_ca2_slm.csv"
         consumes_required:
           - "results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores.csv"
+          - "results/integration/test_network_behaviour_coupling/global/tables/animal_level_candidate_edge_scores_without_shallow_ca2_slm.csv"
           - "data/external/behaviour_outcomes/behaviour_outcomes_ov6.csv"
           - "data/external/behaviour_outcomes/outcome_info.csv"
         consumes_optional: []
@@ -1531,7 +1533,7 @@ stages:
         stage: "coupling"
         scope: "dataset_specific"
         produces: ["results/integration/test_network_behaviour_coupling/global/tables", "results/integration/test_network_behaviour_coupling/global/plots"]
-        consumes_required: ["results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds", "data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds", "data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/E9_Behavior_Data.xlsx"]
+        consumes_required: ["results/spatial_networks/build_spatial_networks/<dataset>/models/*/network_spatial_relations_objects.rds", "data/processed/07_spatial_networks/network_spatial_relations/<dataset>/*/network_spatial_relations_objects.rds", "data/external/behavior/auc_individual_animals_firstChangeActive.csv", "data/external/behavior/E9_Behavior_Data.xlsx", "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv", "results/spatial_validation/audit_ca2_slm_robustness/global/tables/CA2_SLM_sample_context.csv"]
         consumes_optional: ["data/external/behavior/auc_individual_animals_all.csv"]
         recomputes_core_state: false
         safe_downstream_rerun: true

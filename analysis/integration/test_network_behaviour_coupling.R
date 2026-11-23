@@ -794,6 +794,27 @@ loaded <- load_spatial_object(params)
 expr <- loaded$expr
 sample_md <- loaded$sample_md
 
+# Leave-outs (2026-11-23), as in the other unit-profile analyses: DG po acquisitions with soma carry-over are left
+# out by the rule of Figure 2j-l (input_territory_carryover_qc.csv, column excluded: the floor keeps the
+# least-affected acquisition of an animal whose DG po acquisitions are all flagged). A check table also leaves
+# out the shallow CA2 SLM acquisitions of the robustness audit (CA2_SLM_sample_context.csv, column left_out).
+CARRYOVER_QC <- repo_path("results", "spatial_validation", "map_input_territories", "global", "tables",
+                          "input_territory_carryover_qc.csv")
+CA2SLM_CONTEXT <- repo_path("results", "spatial_validation", "audit_ca2_slm_robustness", "global", "tables",
+                            "CA2_SLM_sample_context.csv")
+for (f in c(CARRYOVER_QC, CA2SLM_CONTEXT)) if (!file.exists(f)) stop("missing_required_input: ", f, call. = FALSE)
+acq_id <- function(x) basename(gsub("\\\\", "/", x))
+carry_qc <- utils::read.csv(CARRYOVER_QC, stringsAsFactors = FALSE)
+drop_carryover <- acq_id(carry_qc$Sample[carry_qc$excluded %in% TRUE])
+ca2slm_ctx <- utils::read.csv(CA2SLM_CONTEXT, stringsAsFactors = FALSE)
+drop_shallow <- acq_id(ca2slm_ctx$sample_id[ca2slm_ctx$left_out %in% TRUE])
+if (!all(c(drop_carryover, drop_shallow) %in% acq_id(sample_md$SampleColumn)))
+  stop("A left-out acquisition is not in the network object.", call. = FALSE)
+sample_md <- sample_md[!acq_id(sample_md$SampleColumn) %in% drop_carryover, , drop = FALSE]
+sample_md_check <- sample_md[!acq_id(sample_md$SampleColumn) %in% drop_shallow, , drop = FALSE]
+message2("Left out: ", length(drop_carryover), " DG po acquisitions with carry-over; check without ",
+         length(drop_shallow), " shallow CA2 SLM acquisitions")
+
 message2("Proteomics matrix: ", nrow(expr), " proteins x ", ncol(expr), " samples")
 message2("Animals with proteomics metadata: ", length(unique(sample_md$AnimalID)))
 message2("Region/layer units: ", paste(sort(unique(sample_md$RegionLayer)), collapse = ", "))
@@ -802,6 +823,8 @@ edge_scores <- compute_animal_edge_scores(expr, sample_md, params$candidate_edge
 global_metrics <- compute_animal_global_network_metrics(edge_scores)
 
 readr::write_csv(edge_scores, file.path(dirs$tables, "animal_level_candidate_edge_scores.csv"))
+readr::write_csv(compute_animal_edge_scores(expr, sample_md_check, params$candidate_edges, params),
+                 file.path(dirs$tables, "animal_level_candidate_edge_scores_without_shallow_ca2_slm.csv"))
 readr::write_csv(global_metrics, file.path(dirs$tables, "animal_level_global_network_metrics.csv"))
 
 physio_tbl <- load_physiology(params)
