@@ -294,7 +294,10 @@ testthat::test_that("edge-level output reports exact coarse resolution, never an
   e <- rd(p)
   testthat::expect_false("permutation_p" %in% names(e))
   testthat::expect_false(any(grepl("^fdr$|_fdr$", names(e), ignore.case = TRUE)))
-  testthat::expect_true(all(e$exact_n_assignments == 20L, na.rm = TRUE))
+  # the number of SUS/RES assignments follows the design (3 vs 3 animals: 20; 2 vs 3: 10)
+  an <- unique(rd(NET("animal_network_edges.csv"))[c("AnimalID", "StressGroup")])
+  n_sus <- sum(an$StressGroup == "SUS"); n_res <- sum(an$StressGroup == "RES")
+  testthat::expect_true(all(e$exact_n_assignments == choose(n_sus + n_res, n_sus), na.rm = TRUE))
   testthat::expect_true(all(abs(e$min_attainable_two_sided_p - 0.10) < 1e-9, na.rm = TRUE))
   testthat::expect_true(all(grepl("EXACT but COARSE", e$inference_note)))
   # nothing may be below the mathematically attainable floor
