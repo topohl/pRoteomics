@@ -63,8 +63,8 @@ for (i in seq_len(nrow(spec))) {
   tok <- gsub("_", "", unit)
   if (identical(ds, "microglia")) tok <- paste0(tok, "microglia")
   cmp <- sprintf("%ssus_%sres", tok, tok)
-  base <- rel("data", "processed", "04_differential_expression_enrichment",
-              "clusterProfiler", ds, "phenotype_within_unit", unit_dir, cmp)
+  base <- rel("results", "differential_abundance", "run_clusterprofiler_enrichment",
+              ds, "models", "phenotype_within_unit", unit_dir, cmp)
   ranked_path <- file.path(base, "protein_group_audits", "collapsed_gene_input.csv")
   gsea_path <- file.path(base, "GO", "BP", "GSEA_BP_results_full.csv")
   if (!file.exists(ranked_path) || !file.exists(gsea_path))

@@ -38,8 +38,8 @@ for (i in seq_len(nrow(selection))) {
   tok <- gsub("_", "", unit)
   if (identical(ds, "microglia")) tok <- paste0(tok, "microglia")
   cmp <- sprintf("%ssus_%sres", tok, tok)
-  ranked_path <- rel("data", "processed", "04_differential_expression_enrichment",
-                     "clusterProfiler", ds, "phenotype_within_unit", unit_dir,
+  ranked_path <- rel("results", "differential_abundance", "run_clusterprofiler_enrichment",
+                     ds, "models", "phenotype_within_unit", unit_dir,
                      cmp, "protein_group_audits", "collapsed_gene_input.csv")
   if (!file.exists(ranked_path)) stop("Ranked input missing: ", ranked_path,
                                       call. = FALSE)
@@ -66,8 +66,8 @@ for (i in seq_len(nrow(selection))) {
   if (!length(keep)) stop("No leading-edge genes: ", s$GO_ID, call. = FALSE)
   for (cb in list(c("res", "con"), c("sus", "con"), c("sus", "res"))) {
     file <- sprintf("%s%s_%s%s.csv", tok, cb[[1]], tok, cb[[2]])
-    mapped_path <- rel("data", "processed", "02_id_mapping", "mapped", ds,
-                       "forward", "per_file", file)
+    mapped_path <- rel("results", "preprocessing", "map_protein_identifiers", ds,
+                       "tables", "mapped", "forward", "per_file", file)
     if (!file.exists(mapped_path)) stop("Mapped DA file missing: ", mapped_path,
                                         call. = FALSE)
     inputs <- rbind(inputs, data.frame(role = "mapped_protein_da",

@@ -1,6 +1,8 @@
 #!/usr/bin/env Rscript
 # Frozen, downstream-only source for every FDR-supported SUS-RES GO term in
 # the seven Figure 3 atlas themes. No enrichment or protein model is fitted.
+# Inputs are read from the results/ layout (run_clusterprofiler_enrichment,
+# map_protein_identifiers).
 root <- normalizePath(getwd(), winslash = "/", mustWork = TRUE)
 if (!file.exists(file.path(root, "pipeline.yml")))
   stop("Run from the pRoteomics repository root.", call. = FALSE)
@@ -64,8 +66,8 @@ get_context <- function(ds, unit) {
   tok <- gsub("_", "", unit)
   if (ds == "microglia") tok <- paste0(tok, "microglia")
   cmp <- sprintf("%ssus_%sres", tok, tok)
-  base <- rel("data", "processed", "04_differential_expression_enrichment",
-              "clusterProfiler", ds, "phenotype_within_unit", unit_dir, cmp)
+  base <- rel("results", "differential_abundance", "run_clusterprofiler_enrichment",
+              ds, "models", "phenotype_within_unit", unit_dir, cmp)
   ranked_path <- file.path(base, "protein_group_audits", "collapsed_gene_input.csv")
   gsea_path <- file.path(base, "GO", "BP", "GSEA_BP_results_full.csv")
   if (!file.exists(ranked_path) || !file.exists(gsea_path))
@@ -136,8 +138,8 @@ for (i in seq_along(term_ids)) {
   zlist <- list()
   for (cb in list(c("res", "con"), c("sus", "con"), c("sus", "res"))) {
     file <- sprintf("%s%s_%s%s.csv", ctx$token, cb[[1]], ctx$token, cb[[2]])
-    mapped_path <- rel("data", "processed", "02_id_mapping", "mapped", ds,
-                       "forward", "per_file", file)
+    mapped_path <- rel("results", "preprocessing", "map_protein_identifiers", ds,
+                       "tables", "mapped", "forward", "per_file", file)
     if (!file.exists(mapped_path))
       stop("Mapped DA file missing: ", mapped_path, call. = FALSE)
     da <- read.csv(mapped_path, stringsAsFactors = FALSE)
