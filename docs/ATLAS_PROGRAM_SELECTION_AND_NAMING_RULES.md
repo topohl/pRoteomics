@@ -157,6 +157,11 @@ fractions are low because GO stacks parents and children, not because recurrent
 biology is missing — semantic review of everything outside the rows found **no
 additional recurrent coherent program** meeting the criteria.
 
+Eight-animal tree (2026-11-23): the rows carry 26.3% of occurrences and 13.7% of
+unique identifiers. The same review (`audits/program_evidence/02_omitted_recheck.R`
+with the tree as argument, criteria unchanged) put the 955 supported BP terms
+outside the rows into 68 clusters and again found no missing program.
+
 Distinguish **term coverage** from **biological-program coverage**. The atlas is
 named for the second.
 
