@@ -11,7 +11,11 @@
 # ladder, at least as specific as the displayed terms, not QC context, and
 # material size. Clustering is phenotype-blind.
 
-setwd("S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
+# Optional argument: the tree to audit (default: the original nine-animal tree).
+# 2026-11-23: rerun on the eight-animal tree (proteomics_rerun_332).
+args <- commandArgs(trailingOnly = TRUE)
+setwd(if (length(args)) args[[1]] else
+  "S:/Lab_Member/Tobi/Experiments/Exp9_Social-Stress/Analysis/proteomics")
 suppressMessages({ library(GOSemSim); library(GO.db); library(AnnotationDbi) })
 
 OUT <- file.path("results", "tables", "publication_audits", "program_evidence")
@@ -24,10 +28,13 @@ MIN_OCC <- 100L
 LADDER_MAX <- 0.50
 QC_RE <- "immunoglobulin|keratin|cornified|epiderm|lymphocyte|natural killer"
 
-TH <- utils::read.csv(file.path(
+TH_PATH <- file.path(
   "results", "tables", "10_biological_integration", "gsea_wgcna_concordance",
-  "global", "ontology_aware_gsea_theme_assignments_all_contrasts.csv"),
-  stringsAsFactors = FALSE)
+  "global", "ontology_aware_gsea_theme_assignments_all_contrasts.csv")
+if (!file.exists(TH_PATH)) TH_PATH <- file.path(
+  "results", "integration", "test_enrichment_module_concordance", "global",
+  "tables", "ontology_aware_gsea_theme_assignments_all_contrasts.csv")
+TH <- utils::read.csv(TH_PATH, stringsAsFactors = FALSE)
 sup <- TH[is.finite(TH$GSEA_FDR) & TH$GSEA_FDR < ALPHA, , drop = FALSE]
 displayed <- unique(TH$GO_ID[TH$theme_claim_eligible %in% TRUE])
 omit <- sort(setdiff(unique(sup$GO_ID), displayed))
