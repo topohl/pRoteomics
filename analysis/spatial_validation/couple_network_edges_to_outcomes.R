@@ -44,7 +44,7 @@ Sys.setenv(PROTEOMICS_SCRIPT_ID = SCRIPT_ID)
 cli <- integration_cli(default_dataset = "all")
 
 EDGES <- repo_path("results", "integration", "test_network_behaviour_coupling", "global", "tables", "animal_level_candidate_edge_scores.csv")
-EDGES_SHA256 <- "PIN_AFTER_RUN"
+EDGES_SHA256 <- "40517c8275075c8051cd1d46a398e07c6cc3726f6382340a3e369877fc7df33f"
 EDGES_CHECK <- repo_path("results", "integration", "test_network_behaviour_coupling", "global", "tables",
                          "animal_level_candidate_edge_scores_without_shallow_ca2_slm.csv")
 OUTCOMES <- path_external("behaviour_outcomes", "behaviour_outcomes_ov6.csv")
