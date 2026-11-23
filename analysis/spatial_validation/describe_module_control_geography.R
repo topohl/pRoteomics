@@ -22,8 +22,8 @@
 # peak. The unit effect is the partial R2 of unit in lm(eigengene ~ animal + unit) over the control acquisitions; its
 # P comes from shuffling the unit labels within each animal and hemisphere (4,000 shuffles; 50,000 when the P lies
 # between 0.04 and 0.06, where the Monte Carlo error could change the class). Classes: no structure (P >= 0.05);
-# dominant (the peak is every control animal's peak and at most one hemisphere peaks elsewhere, i.e. five of six;
-# only hemispheres with every unit vote, so a hemisphere that lost an acquisition to the leave-out does not);
+# dominant (the peak is every control animal's peak and at least five of the six hemispheres peak there; only
+# hemispheres with every unit vote, so a hemisphere that lost an acquisition to the leave-out counts as not peaking);
 # otherwise shared top (units within two standard errors of the peak). tau (specificity of the control profile,
 # 0 = flat, 1 = one unit) is reported with its shuffle null (tau_null95, p_tau); the class does not use it.
 #
@@ -155,7 +155,7 @@ spatial_class <- function(d, h, sd_unit) {
       p_unit <- (1 + sum(null$r2 >= obs - 1e-12)) / (null$n + 1)
     }
     tau <- tau_of(p)
-    dom <- all(animal_peak == peak) && length(hp) >= 5L && sum(hp == peak) >= length(hp) - 1L && all(margin > 0)
+    dom <- all(animal_peak == peak) && sum(hp == peak) >= 2L * nrow(B) - 1L && all(margin > 0)
     cls <- if (p_unit >= 0.05) "no_structure" else if (dom) "dominant" else "shared_top"
     rows[[m]] <- data.frame(dataset = d, module_id = m, peak_unit = peak, second_unit = second,
       animals_peak = sum(animal_peak == peak), n_animals = nrow(B), animal_peaks = paste(animal_peak, collapse = ";"),
