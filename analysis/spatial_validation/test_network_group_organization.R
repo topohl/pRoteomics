@@ -17,14 +17,21 @@
 #   omnibus has 560 assignments (floor 2/560 = 0.0036). The counts are taken from
 #   the data, so the printed resolution follows the design actually present.
 #
+# ACQUISITIONS (2026-11-23): the networks leave out the DG po acquisitions with
+#   granule-cell carry-over, as Figure 2j-l and Extended Data 9c do (see
+#   build_animal_spatial_networks.R). The CON similarity matrix, the distance
+#   from the CON consensus and the whole-network test are also computed on the
+#   networks from every acquisition and written as *_all_acquisitions.csv
+#   (check).
+#
 # USAGE
 #   Rscript analysis/spatial_validation/test_network_group_organization.R
 #   Rscript analysis/spatial_validation/test_network_group_organization.R --dry-run
 # Script: analysis/spatial_validation/test_network_group_organization.R
 # Stage: networks
 # Scope: global
-# Consumes: required results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds; results/tables/11_spatial_systems/networks/animal_network_objects.rds; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; +1 more; optional results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv; +3 more
-# Produces: results/spatial_validation/test_network_group_organization/global/tables/CON_spatial_molecular_similarity_matrix.csv; results/spatial_validation/test_network_group_organization/global/tables/animal_network_global_metrics.csv; results/spatial_validation/test_network_group_organization/global/tables/network_metric_redundancy.csv; +9 more
+# Consumes: required results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds; results/tables/11_spatial_systems/networks/animal_network_objects.rds; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; +2 more; optional results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv; results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv; results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_fingerprints_raw.csv; +3 more
+# Produces: results/spatial_validation/test_network_group_organization/global/tables/CON_spatial_molecular_similarity_matrix.csv; results/spatial_validation/test_network_group_organization/global/tables/animal_network_global_metrics.csv; results/spatial_validation/test_network_group_organization/global/tables/network_metric_redundancy.csv; +12 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Group organisation of the animal-level spatial molecular-similarity networks.
 #  
@@ -60,7 +67,8 @@ DATASETS <- valid_datasets()
 if (isTRUE(cli$dry_run)) {
   cat("[DRY-RUN] Group organisation of animal-level spatial networks.\n")
   dry_run_inputs(SCRIPT_ID, list(animal_network_objects = spatial_systems_find("animal_network_objects.rds", "networks", kind = "models"),
-                                 animal_network_edges = NET("animal_network_edges.csv")))
+                                 animal_network_edges = NET("animal_network_edges.csv"),
+                                 animal_network_edges_all_acquisitions = NET("animal_network_edges_all_acquisitions.csv")))
   cat("[DRY-RUN] Permutation unit = AnimalID; bootstrap resamples animals only.\n")
   quit(save = "no", status = 0L)
 }
@@ -78,28 +86,43 @@ edges <- as.data.frame(readr::read_csv(NET("animal_network_edges.csv"),
 
 bil <- edges[edges$hemisphere_mode == "bilateral", , drop = FALSE]
 animal_key <- unique(bil[, c("dataset", "AnimalID", "StressGroup")])
+# check: the bilateral networks from every acquisition (DG po carry-over kept)
+edges_all_path <- NET("animal_network_edges_all_acquisitions.csv")
+if (!file.exists(edges_all_path)) {
+  stop("missing_required_input: ", edges_all_path, call. = FALSE)
+}
+bil_all <- as.data.frame(readr::read_csv(edges_all_path, show_col_types = FALSE,
+                                         progress = FALSE, guess_max = Inf))
+if (!setequal(paste(bil_all$dataset, bil_all$AnimalID, bil_all$edge_id),
+              paste(bil$dataset, bil$AnimalID, bil$edge_id))) {
+  stop("The all-acquisition check networks do not cover the same animals and edges.", call. = FALSE)
+}
 
 # =========================== PART 10: CON baseline anatomical network
 
 message("Building the CON baseline anatomical network")
-baseline_rows <- list()
-for (ds in DATASETS) {
-  z <- bil[bil$dataset == ds & bil$StressGroup == "CON", , drop = FALSE]
-  if (!nrow(z)) next
-  baseline_rows[[ds]] <- z %>%
-    dplyr::group_by(.data$edge_id, .data$node_a, .data$node_b) %>%
-    dplyr::summarise(
-      dataset = ds,
-      n_con_animals = dplyr::n(),
-      median_similarity = stats::median(.data$similarity, na.rm = TRUE),
-      mean_similarity = mean(.data$similarity, na.rm = TRUE),
-      between_animal_sd = stats::sd(.data$similarity, na.rm = TRUE),
-      iqr_similarity = stats::IQR(.data$similarity, na.rm = TRUE),
-      q25 = unname(stats::quantile(.data$similarity, 0.25, na.rm = TRUE)),
-      q75 = unname(stats::quantile(.data$similarity, 0.75, na.rm = TRUE)),
-      .groups = "drop")
+con_baseline <- function(bil) {
+  baseline_rows <- list()
+  for (ds in DATASETS) {
+    z <- bil[bil$dataset == ds & bil$StressGroup == "CON", , drop = FALSE]
+    if (!nrow(z)) next
+    baseline_rows[[ds]] <- z %>%
+      dplyr::group_by(.data$edge_id, .data$node_a, .data$node_b) %>%
+      dplyr::summarise(
+        dataset = ds,
+        n_con_animals = dplyr::n(),
+        median_similarity = stats::median(.data$similarity, na.rm = TRUE),
+        mean_similarity = mean(.data$similarity, na.rm = TRUE),
+        between_animal_sd = stats::sd(.data$similarity, na.rm = TRUE),
+        iqr_similarity = stats::IQR(.data$similarity, na.rm = TRUE),
+        q25 = unname(stats::quantile(.data$similarity, 0.25, na.rm = TRUE)),
+        q75 = unname(stats::quantile(.data$similarity, 0.75, na.rm = TRUE)),
+        .groups = "drop")
+  }
+  dplyr::bind_rows(baseline_rows)
 }
-baseline <- dplyr::bind_rows(baseline_rows)
+baseline <- con_baseline(bil)
+baseline_all <- con_baseline(bil_all)
 
 # ================== PART 11: animal-level global descriptors + redundancy
 
@@ -138,29 +161,33 @@ redundancy <- dplyr::bind_rows(redund_rows)
 # =========================== PART 12: distance from the CON centroid
 
 message("Computing distance from the CON network centroid")
-dist_rows <- list()
-for (ds in DATASETS) {
-  z <- bil[bil$dataset == ds, , drop = FALSE]
-  if (!nrow(z)) next
-  w <- z %>% dplyr::select("AnimalID", "edge_id", "similarity") %>%
-    tidyr::pivot_wider(names_from = "edge_id", values_from = "similarity")
-  # AnimalIDs look numeric ("111", "127"), so keep them character throughout or
-  # a later join silently fails on a character/double type mismatch
-  animals <- as.character(w$AnimalID)
-  em <- as.matrix(w[, -1, drop = FALSE])
-  grp <- animal_key$StressGroup[match(animals, animal_key$AnimalID)]
-  # CON animals use a LEAVE-ONE-CON-OUT centroid; RES/SUS use all CON animals
-  d_euc <- asn_distance_from_con(em, grp, "euclidean_fisherz")
-  dist_rows[[ds]] <- data.frame(
-    dataset = ds, AnimalID = animals, StressGroup = grp,
-    distance_from_CON_centroid = d_euc,
-    distance_metric = "euclidean distance in Fisher-z edge space",
-    centroid_rule = ifelse(grp == "CON",
-                           "leave-one-CON-out centroid",
-                           "centroid of all CON animals"),
-    stringsAsFactors = FALSE)
+con_distances <- function(bil) {
+  dist_rows <- list()
+  for (ds in DATASETS) {
+    z <- bil[bil$dataset == ds, , drop = FALSE]
+    if (!nrow(z)) next
+    w <- z %>% dplyr::select("AnimalID", "edge_id", "similarity") %>%
+      tidyr::pivot_wider(names_from = "edge_id", values_from = "similarity")
+    # AnimalIDs look numeric ("111", "127"), so keep them character throughout or
+    # a later join silently fails on a character/double type mismatch
+    animals <- as.character(w$AnimalID)
+    em <- as.matrix(w[, -1, drop = FALSE])
+    grp <- animal_key$StressGroup[match(animals, animal_key$AnimalID)]
+    # CON animals use a LEAVE-ONE-CON-OUT centroid; RES/SUS use all CON animals
+    d_euc <- asn_distance_from_con(em, grp, "euclidean_fisherz")
+    dist_rows[[ds]] <- data.frame(
+      dataset = ds, AnimalID = animals, StressGroup = grp,
+      distance_from_CON_centroid = d_euc,
+      distance_metric = "euclidean distance in Fisher-z edge space",
+      centroid_rule = ifelse(grp == "CON",
+                             "leave-one-CON-out centroid",
+                             "centroid of all CON animals"),
+      stringsAsFactors = FALSE)
+  }
+  dplyr::bind_rows(dist_rows)
 }
-distances <- dplyr::bind_rows(dist_rows)
+distances <- con_distances(bil)
+distances_all <- con_distances(bil_all)
 descriptors <- dplyr::left_join(
   descriptors, distances[, c("dataset", "AnimalID", "distance_from_CON_centroid")],
   by = c("dataset", "AnimalID"))
@@ -208,48 +235,52 @@ group_metrics <- dplyr::bind_rows(grp_rows)
 # ONE test per dataset, on the whole edge vector. Edges are not pseudo-replicated
 # because the permutation unit is the animal and an animal's edges move together.
 message("Running the multivariate whole-network test")
-mv_rows <- list()
-for (ds in DATASETS) {
-  z <- bil[bil$dataset == ds, , drop = FALSE]
-  w <- z %>% dplyr::select("AnimalID", "edge_id", "similarity") %>%
-    tidyr::pivot_wider(names_from = "edge_id", values_from = "similarity")
-  em <- asn_fisher_z(as.matrix(w[, -1, drop = FALSE]))
-  g <- animal_key$StressGroup[match(w$AnimalID, animal_key$AnimalID)]
-  if (length(unique(g)) < 3L || nrow(em) < 6L) next
-  # statistic: between-group sum of squared centroid deviation in edge space
-  stat_of <- function(lab) {
-    mu <- colMeans(em, na.rm = TRUE)
-    sum(vapply(unique(lab), function(k) {
-      sum(lab == k) * sum((colMeans(em[lab == k, , drop = FALSE], na.rm = TRUE) - mu)^2)
-    }, numeric(1)))
-  }
-  obs <- stat_of(g)
-  lv <- sort(unique(g)); n <- length(g)
-  sizes <- vapply(lv, function(k) sum(g == k), integer(1))
-  idx1 <- utils::combn(n, sizes[[1]]); null <- c()
-  for (j in seq_len(ncol(idx1))) {
-    rest <- setdiff(seq_len(n), idx1[, j])
-    idx2 <- utils::combn(rest, sizes[[2]])
-    for (kk in seq_len(ncol(idx2))) {
-      lab <- rep(lv[[3]], n); lab[idx1[, j]] <- lv[[1]]; lab[idx2[, kk]] <- lv[[2]]
-      null <- c(null, stat_of(lab))
+whole_network_test <- function(bil) {
+  mv_rows <- list()
+  for (ds in DATASETS) {
+    z <- bil[bil$dataset == ds, , drop = FALSE]
+    w <- z %>% dplyr::select("AnimalID", "edge_id", "similarity") %>%
+      tidyr::pivot_wider(names_from = "edge_id", values_from = "similarity")
+    em <- asn_fisher_z(as.matrix(w[, -1, drop = FALSE]))
+    g <- animal_key$StressGroup[match(w$AnimalID, animal_key$AnimalID)]
+    if (length(unique(g)) < 3L || nrow(em) < 6L) next
+    # statistic: between-group sum of squared centroid deviation in edge space
+    stat_of <- function(lab) {
+      mu <- colMeans(em, na.rm = TRUE)
+      sum(vapply(unique(lab), function(k) {
+        sum(lab == k) * sum((colMeans(em[lab == k, , drop = FALSE], na.rm = TRUE) - mu)^2)
+      }, numeric(1)))
     }
+    obs <- stat_of(g)
+    lv <- sort(unique(g)); n <- length(g)
+    sizes <- vapply(lv, function(k) sum(g == k), integer(1))
+    idx1 <- utils::combn(n, sizes[[1]]); null <- c()
+    for (j in seq_len(ncol(idx1))) {
+      rest <- setdiff(seq_len(n), idx1[, j])
+      idx2 <- utils::combn(rest, sizes[[2]])
+      for (kk in seq_len(ncol(idx2))) {
+        lab <- rep(lv[[3]], n); lab[idx1[, j]] <- lv[[1]]; lab[idx2[, kk]] <- lv[[2]]
+        null <- c(null, stat_of(lab))
+      }
+    }
+    mv_rows[[ds]] <- data.frame(
+      dataset = ds, test = "exact_label_enumeration_whole_network",
+      statistic = "between-group sum of squares in Fisher-z edge space",
+      n_animals = n, n_edges = ncol(em), observed = obs,
+      n_assignments = length(null),
+      # Complete enumeration: the observed labelling is one of the enumerated
+      # assignments, so it is already in the numerator and the add-one
+      # correction for sampled permutations must not be applied here.
+      exact_p = sum(null >= obs - 1e-12) / length(null),
+      min_attainable_p = sum(null >= max(null) - 1e-12) / length(null),
+      permutation_unit = "AnimalID",
+      note = "one whole-network test per dataset; edges are not tested individually here",
+      stringsAsFactors = FALSE)
   }
-  mv_rows[[ds]] <- data.frame(
-    dataset = ds, test = "exact_label_enumeration_whole_network",
-    statistic = "between-group sum of squares in Fisher-z edge space",
-    n_animals = n, n_edges = ncol(em), observed = obs,
-    n_assignments = length(null),
-    # Complete enumeration: the observed labelling is one of the enumerated
-    # assignments, so it is already in the numerator and the add-one
-    # correction for sampled permutations must not be applied here.
-    exact_p = sum(null >= obs - 1e-12) / length(null),
-    min_attainable_p = sum(null >= max(null) - 1e-12) / length(null),
-    permutation_unit = "AnimalID",
-    note = "one whole-network test per dataset; edges are not tested individually here",
-    stringsAsFactors = FALSE)
+  dplyr::bind_rows(mv_rows)
 }
-multivariate <- dplyr::bind_rows(mv_rows)
+multivariate <- whole_network_test(bil)
+multivariate_all <- whole_network_test(bil_all)
 
 # ===================== PART 15: edge-level exploration (secondary)
 
@@ -432,6 +463,14 @@ write_csv_safe(distances, file.path(root, "animal_network_distance_from_CON.csv"
 write_csv_safe(group_metrics, file.path(root, "network_group_metric_comparison.csv"))
 write_csv_safe(multivariate, file.path(root, "network_global_multivariate_test.csv"))
 write_csv_safe(edge_groups, file.path(root, "network_edge_group_differences.csv"))
+# check tables: the same three analyses on the networks from every acquisition
+CHECK_NOTE <- "check: every acquisition (DG po carry-over acquisitions kept)"
+write_csv_safe(cbind(baseline_all, acquisitions = CHECK_NOTE),
+               file.path(root, "CON_spatial_molecular_similarity_matrix_all_acquisitions.csv"))
+write_csv_safe(cbind(distances_all, acquisitions = CHECK_NOTE),
+               file.path(root, "animal_network_distance_from_CON_all_acquisitions.csv"))
+write_csv_safe(cbind(multivariate_all, acquisitions = CHECK_NOTE),
+               file.path(root, "network_global_multivariate_test_all_acquisitions.csv"))
 if (!is.null(edge_ctx)) write_csv_safe(edge_ctx, file.path(root, "spatial_edge_module_context.csv"))
 if (!is.null(node_ctx)) write_csv_safe(node_ctx, file.path(root, "spatial_node_cell_context.csv"))
 if (!is.null(node_integration)) {
@@ -460,6 +499,8 @@ for (i in seq_len(nrow(multivariate))) {
               multivariate$dataset[i], multivariate$n_edges[i],
               multivariate$exact_p[i], multivariate$min_attainable_p[i]))
 }
+cat("  check, every acquisition: ",
+    paste(sprintf("%s p=%.4f", multivariate_all$dataset, multivariate_all$exact_p), collapse = "; "), "\n")
 cat("\n--- largest SUS-RES global metric effects (|g| ranked) ---\n")
 gm <- group_metrics[group_metrics$contrast == "SUS_minus_RES", , drop = FALSE]
 gm <- gm[order(-abs(gm$hedges_g)), , drop = FALSE]

@@ -1402,9 +1402,11 @@ stages:
           - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_nodes.csv"
           - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_bilateral_reproducibility.csv"
           - "results/spatial_validation/build_animal_spatial_networks/global/tables/edge_bilateral_reproducibility.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges_all_acquisitions.csv"
           - "results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds"
           - "results/spatial_validation/build_animal_spatial_networks/global/tables"
         consumes_required:
+          - "results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv"
           - "results/preprocessing/build_module_score_metadata/neuron_neuropil/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
           - "results/preprocessing/build_module_score_metadata/neuron_soma/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
           - "results/preprocessing/build_module_score_metadata/microglia/tables/sample_metadata_merged_clean_for_module_scores.xlsx"
@@ -1416,7 +1418,7 @@ stages:
           - "results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "ONE AnimalID = ONE independent network replicate. Builds a side-resolved and a bilateral spatial molecular-profile similarity matrix per animal. The representation is chosen PHENOTYPE-BLIND on CON animals: anatomical discrimination is a validity FLOOR (0.05), not a tiebreaker, which is why raw abundance is rejected despite posting the highest inter-animal stability - it scores highest precisely because similarity is dominated by the global abundance rank every unit shares (0.009 discrimination versus 0.12-0.13). Full weighted matrices only; no thresholding."
+        notes: "ONE AnimalID = ONE independent network replicate. Builds a side-resolved and a bilateral spatial molecular-profile similarity matrix per animal. The representation is chosen PHENOTYPE-BLIND on CON animals: anatomical discrimination is a validity FLOOR (0.05), not a tiebreaker, which is why raw abundance is rejected despite posting the highest inter-animal stability - it scores highest precisely because similarity is dominated by the global abundance rank every unit shares (0.009 discrimination versus 0.12-0.13). Full weighted matrices only; no thresholding. The DG po acquisitions with granule-cell carry-over are left out (input_territory_carryover_qc, as in Figure 2j-l); the bilateral networks from every acquisition are written as a check."
       - script: "analysis/spatial_validation/test_network_group_organization.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]
@@ -1435,11 +1437,15 @@ stages:
           - "results/spatial_validation/test_network_group_organization/global/tables/spatial_node_network_integration.csv"
           - "results/spatial_validation/test_network_group_organization/global/tables/WGCNA_module_network_context.csv"
           - "results/spatial_validation/test_network_group_organization/global/tables/protein_network_context.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/CON_spatial_molecular_similarity_matrix_all_acquisitions.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/animal_network_distance_from_CON_all_acquisitions.csv"
+          - "results/spatial_validation/test_network_group_organization/global/tables/network_global_multivariate_test_all_acquisitions.csv"
         consumes_required:
           - "results/spatial_validation/build_animal_spatial_networks/global/models/animal_network_objects.rds"
           - "results/tables/11_spatial_systems/networks/animal_network_objects.rds"
           - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv"
           - "results/tables/11_spatial_systems/networks/animal_network_edges.csv"
+          - "results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges_all_acquisitions.csv"
         consumes_optional:
           - "results/spatial_validation/build_module_spatial_atlas/global/tables/WGCNA_module_spatial_cell_affinity.csv"
           - "results/tables/11_spatial_systems/atlas/WGCNA_module_spatial_cell_affinity.csv"
@@ -1449,7 +1455,7 @@ stages:
           - "results/tables/11_spatial_systems/atlas/protein_spatial_cell_affinity.csv"
         recomputes_core_state: false
         safe_downstream_rerun: true
-        notes: "Group organisation with the ANIMAL as the inferential unit throughout: every permutation relabels whole animals and every bootstrap resamples animals. SUS vs RES enumerates all 20 assignments exactly, so the smallest ATTAINABLE two-sided p is 0.10 and no such comparison can reach 0.05 - failing to cross it is not evidence of no difference. The three-group omnibus enumerates 1680. No bootstrap sign frequency is ever reported as a p-value and no BH FDR is derived from one. CON animals are scored against a LEAVE-ONE-CON-OUT centroid. Part 23 adds node-level integration context back to the module and protein atlas; the edge structure stays in the network tables."
+        notes: "Group organisation with the ANIMAL as the inferential unit throughout: every permutation relabels whole animals and every bootstrap resamples animals. SUS vs RES enumerates all 20 assignments exactly, so the smallest ATTAINABLE two-sided p is 0.10 and no such comparison can reach 0.05 - failing to cross it is not evidence of no difference. The three-group omnibus enumerates 1680. No bootstrap sign frequency is ever reported as a p-value and no BH FDR is derived from one. CON animals are scored against a LEAVE-ONE-CON-OUT centroid. Part 23 adds node-level integration context back to the module and protein atlas; the edge structure stays in the network tables. The networks leave out the DG po carry-over acquisitions; the CON similarity matrix, the distance from the CON consensus and the whole-network test are also written for the networks from every acquisition (*_all_acquisitions, check)."
       - script: "analysis/spatial_validation/validate_network_workbook.R"
         required: false
         datasets: ["neuron_neuropil", "neuron_soma", "microglia"]

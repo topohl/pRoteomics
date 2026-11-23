@@ -15,14 +15,22 @@
 # profiles of two anatomical units within one animal. This is NOT connectivity
 # of any kind and NOT a coexpression network.
 #
+# LEAVE-OUT (2026-11-23), as in the other unit-profile analyses (Figure 2j-l and
+# the edge scores of Extended Data 9c): the DG po acquisitions with granule-cell
+# carry-over are left out (input_territory_carryover_qc.csv, column excluded).
+# An affected animal's bilateral DG po profile is then its other hemisphere, and
+# the side network that lost its DG po node is not built, so that animal has no
+# left-right network comparison. The bilateral networks from every acquisition
+# are kept as a check (animal_network_edges_all_acquisitions.csv).
+#
 # USAGE
 #   Rscript analysis/spatial_validation/build_animal_spatial_networks.R
 #   Rscript analysis/spatial_validation/build_animal_spatial_networks.R --dry-run
 # Script: analysis/spatial_validation/build_animal_spatial_networks.R
 # Stage: networks
 # Scope: global
-# Consumes: required data/processed/01_preprocessing/06_merged_metadata_module_score/<dataset>/sample_metadata_merged_clean_for_module_scores.xlsx; optional results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv
-# Produces: results/spatial_validation/build_animal_spatial_networks/global/tables/network_representation_selection.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_nodes.csv; +4 more
+# Consumes: required results/spatial_validation/map_input_territories/global/tables/input_territory_carryover_qc.csv; results/preprocessing/build_module_score_metadata/neuron_neuropil/tables/sample_metadata_merged_clean_for_module_scores.xlsx; results/preprocessing/build_module_score_metadata/neuron_soma/tables/sample_metadata_merged_clean_for_module_scores.xlsx; +4 more; optional results/spatial_validation/build_spatial_data_contract/global/tables/spatial_systems_hemisphere_inventory.csv; results/tables/11_spatial_systems/data_contract/spatial_systems_hemisphere_inventory.csv
+# Produces: results/spatial_validation/build_animal_spatial_networks/global/tables/network_representation_selection.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_edges.csv; results/spatial_validation/build_animal_spatial_networks/global/tables/animal_network_nodes.csv; +5 more
 # Dataset behavior: runs for global according to pipeline.yml and --dataset/PROTEOMICS_DATASET where supported.
 # Notes: Animal-level spatial molecular-similarity networks.
 #  
@@ -56,9 +64,11 @@ OUT <- function() {
   d <- CANONICAL_PATHS$tables; dir_create(d); d
 }
 DATASETS <- valid_datasets()
+CARRYOVER_QC <- repo_path("results", "spatial_validation", "map_input_territories", "global", "tables",
+                          "input_territory_carryover_qc.csv")
 
 if (isTRUE(cli$dry_run)) {
-  inputs <- list()
+  inputs <- list(carryover_qc = CARRYOVER_QC)
   for (ds in DATASETS) {
     inputs[[paste0("canonical_metadata__", ds)]] <-
       preprocessing_module_score_metadata(ds)
@@ -72,17 +82,30 @@ if (isTRUE(cli$dry_run)) {
 
 # ------------------------------------------------ per-animal side matrices
 
+if (!file.exists(CARRYOVER_QC)) stop("missing_required_input: ", CARRYOVER_QC, call. = FALSE)
+acq_id <- function(x) sub("[.]d$", "", basename(gsub("\\\\", "/", as.character(x))))
+carry_qc <- utils::read.csv(CARRYOVER_QC, stringsAsFactors = FALSE)
+drop_carryover <- acq_id(carry_qc$Sample[carry_qc$excluded %in% TRUE])
+if (!length(drop_carryover)) stop("The carry-over table leaves no acquisition out; check its 'excluded' column.", call. = FALSE)
+
 message("Building per-animal side-resolved matrices")
 animal_matrices <- list()
+bilateral_all <- list()   # check: bilateral profiles from every acquisition
 node_sets <- list()
 animal_meta <- list()
+dropped <- character()
 for (ds in DATASETS) {
   inputs <- resolve_dataset_inputs(ds, purpose = "wgcna", script = SCRIPT_ID,
                                    stage = "networks")
   md <- preprocessing_module_score_metadata(ds)
   canonical <- qc_load_canonical_expression(inputs$expression_file, md,
                                             dataset = ds, strict = TRUE)
-  lv <- sps_build_spatial_levels(ds, canonical = canonical)
+  out_sel <- acq_id(canonical$meta$Sample) %in% drop_carryover
+  dropped <- c(dropped, canonical$meta$Sample[out_sel])
+  lv_all <- sps_build_spatial_levels(ds, canonical = canonical)
+  lv <- if (any(out_sel)) {
+    sps_build_spatial_levels(ds, metadata = canonical$meta[!out_sel, , drop = FALSE], mat = canonical$mat)
+  } else lv_all
 
   # canonical node vocabulary, fixed and shared by every comparison
   nodes <- sort(unique(sat_canonical_spatial_unit(lv$level2$meta$SpatialUnit, ds)))
@@ -92,6 +115,8 @@ for (ds in DATASETS) {
   m1$unit <- sat_canonical_spatial_unit(m1$SpatialUnit, ds)
   l2 <- lv$level2$mat; m2 <- lv$level2$meta
   m2$unit <- sat_canonical_spatial_unit(m2$SpatialUnit, ds)
+  l2_all <- lv_all$level2$mat; m2_all <- lv_all$level2$meta
+  m2_all$unit <- sat_canonical_spatial_unit(m2_all$SpatialUnit, ds)
 
   for (an in sort(unique(m2$AnimalID))) {
     grp <- m2$StressGroup[m2$AnimalID == an][1]
@@ -108,16 +133,23 @@ for (ds in DATASETS) {
     bil <- l2[, sel2, drop = FALSE]
     colnames(bil) <- m2$unit[sel2]
     bil <- bil[, intersect(nodes, colnames(bil)), drop = FALSE]
+    sel_all <- m2_all$AnimalID == an
+    bil_all <- l2_all[, sel_all, drop = FALSE]
+    colnames(bil_all) <- m2_all$unit[sel_all]
 
     key <- paste(ds, an, sep = "\037")
     animal_matrices[[key]] <- list(L = pick_side("L"), R = pick_side("R"),
                                    bilateral = bil)
+    bilateral_all[[key]] <- bil_all[, intersect(nodes, colnames(bil_all)), drop = FALSE]
     animal_meta[[key]] <- data.frame(dataset = ds, AnimalID = an,
                                      StressGroup = grp, stringsAsFactors = FALSE)
   }
-  message(sprintf("  %-16s %d animals, %d nodes", ds,
-                  length(unique(m2$AnimalID)), length(nodes)))
+  message(sprintf("  %-16s %d animals, %d nodes, %d acquisitions left out (DG po carry-over)", ds,
+                  length(unique(m2$AnimalID)), length(nodes), sum(out_sel)))
 }
+if (!setequal(acq_id(dropped), drop_carryover))
+  stop("A left-out DG po acquisition is not in the network data: ",
+       paste(setdiff(drop_carryover, acq_id(dropped)), collapse = ", "), call. = FALSE)
 animal_meta <- dplyr::bind_rows(animal_meta)
 
 # ============================ PART 5: phenotype-blind representation selection
@@ -142,8 +174,10 @@ for (ds in DATASETS) {
       sb <- asn_similarity_matrix(tb$mat, nodes, EDGE_METHOD)
       edge_mats[[k]] <- asn_edge_vector(sb)
       retained <- c(retained, tb$n_proteins_retained / tb$n_proteins_input)
-      # 1. bilateral reproducibility of the network itself
-      if (!is.null(am$L) && !is.null(am$R)) {
+      # 1. bilateral reproducibility of the network itself (only when both side
+      #    networks have every node: a left-out acquisition removes one)
+      if (!is.null(am$L) && !is.null(am$R) &&
+          all(nodes %in% colnames(am$L)) && all(nodes %in% colnames(am$R))) {
         tl <- asn_transform(am$L, rep); tr <- asn_transform(am$R, rep)
         common <- intersect(rownames(tl$mat), rownames(tr$mat))
         if (length(common) >= 10L) {
@@ -268,6 +302,25 @@ for (k in names(animal_matrices)) {
   }
 }
 edges <- dplyr::bind_rows(edge_rows)
+
+# check: the bilateral networks from every acquisition (DG po carry-over kept)
+edge_rows_all <- list()
+for (k in names(bilateral_all)) {
+  ds <- sub("\037.*$", "", k); an <- sub(".*\037", "", k)
+  grp <- animal_meta$StressGroup[animal_meta$dataset == ds & animal_meta$AnimalID == an][1]
+  nodes <- node_sets[[ds]]
+  tt <- asn_transform(bilateral_all[[k]], PRIMARY)
+  if (nrow(tt$mat) < 10L || !all(nodes %in% colnames(tt$mat))) next
+  edge_rows_all[[length(edge_rows_all) + 1L]] <- cbind(
+    data.frame(dataset = ds, AnimalID = an, StressGroup = grp,
+               hemisphere_mode = "bilateral", representation = PRIMARY,
+               edge_metric = EDGE_METHOD,
+               n_proteins_contributing = tt$n_proteins_retained,
+               stringsAsFactors = FALSE),
+    asn_edge_table(asn_similarity_matrix(tt$mat, nodes, EDGE_METHOD)))
+}
+edges_all <- dplyr::bind_rows(edge_rows_all)
+edges_all$acquisitions <- "all acquisitions (check: DG po carry-over acquisitions kept)"
 nodes_tbl <- dplyr::bind_rows(node_rows)
 
 # ======================= PART 8 + 9: bilateral network reproducibility
@@ -326,8 +379,11 @@ write_csv_safe(edges, file.path(root, "animal_network_edges.csv"))
 write_csv_safe(nodes_tbl, file.path(root, "animal_network_nodes.csv"))
 write_csv_safe(bilateral, file.path(root, "animal_network_bilateral_reproducibility.csv"))
 write_csv_safe(edge_bilateral, file.path(root, "edge_bilateral_reproducibility.csv"))
-# full weighted matrices, retained independently of any visualisation threshold
+write_csv_safe(edges_all, file.path(root, "animal_network_edges_all_acquisitions.csv"))
+# full weighted matrices, retained independently of any visualisation threshold;
+# the folder holds this run's matrices only (a side network not built now leaves no old file behind)
 mat_dir <- file.path(root, "matrices"); dir_create(mat_dir)
+unlink(list.files(mat_dir, pattern = "[.]csv$", full.names = TRUE))
 for (k in names(matrices)) {
   parts <- strsplit(k, "\037", fixed = TRUE)[[1]]
   f <- file.path(mat_dir, sprintf("%s__%s__%s.csv", parts[1], parts[2], parts[3]))
@@ -339,7 +395,8 @@ for (k in names(matrices)) {
 # look for it; otherwise readers fall back to the historical copy of an older run.
 dir_create(CANONICAL_PATHS$models)
 saveRDS(list(matrices = matrices, nodes = node_sets, representation = PRIMARY,
-             edge_metric = EDGE_METHOD, contract_version = asn_contract_version()),
+             edge_metric = EDGE_METHOD, contract_version = asn_contract_version(),
+             left_out_acquisitions = sort(acq_id(dropped))),
         file.path(CANONICAL_PATHS$models, "animal_network_objects.rds"))
 
 cat("\n===== Animal-level spatial molecular-similarity networks =====\n")
@@ -371,5 +428,7 @@ for (ds in DATASETS) {
 }
 cat("\nquality classes:\n"); print(table(bilateral$bilateral_network_quality))
 cat("\nnetworks built:", length(matrices), " edges:", nrow(edges), "\n")
+cat("DG po carry-over acquisitions left out:", paste(sort(acq_id(dropped)), collapse = ", "), "\n")
+cat("check networks from every acquisition (bilateral):", length(unique(paste(edges_all$dataset, edges_all$AnimalID))), "\n")
 cat("Outputs:", relative_to(root), "\n")
 cat("One AnimalID = one network replicate. Full weighted matrices retained.\n")

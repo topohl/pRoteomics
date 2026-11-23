@@ -8,7 +8,7 @@ legitimately write different files into one family, which is coordination
 rather than a defect. What must never happen is two scripts declaring the
 same concrete output file, and this tool fails if any does.
 
-At this commit: **124 families**, **449 concrete declared outputs**, **0** of which have more than one declared writer.
+At this commit: **124 families**, **453 concrete declared outputs**, **0** of which have more than one declared writer.
 
 Output namespaces are keyed on **stage identity**, not on script location.
 That is why a script named `summarize_missingness.R` writes into
@@ -91,7 +91,7 @@ its outputs.
 | `results/spatial_validation/annotate_module_celltypes/global` | `annotate_module_celltypes.R` | 1 | 2 |
 | `results/spatial_validation/audit_ca2_slm_robustness/global` | `audit_ca2_slm_robustness.R` | 1 | 6 |
 | `results/spatial_validation/audit_stress_identity_robustness/global` | `audit_stress_identity_robustness.R` | 1 | 7 |
-| `results/spatial_validation/build_animal_spatial_networks/global` | `build_animal_spatial_networks.R` | 1 | 6 |
+| `results/spatial_validation/build_animal_spatial_networks/global` | `build_animal_spatial_networks.R` | 1 | 7 |
 | `results/spatial_validation/build_module_spatial_atlas/global` | `build_module_spatial_atlas.R` | 1 | 10 |
 | `results/spatial_validation/build_protein_spatial_atlas/global` | `build_protein_spatial_atlas.R` | 1 | 3 |
 | `results/spatial_validation/build_spatial_data_contract/global` | `build_spatial_data_contract.R` | 1 | 3 |
@@ -113,7 +113,7 @@ its outputs.
 | `results/spatial_validation/score_compartment_markers/global` | `score_compartment_markers.R` | 1 | 5 |
 | `results/spatial_validation/summarize_ca2_slm_robustness/global` | `summarize_ca2_slm_robustness.R` | 1 | 3 |
 | `results/spatial_validation/summarize_spatial_atlas/global` | `summarize_spatial_atlas.R` | 1 | 2 |
-| `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 12 |
+| `results/spatial_validation/test_network_group_organization/global` | `test_network_group_organization.R` | 1 | 15 |
 | `results/spatial_validation/test_stress_exposure/global` | `test_stress_exposure.R` | 1 | 8 |
 | `results/spatial_validation/test_unit_specificity/global` | `test_unit_specificity.R` | 1 | 3 |
 | `results/spatial_validation/validate_network_workbook/global` | `validate_network_workbook.R` | 1 | 4 |

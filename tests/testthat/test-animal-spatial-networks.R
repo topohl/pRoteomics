@@ -227,6 +227,36 @@ testthat::test_that("there is one bilateral network per AnimalID with no duplica
   testthat::expect_setequal(unique(e$hemisphere_mode), c("L", "R", "bilateral"))
 })
 
+testthat::test_that("the networks leave out the DG po carry-over acquisitions and keep a check", {
+  carry <- repo_path("results", "spatial_validation", "map_input_territories", "global", "tables",
+                     "input_territory_carryover_qc.csv")
+  obj <- spatial_systems_find("animal_network_objects.rds", "networks", kind = "models")
+  p_all <- NET("animal_network_edges_all_acquisitions.csv")
+  testthat::skip_if_not(file.exists(carry) && file.exists(obj) && file.exists(p_all), "networks not built")
+  acq <- function(x) sub("[.]d$", "", basename(gsub("\\\\", "/", x)))
+  q <- rd(carry)
+  o <- readRDS(obj)
+  testthat::expect_setequal(o$left_out_acquisitions, acq(q$Sample[q$excluded %in% TRUE]))
+  # an affected animal has no side network on the left-out side (its DG po node is gone)
+  hit <- q[q$excluded %in% TRUE, , drop = FALSE]
+  for (i in seq_len(nrow(hit))) {
+    side <- if (hit$hemisphere[i] == "Right") "R" else "L"
+    an <- sub("^A0*", "", hit$AnimalID[i])
+    testthat::expect_false(paste("neuron_neuropil", an, side, sep = "\037") %in% names(o$matrices),
+                           info = hit$Sample[i])
+  }
+  e <- rd(NET("animal_network_edges.csv"))
+  b <- e[e$hemisphere_mode == "bilateral", , drop = FALSE]
+  a <- rd(p_all)
+  key <- function(z) paste(z$dataset, z$AnimalID, z$edge_id)
+  testthat::expect_setequal(key(a), key(b))
+  # only the neuropil differs; the soma and microglia networks are the same with every acquisition
+  for (ds in c("neuron_soma", "microglia")) {
+    x <- b[b$dataset == ds, , drop = FALSE]; y <- a[a$dataset == ds, , drop = FALSE]
+    testthat::expect_equal(y$similarity[match(key(x), key(y))], x$similarity, info = ds)
+  }
+})
+
 testthat::test_that("the representation was selected without any phenotype input", {
   p <- NET("network_representation_selection.csv")
   testthat::skip_if_not(file.exists(p))
