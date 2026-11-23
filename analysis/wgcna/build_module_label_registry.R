@@ -140,6 +140,14 @@ if (nrow(curated_sup)) {
   now_members <- mod %>%
     group_by(.data$dataset, entity_id = .data$SupermoduleID) %>%
     summarise(current_members = paste(sort(.data$ModuleID), collapse = ";"), .groups = "drop")
+  # a supermodule absent from the current network (a rebuilt network with fewer supermodules, 2026-11-23: the
+  # eight-animal networks) cannot receive the adjudication; it is dropped, not applied elsewhere
+  absent <- anti_join(curated_sup, now_members, by = c("dataset", "entity_id"))
+  if (nrow(absent)) {
+    message("Curated supermodule adjudications for supermodules absent from the current network, not applied: ",
+            paste(absent$dataset, absent$entity_id, collapse = ", "))
+    curated_sup <- semi_join(curated_sup, now_members, by = c("dataset", "entity_id"))
+  }
   moved <- curated_sup %>%
     left_join(now_members, by = c("dataset", "entity_id")) %>%
     filter(is.na(.data$current_members) | .data$current_members != .data$members)
