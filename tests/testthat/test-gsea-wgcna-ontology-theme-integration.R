@@ -122,13 +122,14 @@ testthat::test_that("resolved multifaceted mappings retain one WGCNA entity", {
       .data$mapping_status == "approved",
       .data$mapping_role == "secondary_multifunctional"
     )
+  # eight-animal network (mapping of 2026-11-23): the secondary facets carried by lineage
   expected <- data.frame(
     dataset = c("neuron_neuropil", "neuron_neuropil", "microglia"),
     theme_id = c(
       "autophagy_lysosome_endosome", "chromatin_organization",
       "chromatin_organization"
     ),
-    entity_id = c("WGCNA_m05", "WGCNA_m12", "WGCNA_m11"),
+    entity_id = c("WGCNA_m04", "WGCNA_m12", "WGCNA_m10"),
     stringsAsFactors = FALSE
   )
   testthat::expect_equal(
@@ -137,17 +138,21 @@ testthat::test_that("resolved multifaceted mappings retain one WGCNA entity", {
       by = c("dataset", "theme_id", "entity_id")
     )), 0L
   )
+  # facets left for review stay out of the manuscript
   testthat::expect_false(any(
     mapping$dataset == "neuron_soma" &
-      mapping$theme_id == "ribosome_translation" &
-      mapping$entity_id == "WGCNA_m04" &
+      mapping$theme_id == "chromatin_organization" &
+      mapping$entity_id == "WGCNA_m02" &
       mapping$approved_for_manuscript_interpretation %in% TRUE
   ))
   testthat::expect_false(any(
-    mapping$dataset == "microglia" &
+    mapping$dataset == "neuron_neuropil" &
       mapping$theme_id == "autophagy_lysosome_endosome" &
-      mapping$entity_id == "WGCNA_m08" &
+      mapping$entity_id == "WGCNA_m01" &
       mapping$approved_for_manuscript_interpretation %in% TRUE
+  ))
+  testthat::expect_true(all(
+    mapping$approved_for_manuscript_interpretation[mapping$mapping_status == "manual_review_candidate"] %in% FALSE
   ))
 })
 
